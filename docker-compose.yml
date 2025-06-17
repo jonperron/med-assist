@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000" # Exposes backend on host port 8000
+    volumes:
+      - ./backend/app:/app # Mounts local app directory for live updates during development
+    container_name: med_assist_backend
+    environment:
+      - PYTHONUNBUFFERED=1 # Ensures print statements appear in logs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80" # Exposes frontend (Nginx) on host port 3000
+    depends_on:
+      - backend
+    container_name: med_assist_frontend
+    # For development with create-react-app's dev server and hot reloading,
+    # you might use a different service definition that runs `npm start`.
+    # This current setup serves the built static files via Nginx.
+    # If you want live reload for frontend development:
+    # volumes:
+    #   - ./frontend/src:/app/src
+    #   - ./frontend/public:/app/public
+    # command: npm start # This would require node to be the CMD in frontend/Dockerfile, not nginx
