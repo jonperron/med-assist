@@ -1,2 +1,7 @@
 fastapi[standard]>=0.100.0
 uvicorn[standard]>=0.20.0
+
+PyMuPDF>=1.23.0
+python-docx>=0.8.11
+pytest>=7.4.0
+pytest-asyncio>=1.0.0
