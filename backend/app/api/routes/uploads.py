@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import JSONResponse
-from app.db.temp_store import extracted_data_store
+
+from app.services.text_extractor import TextExtractor
 
 router = APIRouter()
 
@@ -11,13 +12,11 @@ async def upload_document(file: UploadFile = File(...)):
     For now, it just saves the file name and type.
     Later, this will extract text.
     """
-    file_id = file.filename 
-    extracted_data_store[file_id] = {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "status": "uploaded, text extraction pending"
-    }
-    
+    file_id = file.filename
+
+    # Extract text from the document
+    text_extractor = TextExtractor.extract_text(file)
+
     return JSONResponse(
         status_code=200,
         content={
