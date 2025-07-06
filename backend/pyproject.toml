@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "The backend for the Med-Assist application."
 authors = ["Jonathan Perron <jonathan@perron.bzh>"]
 license = "Apache 2.0"
+readme = "README.md"
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
