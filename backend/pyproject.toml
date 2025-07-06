@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "med-assist-backend"
+version = "0.1.0"
+description = "The backend for the Med-Assist application."
+authors = ["Jonathan Perron <jonathan@perron.bzh>"]
+license = "Apache 2.0"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {version = ">=0.100.0", extras = ["standard"]}
+uvicorn = {version = ">=0.20.0", extras = ["standard"]}
+PyMuPDF = ">=1.23.0"
+python-docx = ">=0.8.11"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.4.0"
+pytest-asyncio = ">=1.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
