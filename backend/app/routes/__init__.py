@@ -1,3 +1,0 @@
-from .extractions import router as extractions_router
-from .health import router as health_router
-from .uploads import router as uploads_router
