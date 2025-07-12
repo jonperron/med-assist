@@ -8,6 +8,7 @@ from app.db.redis import RedisStorage
 def get_redis_config() -> RedisConfiguration:
     return RedisConfiguration()
 
+
 @lru_cache()
 def get_redis_storage() -> RedisStorage:
     return RedisStorage(config=get_redis_config())

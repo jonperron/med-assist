@@ -1,0 +1,35 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+    -   id: check-yaml
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
+-   repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+    -   id: black
+-   repo: https://github.com/pdm-project/pdm
+    rev: 2.15.4
+    hooks:
+    -   id: pdm-lock-check
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+    -   id: ruff
+        args: [--fix]
+    -   id: ruff-format
+-   repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+    -   id: mypy
+        args: [--ignore-missing-imports]
+        additional_dependencies: [types-redis>=4.6.0.20241004]
+-   repo: local
+    hooks:
+    -   id: pylint
+        name: pylint
+        args: ["--rcfile=.pylintrc"]
+        entry: pylint backend/app
+        language: system
+        types: [python]

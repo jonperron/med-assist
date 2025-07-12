@@ -1,3 +1,4 @@
+# pylint: disable=W0621
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,15 +11,19 @@ def mock_redis_config():
     return RedisConfiguration(url="redis://localhost")
 
 
-@patch('redis.Redis')
-def test_redis_storage_init(mock_redis, mock_redis_config):
-    storage = RedisStorage(config=mock_redis_config)
-    mock_redis.from_url.assert_called_once_with(mock_redis_config.url)
-    assert storage.client is not None
+@patch("app.db.redis.redis.Redis.from_url")
+def test_redis_storage_init(mock_from_url, mock_redis_config):
+    mock_instance = MagicMock()
+    mock_from_url.return_value = mock_instance
+
+    storage = RedisStorage(mock_redis_config)
+
+    mock_from_url.assert_called_once_with(str(mock_redis_config.url))
+    assert storage.client == mock_instance
 
 
 @pytest.mark.asyncio
-@patch('redis.Redis')
+@patch("app.db.redis.redis.Redis")
 async def test_store_value(mock_redis, mock_redis_config):
     mock_client = MagicMock()
     mock_client.set = AsyncMock()
@@ -29,7 +34,7 @@ async def test_store_value(mock_redis, mock_redis_config):
 
 
 @pytest.mark.asyncio
-@patch('redis.Redis')
+@patch("app.db.redis.redis.Redis")
 async def test_get_value(mock_redis, mock_redis_config):
     mock_client = MagicMock()
     mock_client.get = AsyncMock(return_value=b"test_value")
@@ -41,7 +46,7 @@ async def test_get_value(mock_redis, mock_redis_config):
 
 
 @pytest.mark.asyncio
-@patch('redis.Redis')
+@patch("app.db.redis.redis.Redis")
 async def test_get_value_none(mock_redis, mock_redis_config):
     mock_client = MagicMock()
     mock_client.get = AsyncMock(return_value=None)

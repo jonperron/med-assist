@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
+
 @router.get("/get_extracted_text/{file_id}")
 async def get_extracted_text(file_id: str):
     """
@@ -18,4 +19,6 @@ async def get_extracted_text(file_id: str):
     #             "extracted_entities": "Placeholder for diseases, symptoms, treatments"
     #         }
     #     )
-    return JSONResponse(status_code=404, content={"message": "File not found or not processed yet."})
+    return JSONResponse(
+        status_code=404, content={"message": "File not found or not processed yet."}
+    )
