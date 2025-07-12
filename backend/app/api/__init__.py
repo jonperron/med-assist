@@ -1,1 +1,1 @@
-from .routes import extractions_router, health_router, uploads_router
+from app.api.routes import extractions_router, health_router, uploads_router
