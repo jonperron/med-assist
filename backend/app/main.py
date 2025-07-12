@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api import health_router, uploads_router
+from app.api import health_router, uploads_router
 
 app = FastAPI(title="Med-Assist Backend")
 

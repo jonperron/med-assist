@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import JSONResponse
 
@@ -18,11 +20,16 @@ async def upload_document(
     For now, it just saves the file name and type.
     Later, this will extract text.
     """
-    file_id = file.filename
-
+    file_id = uuid4()
     # Extract and store
     file_handler = FileHandler(redis_storage=redis_storage)
-    await file_handler.extract_text(file)
+    success = await file_handler.extract_text(file_id, file)
+
+    if not success:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Failed to extract text from the document."},
+        )
 
     return JSONResponse(
         status_code=200,
