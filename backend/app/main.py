@@ -1,11 +1,12 @@
 from fastapi import FastAPI
-from app.api import health_router, uploads_router
+from app.api import health_router, uploads_router, extractions_router
 
 app = FastAPI(title="Med-Assist Backend")
 
 # Include routers from the API layer
 app.include_router(health_router, tags=["Health Check"])
 app.include_router(uploads_router, prefix="/api", tags=["Document Uploads"])
+app.include_router(extractions_router, prefix="/api", tags=["Text Extractions"])
 
 
 @app.get("/")
