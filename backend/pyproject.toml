@@ -15,6 +15,7 @@ PyMuPDF = ">=1.23.0"
 python-docx = ">=0.8.11"
 redis = {version = "^6.2.0", extras = ["async"]}
 pydantic-settings = "^2.10.1"
+transformers = "^4.53.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4.0"

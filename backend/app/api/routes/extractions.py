@@ -1,6 +1,5 @@
-from app.core.dependencies import get_redis_storage
-from app.db.redis import RedisStorage
-from fastapi import APIRouter, Depends
+from app.use_cases.extract_entities import extract_entities
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
@@ -9,12 +8,11 @@ router = APIRouter()
 @router.get("/get_extracted_text/{file_id}")
 async def get_extracted_text(
     file_id: str,
-    redis_storage: RedisStorage = Depends(get_redis_storage),
 ):
     """
     Endpoint to retrieve extracted text.
     """
-    extracted_text = await redis_storage.get_value(file_id)
+    extracted_text = await extract_entities(file_id)
 
     if not extracted_text:
         return JSONResponse(
