@@ -1,11 +1,9 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from app.use_cases.save_file import save_file
+from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.core.dependencies import get_redis_storage
-from app.db.redis import RedisStorage
-from app.use_cases.file_handler import FileHandler
 
 router = APIRouter()
 
@@ -13,7 +11,6 @@ router = APIRouter()
 @router.post("/upload_document/")
 async def upload_document(
     file: UploadFile = File(...),
-    redis_storage: RedisStorage = Depends(get_redis_storage),
 ):
     """
     Endpoint to upload a document.
@@ -21,9 +18,7 @@ async def upload_document(
     Later, this will extract text.
     """
     file_id = uuid4()
-    # Extract and store
-    file_handler = FileHandler(redis_storage=redis_storage)
-    success = await file_handler.extract_text(file_id, file)
+    success = await save_file(file_id, file)
 
     if not success:
         return JSONResponse(

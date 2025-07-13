@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import UploadFile
 from uuid import uuid4
 
-from app.use_cases.file_handler import FileHandler
+from app.services.file_handler import FileHandler
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def mock_redis_storage():
     return mock
 
 
-@patch("app.use_cases.file_handler.TextExtractor")
+@patch("app.services.file_handler.TextExtractor")
 def test_file_handler_init(MockTextExtractor, mock_redis_storage):
     handler = FileHandler(redis_storage=mock_redis_storage)
     MockTextExtractor.assert_called_once()
@@ -31,7 +31,7 @@ def test_file_handler_init(MockTextExtractor, mock_redis_storage):
 
 
 @pytest.mark.asyncio
-@patch("app.use_cases.file_handler.TextExtractor")
+@patch("app.services.file_handler.TextExtractor")
 async def test_save_extracted_text(MockTextExtractor, mock_redis_storage):
     handler = FileHandler(redis_storage=mock_redis_storage)
     file_uuid = uuid4()
@@ -42,7 +42,7 @@ async def test_save_extracted_text(MockTextExtractor, mock_redis_storage):
 
 
 @pytest.mark.asyncio
-@patch("app.use_cases.file_handler.TextExtractor")
+@patch("app.services.file_handler.TextExtractor")
 async def test_extract_text(MockTextExtractor, mock_redis_storage, mock_upload_file):
     mock_extractor_instance = MockTextExtractor.return_value
     mock_extractor_instance.extract_text = AsyncMock(return_value="extracted text")
@@ -57,7 +57,7 @@ async def test_extract_text(MockTextExtractor, mock_redis_storage, mock_upload_f
 
 
 @pytest.mark.asyncio
-@patch("app.use_cases.file_handler.TextExtractor")
+@patch("app.services.file_handler.TextExtractor")
 async def test_extract_text_no_text(
     MockTextExtractor, mock_redis_storage, mock_upload_file
 ):
