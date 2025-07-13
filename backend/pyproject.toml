@@ -13,12 +13,16 @@ fastapi = {version = ">=0.100.0", extras = ["standard"]}
 uvicorn = {version = ">=0.20.0", extras = ["standard"]}
 PyMuPDF = ">=1.23.0"
 python-docx = ">=0.8.11"
-redis = "^6.2.0"
+redis = {version = "^6.2.0", extras = ["async"]}
 pydantic-settings = "^2.10.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4.0"
 pytest-asyncio = ">=1.0.0"
+pre-commit = ">=4.2.0"
+ruff = ">=0.12.3"
+mypy = ">=1.0.0"
+pylint = ">=3.0.0"
 
 [build-system]
 requires = ["poetry-core"]

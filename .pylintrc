@@ -1,0 +1,33 @@
+[MASTER]
+# Load only the core pylint checkers
+load-plugins=
+
+[MESSAGES CONTROL]
+# Enable only common serious errors
+enable=
+    E0001,  # fatal error
+    E0100,  # __init__ method issues
+    E1101,  # accessing non-existent member
+    E1120,  # missing function arguments
+    E1121,  # too many function arguments
+    E1130,  # invalid type for unary operand
+    E1136,  # unsubscriptable value
+    E0602,  # undefined variable
+    E0611,  # import error
+
+    W0107,  # unnecessary pass
+    W0611,  # unused import
+    W0621,  # variable redefined from outer scope
+    W0703,  # broad except
+    W1514,  # using open without context manager
+
+disable=all
+
+[REPORTS]
+# Disable full report
+reports=no
+
+[FORMAT]
+# Let other tools like black handle formatting
+max-line-length=120
+indent-string='    '

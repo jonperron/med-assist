@@ -57,7 +57,7 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Med-Assist Document Processor</h1>
-        
+
         <div>
           <h2>1. Upload Document</h2>
           <input type="file" onChange={handleFileChange} />
