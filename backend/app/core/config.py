@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 
 class RedisConfiguration(BaseSettings):
-    url: RedisDsn = Field(..., env="REDIS_URL")
+    url: RedisDsn = Field(..., alias="REDIS_URL")
 
     class Config:
         env_file = ".env"

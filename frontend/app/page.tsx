@@ -14,7 +14,7 @@ export default function HomePage() {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await axios.post('http://localhost:8000/upload_document/', formData, {
+    const response = await axios.post('http://localhost:8000/api/upload_document/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
 
@@ -26,7 +26,7 @@ export default function HomePage() {
   const fetchExtraction = async () => {
     if (!fileId) return
 
-    const response = await axios.get(`http://localhost:8000/get_extracted_text/${fileId}`)
+    const response = await axios.get(`http://localhost:8000/api/get_extracted_text/${fileId}`)
     if (response.status === 200) {
       setExtraction(response.data)
     }
