@@ -4,7 +4,6 @@ from app.use_cases.save_file import save_file
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
 
-
 router = APIRouter()
 
 
@@ -30,6 +29,6 @@ async def upload_document(
         status_code=200,
         content={
             "message": f"File '{file.filename}' uploaded successfully. Extraction pending.",
-            "file_id": file_id,
+            "file_id": str(file_id),
         },
     )
