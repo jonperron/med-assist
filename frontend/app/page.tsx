@@ -48,7 +48,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {extraction && <ExtractionViewer data={extraction} />}
+      {extraction && extraction.txt && <ExtractionViewer data={extraction} />}
     </main>
   )
 }
