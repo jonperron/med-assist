@@ -2,6 +2,14 @@
 
 This is the backend for the Med-Assist application, built with FastAPI and Poetry.
 
+## Features
+
+* Document upload (PDF, DOC, DOCX, TXT)
+* Text extraction from medical documents
+* Named Entity Recognition (NER) for medical terms
+* Redis-based storage for processed documents
+* RESTful API with automatic OpenAPI documentation
+
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
@@ -10,6 +18,38 @@ These instructions will get you a copy of the project up and running on your loc
 
 * Python 3.10+
 * [Poetry](https://python-poetry.org/docs/#installation)
+
+### Configuration requirements
+
+The application requires two main configurations to be set up properly:
+
+#### Redis Configuration
+
+The application uses Redis for storing extracted text and processing results. Configure the following:
+
+**Environment Variables:**
+
+* `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`)
+
+**Example:**
+
+```bash
+export REDIS_URL="redis://localhost:6379"
+```
+
+### NER Model Configuration
+
+The application uses Hugging Face transformers for Named Entity Recognition. Configure the following:
+
+**Environment Variables:**
+
+* `NER_MODEL_NAME`: Name of the Hugging Face model to use for NER
+
+**Example:**
+
+```bash
+export NER_MODEL_NAME="dbmdz/bert-large-cased-finetuned-conll03-english"
+```
 
 ### Installation
 
