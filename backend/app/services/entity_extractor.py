@@ -1,9 +1,19 @@
 from transformers import pipeline
 from typing import List, Dict
 
+from app.core.dependencies import get_ner_model_config
+
 
 class EntityExtractor:
-    def __init__(self, model_name: str = "Jean-Baptiste/camembert-ner"):
+    def __init__(self, model_name: str | None = None):
+        if model_name is None:
+            try:
+                model_name = get_ner_model_config().model_name
+            except Exception:
+                raise ValueError(
+                    "Model name must be provided or configured in settings."
+                )
+
         self.ner_pipeline = pipeline(
             "ner", model=model_name, aggregation_strategy="simple"
         )

@@ -8,3 +8,12 @@ class RedisConfiguration(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+
+class NERModelConfiguration(BaseSettings):
+    model_name: str = Field(..., alias="NER_MODEL_NAME")
+    model_version: str = Field(..., alias="NER_MODEL_VERSION")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"

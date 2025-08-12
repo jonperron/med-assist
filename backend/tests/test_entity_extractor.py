@@ -11,9 +11,9 @@ def mock_ner_pipeline():
 
 
 def test_entity_extractor_init(mock_ner_pipeline):
-    extractor = EntityExtractor()
+    extractor = EntityExtractor(model_name="Dummy/Model")
     mock_ner_pipeline.assert_called_once_with(
-        "ner", model="Jean-Baptiste/camembert-ner", aggregation_strategy="simple"
+        "ner", model="Dummy/Model", aggregation_strategy="simple"
     )
     assert extractor.ner_pipeline is not None
 
@@ -28,7 +28,7 @@ def test_extract_entities(mock_ner_pipeline):
         {"entity_group": "treatment", "word": "paracétamol"},
     ]
 
-    extractor = EntityExtractor()
+    extractor = EntityExtractor(model_name="Dummy/Model")
     text = "Le patient a la grippe avec de la fièvre, traité avec du paracétamol."
     entities = extractor.extract_entities(text)
 
@@ -43,7 +43,7 @@ def test_extract_entities_no_entities(mock_ner_pipeline):
     mock_ner_pipeline.return_value = mock_pipeline_instance
     mock_pipeline_instance.return_value = []
 
-    extractor = EntityExtractor()
+    extractor = EntityExtractor(model_name="Dummy/Model")
     text = "Le patient va bien."
     entities = extractor.extract_entities(text)
 
