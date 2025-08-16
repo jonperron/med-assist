@@ -29,6 +29,7 @@ The application uses Redis for storing extracted text and processing results. Co
 
 **Environment Variables:**
 
+* `APP_ENV`: Environment mode for the backend. Set to `development` to enable development-only features such as mock endpoints. For production, use `production` or leave unset.
 * `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`)
 
 **Example:**
