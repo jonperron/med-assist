@@ -1,6 +1,8 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health_router, uploads_router, extractions_router
+from app.api import health_router, mock_router, uploads_router, extractions_router
 
 app = FastAPI(title="Med-Assist Backend")
 
@@ -16,6 +18,9 @@ app.add_middleware(
 app.include_router(health_router, tags=["Health Check"])
 app.include_router(uploads_router, prefix="/api", tags=["Document Uploads"])
 app.include_router(extractions_router, prefix="/api", tags=["Text Extractions"])
+
+if os.getenv("APP_ENV", "development") == "development":
+    app.include_router(mock_router)
 
 
 @app.get("/")
