@@ -7,6 +7,12 @@ class UploadResponse(BaseModel):
     message: str
 
 
+class MultipleUploadResponse(BaseModel):
+    batch_id: str
+    file_ids: list[str]
+    message: str
+
+
 class UploadErrorResponse(BaseModel):
     message: str
 
