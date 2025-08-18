@@ -1,8 +1,8 @@
 # pylint: disable=W0621
 import pytest
+from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import UploadFile
-from uuid import uuid4
 
 from app.services.file_handler import FileHandler
 
@@ -68,4 +68,30 @@ async def test_extract_text_no_text(
     result = await handler.extract_text(file_id, mock_upload_file)
     mock_extractor_instance.extract_text.assert_called_once_with(mock_upload_file)
     mock_redis_storage.store_value.assert_not_called()
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_file_handler_save_batch_success():
+    batch_id = uuid4()
+    file_ids = ["file1", "file2", "file3"]
+
+    handler = MagicMock(spec=FileHandler)
+    handler.save_batch = AsyncMock(return_value=True)
+
+    result = await handler.save_batch(batch_id, file_ids)
+    handler.save_batch.assert_awaited_once_with(batch_id, file_ids)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_file_handler_save_batch_failure():
+    batch_id = uuid4()
+    file_ids = ["file1", "file2"]
+
+    handler = MagicMock(spec=FileHandler)
+    handler.save_batch = AsyncMock(return_value=False)
+
+    result = await handler.save_batch(batch_id, file_ids)
+    handler.save_batch.assert_awaited_once_with(batch_id, file_ids)
     assert result is False

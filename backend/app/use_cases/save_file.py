@@ -12,12 +12,22 @@ async def save_file(
     file_handler: FileHandler = Depends(get_file_handler),
 ) -> bool:
     """
-    Placeholder function to simulate saving a file.
-    In a real application, this would handle the file storage logic.
-
     :param file_id: The unique identifier for the file.
     :param file: The uploaded file.
     :return: True if the file was saved successfully, False otherwise.
     """
 
     return await file_handler.extract_text(file_id, file)
+
+
+async def save_batch(
+    batch_id: UUID,
+    file_ids: list[str],
+    file_handler: FileHandler = Depends(get_file_handler),
+) -> bool:
+    """
+    :param batch_id: The unique identifier for the batch of files.
+    :param file_ids: The list of unique identified for the uploaded files
+    :return: True if the batch was saved successfully, False otherwise
+    """
+    return await file_handler.save_batch(batch_id, file_ids)
