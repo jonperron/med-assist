@@ -1,7 +1,7 @@
 from typing import List, Union
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, File, UploadFile
+from fastapi import APIRouter, HTTPException, File, UploadFile, Depends
 
 from app.schemas.upload import (
     FileValidationError,
@@ -11,6 +11,8 @@ from app.schemas.upload import (
 )
 from app.use_cases.save_file import save_batch, save_file
 from app.use_cases.validate_file import validate_upload_file
+from app.services.file_handler import FileHandler
+from app.core.dependencies import get_file_handler
 
 router = APIRouter()
 
@@ -31,6 +33,7 @@ async def upload_document(
     file: UploadFile = File(
         ..., description="The file to upload (PDF, DOC, DOCX, TXT)."
     ),
+    file_handler: FileHandler = Depends(get_file_handler),
 ):
     """
     Upload a medical document for text extraction and entity recognition.
@@ -49,7 +52,7 @@ async def upload_document(
 
     try:
         file_id = uuid4()
-        success = await save_file(file_id, file)
+        success = await save_file(file_id, file, file_handler)
 
         if not success:
             raise HTTPException(
@@ -59,14 +62,14 @@ async def upload_document(
 
         return UploadResponse(
             file_id=str(file_id),
-            filename=file.filename,
+            filename=file.filename or "unknown",
             message="File uploaded successfully. Extraction pending.",
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail={"message": "Internal server error", "error_code": str(e)},
-        )
+        ) from e
 
 
 @router.post(
@@ -89,8 +92,12 @@ async def upload_document(
 async def upload_documents(
     files: List[UploadFile] = File(
         ...,
-        description="List of medical documents to upload. Supported formats: PDF, DOC, DOCX, TXT. Maximum size: 10MB per file.",
+        description=(
+            "List of medical documents to upload. Supported formats: "
+            "PDF, DOC, DOCX, TXT. Maximum size: 10MB per file."
+        ),
     ),
+    file_handler: FileHandler = Depends(get_file_handler),
 ) -> MultipleUploadResponse:
     """
     Upload multiple medical documents for text extraction and entity recognition.
@@ -112,7 +119,7 @@ async def upload_documents(
 
         try:
             file_id = uuid4()
-            success = await save_file(file_id, file)
+            success = await save_file(file_id, file, file_handler)
 
             if not success:
                 raise HTTPException(
@@ -126,11 +133,11 @@ async def upload_documents(
             raise HTTPException(
                 status_code=500,
                 detail={"message": "Internal server error", "error_code": str(e)},
-            )
+            ) from e
 
-    await save_batch(batch_id, file_ids)
+    await save_batch(batch_id, file_ids, file_handler)
     return MultipleUploadResponse(
         batch_id=str(batch_id),
-        files_ids=file_ids,
+        file_ids=file_ids,
         message="Files uploaded successfully.",
     )

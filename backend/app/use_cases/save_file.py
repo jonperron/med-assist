@@ -12,12 +12,14 @@ async def save_file(
     file_handler: FileHandler = Depends(get_file_handler),
 ) -> bool:
     """
+    Save file using FastAPI dependency injection.
+
     :param file_id: The unique identifier for the file.
     :param file: The uploaded file.
+    :param file_handler: Injected file handler dependency.
     :return: True if the file was saved successfully, False otherwise.
     """
-
-    return await file_handler.extract_text(file_id, file)
+    return await file_handler.process_file(file_id, file)
 
 
 async def save_batch(
@@ -26,8 +28,11 @@ async def save_batch(
     file_handler: FileHandler = Depends(get_file_handler),
 ) -> bool:
     """
+    Save batch using FastAPI dependency injection.
+
     :param batch_id: The unique identifier for the batch of files.
-    :param file_ids: The list of unique identified for the uploaded files
-    :return: True if the batch was saved successfully, False otherwise
+    :param file_ids: The list of unique identified for the uploaded files.
+    :param file_handler: Injected file handler dependency.
+    :return: True if the batch was saved successfully, False otherwise.
     """
-    return await file_handler.save_batch(batch_id, file_ids)
+    return await file_handler.process_batch(batch_id, file_ids)

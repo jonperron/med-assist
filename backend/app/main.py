@@ -3,8 +3,26 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import health_router, mock_router, uploads_router, extractions_router
+from app.core.exceptions import (
+    MedAssistBaseException,
+    FileProcessingError,
+    ValidationError,
+    StorageError,
+)
+from app.core.exception_handlers import (
+    med_assist_exception_handler,
+    file_processing_exception_handler,
+    validation_exception_handler,
+    storage_exception_handler,
+)
 
 app = FastAPI(title="Med-Assist Backend")
+
+# Add exception handlers
+app.add_exception_handler(MedAssistBaseException, med_assist_exception_handler)
+app.add_exception_handler(FileProcessingError, file_processing_exception_handler)
+app.add_exception_handler(ValidationError, validation_exception_handler)
+app.add_exception_handler(StorageError, storage_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,

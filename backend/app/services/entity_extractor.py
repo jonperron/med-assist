@@ -1,21 +1,24 @@
+from typing import List, Dict, Optional
 from transformers import pipeline
-from typing import List, Dict
 
 from app.core.dependencies import get_ner_model_config
+from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 
 
-class EntityExtractor:
-    def __init__(self, model_name: str | None = None):
+class EntityExtractor(EntityExtractionServiceInterface):
+    def __init__(self, model_name: Optional[str] = None):
         if model_name is None:
             try:
                 model_name = get_ner_model_config().model_name
-            except Exception:
+            except Exception as exc:
                 raise ValueError(
                     "Model name must be provided or configured in settings."
-                )
+                ) from exc
 
         self.ner_pipeline = pipeline(
-            "ner", model=model_name, aggregation_strategy="simple"
+            "ner",
+            model=model_name,
+            aggregation_strategy="simple",  # type: ignore
         )
 
     def extract_entities(self, text: str) -> Dict[str, List[str]]:

@@ -56,3 +56,6 @@ frontend/build/
 .idea/
 *.DS_Store
 Thumbs.db
+
+# Dev
+.env
