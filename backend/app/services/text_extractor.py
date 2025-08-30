@@ -1,11 +1,14 @@
 from io import BytesIO
+from typing import Optional
 import fitz
 from docx import Document
 from fastapi import UploadFile
 
+from app.interfaces.service_interfaces import TextExtractionServiceInterface
 
-class TextExtractor:
-    async def extract_text(self, file: UploadFile) -> str:
+
+class TextExtractor(TextExtractionServiceInterface):
+    async def extract_text(self, file: UploadFile) -> Optional[str]:
         """
         Extracts text from the document based on its file type.
         """
@@ -15,17 +18,19 @@ class TextExtractor:
 
             if file.content_type == "application/pdf":
                 return self._extract_text_from_pdf(file_bytes)
-            elif (
+
+            if (
                 file.content_type
                 == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             ):
                 return self._extract_text_from_docx(file_bytes)
-            elif file.content_type == "text/plain":
+
+            if file.content_type == "text/plain":
                 return self._extract_text_from_plaintext(file_bytes)
-            else:
-                raise ValueError("Unsupported file type")
+
+            raise ValueError("Unsupported file type")
         except Exception as e:
-            raise ValueError(f"Error extracting text: {str(e)}")
+            raise ValueError(f"Error extracting text: {str(e)}") from e
 
     def _extract_text_from_pdf(self, file_bytes: BytesIO) -> str:
         text = ""

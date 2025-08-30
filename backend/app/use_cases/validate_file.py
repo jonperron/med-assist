@@ -26,6 +26,15 @@ async def validate_upload_file(
         )
 
     # Check extension
+    if file.filename is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "No filename provided",
+                "allowed_extensions": list(ALLOWED_EXTENSIONS),
+            },
+        )
+
     _, ext = os.path.splitext(file.filename.lower())
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(

@@ -1,19 +1,22 @@
 from pydantic import Field, RedisDsn
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class RedisConfiguration(BaseSettings):
-    url: RedisDsn = Field(..., alias="REDIS_URL")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra fields
+    )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    url: RedisDsn = Field(..., alias="REDIS_URL")
 
 
 class NERModelConfiguration(BaseSettings):
-    model_name: str = Field(..., alias="NER_MODEL_NAME")
-    model_version: str = Field(..., alias="NER_MODEL_VERSION")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra fields
+    )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_name: str = Field(..., alias="NER_MODEL_NAME")
