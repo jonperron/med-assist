@@ -2,27 +2,11 @@
 Repository pattern implementation for text storage operations.
 """
 
-from abc import ABC, abstractmethod
 from uuid import UUID
 from typing import Optional
 
 from app.db.redis import RedisStorage
-
-
-class TextRepositoryInterface(ABC):
-    """Abstract interface for text repository operations."""
-
-    @abstractmethod
-    async def save_text(self, file_id: UUID, text: str) -> None:
-        """Save extracted text with file ID."""
-
-    @abstractmethod
-    async def get_text(self, file_id: UUID) -> Optional[str]:
-        """Retrieve text by file ID."""
-
-    @abstractmethod
-    async def save_batch(self, batch_id: UUID, file_ids: list[str]) -> None:
-        """Save batch information."""
+from app.interfaces.repositories_interfaces import TextRepositoryInterface
 
 
 class RedisTextRepository(TextRepositoryInterface):
