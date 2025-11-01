@@ -8,25 +8,25 @@ readme = "README.md"
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
-fastapi = {version = ">=0.116.0", extras = ["standard"]}
-uvicorn = {version = ">=0.35.0", extras = ["standard"]}
+python = ">=3.12, <3.15"
+fastapi = {version = "0.120.4", extras = ["standard"]}
+uvicorn = {version = "0.38.0", extras = ["standard"]}
 PyMuPDF = ">=1.23.0"
 python-docx = ">=0.8.11"
-redis = {version = "^6.2.0", extras = ["async"]}
-pydantic-settings = "^2.10.1"
-transformers = "^4.53.2"
-torch = "^2.7.1"
-protobuf = "^6.31.1"
-sentencepiece = "^0.2.0"
+redis = {version = "7.0.1", extras = ["async"]}
+pydantic-settings = "^2.11.0"
+transformers = "^4.57.1"
+torch = "^2.9.0"
+protobuf = "^6.33.0"
+sentencepiece = "^0.2.1"
 
 [tool.poetry.group.dev.dependencies]
-pytest = ">=7.4.0"
-pytest-asyncio = ">=1.0.0"
-pre-commit = ">=4.2.0"
-ruff = ">=0.12.3"
-mypy = ">=1.0.0"
-pylint = ">=3.0.0"
+pytest = ">=8.4.2"
+pytest-asyncio = ">=1.2.0"
+pre-commit = ">=4.3.0"
+ruff = ">=0.14.3"
+mypy = ">=1.18.2"
+pylint = ">=4.0.2"
 
 [build-system]
 requires = ["poetry-core"]
