@@ -41,6 +41,7 @@ celerybeat-schedule
 *.pid
 *.pid.lock
 venv/
+.venv/
 
 # Node
 node_modules/

@@ -4,14 +4,14 @@ FROM python:3.12-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Install poetry
-RUN pip install poetry
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Copy the dependencies file to the working directory
-COPY poetry.lock pyproject.toml ./
+COPY uv.lock pyproject.toml ./
 
-# Install any needed packages specified in pyproject.toml
-RUN poetry install --no-dev --no-root
+# Install dependencies
+RUN uv sync --frozen --no-dev
 
 # Copy the content of the local src directory to the working directory
 COPY ./app /app
@@ -23,4 +23,4 @@ EXPOSE 8000
 ENV PYTHONPATH=/app
 
 # Run app.main.py when the container launches
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "--no-sync", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
