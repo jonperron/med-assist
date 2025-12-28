@@ -6,9 +6,19 @@ import axios from 'axios'
 import FileUpload from './components/FileUpload'
 import ExtractionViewer from './components/ExtractionViewer'
 
+interface ExtractionData {
+  file_id: string
+  text: string
+  extracted_entities: {
+    diseases: string[]
+    symptoms: string[]
+    treatments: string[]
+  }
+}
+
 export default function HomePage() {
   const [fileId, setFileId] = useState<string | null>(null)
-  const [extraction, setExtraction] = useState<any | null>(null)
+  const [extraction, setExtraction] = useState<ExtractionData | null>(null)
 
   const handleFileUpload = async (file: File) => {
     const formData = new FormData()
@@ -48,7 +58,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {extraction && extraction.txt && <ExtractionViewer data={extraction} />}
+      {extraction && extraction.text && <ExtractionViewer data={extraction} />}
     </main>
   )
 }
