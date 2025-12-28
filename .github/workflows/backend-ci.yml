@@ -20,22 +20,24 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
         python-version: '3.12'
 
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-
     - name: Install dependencies
-      run: poetry install
+      run: uv sync --all-extras
       working-directory: ./backend
 
     - name: Run pre-commit hooks
-      run: poetry run pre-commit run --all-files
+      run: uv run pre-commit run --all-files
       working-directory: ./backend
 
     - name: Run tests
-      run: poetry run pytest
+      run: uv run pytest
       working-directory: ./backend

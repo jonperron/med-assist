@@ -1,6 +1,6 @@
 # Med-Assist Backend
 
-This is the backend for the Med-Assist application, built with FastAPI and Poetry.
+This is the backend for the Med-Assist application, built with FastAPI and uv.
 
 ## Features
 
@@ -16,8 +16,8 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Prerequisites
 
-* Python 3.10+
-* [Poetry](https://python-poetry.org/docs/#installation)
+* Python 3.12+
+* [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
 ### Configuration requirements
 
@@ -66,7 +66,7 @@ export NER_MODEL_NAME="dbmdz/bert-large-cased-finetuned-conll03-english"
     This command will install all the dependencies required for the project, including development dependencies.
 
     ```bash
-    poetry install
+    uv sync
     ```
 
 ## Running the Application
@@ -74,7 +74,7 @@ export NER_MODEL_NAME="dbmdz/bert-large-cased-finetuned-conll03-english"
 To run the application in a development environment, use the following command:
 
 ```bash
-poetry run uvicorn main:app --reload
+uv run uvicorn main:app --reload
 ```
 
 The application will be available at `http://127.0.0.1:8000`.
@@ -84,7 +84,7 @@ The application will be available at `http://127.0.0.1:8000`.
 To run the automated tests for this system, use the following command:
 
 ```bash
-poetry run pytest
+uv run pytest
 ```
 
 ## Contributing
@@ -94,7 +94,7 @@ Contributions are what make the open-source community such an amazing place to l
 This repository uses `pre-commit` to enforce code quality and style. Before committing, please make sure to install the pre-commit hooks:
 
 ```bash
-poetry run pre-commit install
+uv run pre-commit install
 ```
 
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".

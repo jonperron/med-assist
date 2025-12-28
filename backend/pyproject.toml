@@ -1,33 +1,39 @@
-[tool.poetry]
+[project]
 name = "med-assist-backend"
 version = "0.1.0"
 description = "The backend for the Med-Assist application."
-authors = ["Jonathan Perron <jonathan@perron.bzh>"]
-license = "Apache 2.0"
+authors = [
+    {name = "Jonathan Perron", email = "jonathan@perron.bzh"}
+]
+license = {text = "Apache 2.0"}
 readme = "README.md"
-packages = [{include = "app"}]
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "fastapi[standard]==0.120.4",
+    "uvicorn[standard]==0.38.0",
+    "PyMuPDF>=1.23.0",
+    "python-docx>=0.8.11",
+    "redis>=7.0.1",
+    "pydantic-settings>=2.11.0",
+    "transformers>=4.57.1",
+    "torch>=2.9.0",
+    "protobuf>=6.33.0",
+    "sentencepiece>=0.2.1",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12, <3.15"
-fastapi = {version = "0.120.4", extras = ["standard"]}
-uvicorn = {version = "0.38.0", extras = ["standard"]}
-PyMuPDF = ">=1.23.0"
-python-docx = ">=0.8.11"
-redis = {version = "7.0.1", extras = ["async"]}
-pydantic-settings = "^2.11.0"
-transformers = "^4.57.1"
-torch = "^2.9.0"
-protobuf = "^6.33.0"
-sentencepiece = "^0.2.1"
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pre-commit>=4.3.0",
+    "ruff>=0.14.3",
+    "mypy>=1.18.2",
+    "pylint>=4.0.2",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8.4.2"
-pytest-asyncio = ">=1.2.0"
-pre-commit = ">=4.3.0"
-ruff = ">=0.14.3"
-mypy = ">=1.18.2"
-pylint = ">=4.0.2"
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
