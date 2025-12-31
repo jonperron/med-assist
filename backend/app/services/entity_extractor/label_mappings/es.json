@@ -1,0 +1,43 @@
+{
+  "language": "es",
+  "dataset": "spanish_clinical",
+  "description": "Label mapping for Spanish clinical NER model",
+  "categories": {
+    "patient_info": {
+      "description": "Patient demographic information",
+      "labels": ["edad", "genero", "hombre", "mujer"]
+    },
+    "anatomy": {
+      "description": "Anatomical structures and body parts",
+      "labels": ["anatomia"]
+    },
+    "symptoms": {
+      "description": "Signs and symptoms",
+      "labels": ["sintoma", "signo"]
+    },
+    "examinations": {
+      "description": "Medical examinations and diagnostic procedures",
+      "labels": ["examen", "prueba"]
+    },
+    "treatments": {
+      "description": "Treatments, medications, and administration details",
+      "labels": ["tratamiento", "medicamento", "dosis"]
+    },
+    "pathologies": {
+      "description": "Diseases and conditions",
+      "labels": ["enfermedad", "patologia"]
+    },
+    "temporal": {
+      "description": "Temporal information",
+      "labels": ["fecha", "duracion", "frecuencia"]
+    },
+    "measurements": {
+      "description": "Measurements and quantitative values",
+      "labels": ["valor", "medida"]
+    },
+    "other": {
+      "description": "Other medical entities",
+      "labels": []
+    }
+  }
+}
