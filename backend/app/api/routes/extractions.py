@@ -75,9 +75,6 @@ async def get_extracted_text(
     return ExtractionResponse(
         file_id=file_id,
         text=text or "",
-        extracted_entities=ExtractedEntities(
-            diseases=extracted_entities.get("diseases", []),
-            symptoms=extracted_entities.get("symptoms", []),
-            treatments=extracted_entities.get("treatments", []),
-        ),
+        extracted_entities=ExtractedEntities(**extracted_entities),
+        mapping_info=entity_extractor.get_mapping_info(),
     )

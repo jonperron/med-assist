@@ -1,0 +1,66 @@
+{
+  "language": "fr",
+  "dataset": "french_clinical",
+  "description": "Label mapping for French clinical NER model",
+  "categories": {
+    "patient_info": {
+      "description": "Patient demographic information",
+      "labels": ["age", "genre", "homme", "femme"]
+    },
+    "anatomy": {
+      "description": "Anatomical structures and body parts",
+      "labels": ["anatomie"]
+    },
+    "symptoms": {
+      "description": "Signs, symptoms and patient states",
+      "labels": ["sosy", "etatsosy"]
+    },
+    "examinations": {
+      "description": "Medical examinations and diagnostic procedures",
+      "labels": ["examen"]
+    },
+    "treatments": {
+      "description": "Treatments, medications, and administration details",
+      "labels": ["traitement", "substance", "dose", "mode", "dispositif"]
+    },
+    "pathologies": {
+      "description": "Diseases, conditions, and pathological states",
+      "labels": [
+        "pathologie",
+        "issue",
+        "tumeur",
+        "infections",
+        "cardiovasculaires",
+        "digestif",
+        "respiratoire",
+        "nerveux",
+        "hemopathies",
+        "endocriniennes",
+        "peau",
+        "oeil",
+        "nutritionnelles",
+        "genetique",
+        "immunitaire",
+        "osteomusculaires",
+        "blessures",
+        "parasitaires",
+        "virales",
+        "fonction",
+        "stomatognathique",
+        "organisme"
+      ]
+    },
+    "temporal": {
+      "description": "Temporal information (dates, durations, frequency)",
+      "labels": ["moment", "date", "duree", "frequence"]
+    },
+    "measurements": {
+      "description": "Measurements and quantitative values",
+      "labels": ["valeur", "poids", "taille"]
+    },
+    "other": {
+      "description": "Other medical entities",
+      "labels": ["chimiques", "origine"]
+    }
+  }
+}

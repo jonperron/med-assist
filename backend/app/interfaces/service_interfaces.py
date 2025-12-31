@@ -8,6 +8,12 @@ from typing import Dict, List, Optional
 
 from fastapi import UploadFile
 
+# Import TYPE_CHECKING to avoid circular imports
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.schemas.extraction import EntityDetail
+
 
 class TextExtractionServiceInterface(ABC):
     """Interface for text extraction operations."""
@@ -21,7 +27,7 @@ class EntityExtractionServiceInterface(ABC):
     """Interface for entity extraction operations."""
 
     @abstractmethod
-    def extract_entities(self, text: str) -> Dict[str, List[str]]:
+    def extract_entities(self, text: str) -> Dict[str, List["EntityDetail"]]:
         """Extract medical entities from text."""
 
 

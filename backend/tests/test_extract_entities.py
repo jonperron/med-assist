@@ -6,6 +6,7 @@ from uuid import UUID
 from app.use_cases.extract_entities import extract_entities
 from app.repositories.text_repository import TextRepositoryInterface
 from app.services.entity_extractor import EntityExtractor
+from app.schemas.extraction import EntityDetail
 
 
 @pytest.mark.asyncio
@@ -18,7 +19,21 @@ async def test_extract_entities():
     text = "Le patient a la grippe."
     mock_text_repository.get_text = AsyncMock(return_value=text)
 
-    expected_entities = {"diseases": ["grippe"], "symptoms": [], "treatments": []}
+    expected_entities = {
+        "pathologies": [
+            EntityDetail(
+                text="grippe", label="B-pathologie", score=0.95, start=0, end=6
+            )
+        ],
+        "symptoms": [],
+        "treatments": [],
+        "patient_info": [],
+        "anatomy": [],
+        "examinations": [],
+        "temporal": [],
+        "measurements": [],
+        "other": [],
+    }
     mock_entity_extractor.extract_entities.return_value = expected_entities
 
     result = await extract_entities(
@@ -64,7 +79,17 @@ async def test_extract_entities_invalid_uuid():
     text = "Some text."
     mock_text_repository.get_text = AsyncMock(return_value=text)
 
-    expected_entities = {"diseases": [], "symptoms": [], "treatments": []}
+    expected_entities = {
+        "pathologies": [],
+        "symptoms": [],
+        "treatments": [],
+        "patient_info": [],
+        "anatomy": [],
+        "examinations": [],
+        "temporal": [],
+        "measurements": [],
+        "other": [],
+    }
     mock_entity_extractor.extract_entities.return_value = expected_entities
 
     result = await extract_entities(
