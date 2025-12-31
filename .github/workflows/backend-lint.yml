@@ -1,4 +1,4 @@
-name: Backend Tests
+name: Backend Lint & Format
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
 
     steps:
@@ -34,6 +34,6 @@ jobs:
       run: uv sync --all-extras
       working-directory: ./backend
 
-    - name: Run tests
-      run: uv run pytest
+    - name: Run pre-commit hooks
+      run: uv run pre-commit run --all-files
       working-directory: ./backend

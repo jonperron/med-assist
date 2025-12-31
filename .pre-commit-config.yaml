@@ -5,10 +5,6 @@ repos:
     -   id: check-yaml
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
--   repo: https://github.com/psf/black
-    rev: 22.3.0
-    hooks:
-    -   id: black
 -   repo: https://github.com/pdm-project/pdm
     rev: 2.15.4
     hooks:
