@@ -42,7 +42,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
         self.ner_pipeline = pipeline(
             "ner",
             model=model_name,
-            aggregation_strategy="simple",
+            aggregation_strategy="max",
         )
 
         self.language = language
@@ -149,12 +149,36 @@ class EntityExtractor(EntityExtractionServiceInterface):
             category_name: [] for category_name in categories_config.keys()
         }
 
+        # Merge consecutive entities with the same label (for subword tokens only)
+        merged_results: list[dict[str, Any]] = []
         for ent in ner_results:
+            if (
+                merged_results
+                and merged_results[-1]["entity_group"] == ent["entity_group"]
+                and merged_results[-1]["end"] == ent["start"]
+            ):
+                # Only merge if tokens are directly adjacent (no space between)
+                prev = merged_results[-1]
+                merged_word = text[prev["start"] : ent["end"]]
+                merged_results[-1] = {
+                    "entity_group": ent["entity_group"],
+                    "word": merged_word,
+                    "score": max(prev["score"], ent["score"]),  # Use max score
+                    "start": prev["start"],
+                    "end": ent["end"],
+                }
+            else:
+                merged_results.append(ent)
+
+        for ent in merged_results:
             entity_label = ent["entity_group"]
             category = self._categorize_entity(entity_label)
 
+            # Use actual text from source instead of tokenizer's word (which may strip spaces)
+            actual_text = text[ent["start"] : ent["end"]]
+
             entity_detail = EntityDetail(
-                text=ent["word"].strip(),
+                text=actual_text.strip(),
                 label=entity_label,
                 score=round(ent["score"], 3),
                 start=ent["start"],

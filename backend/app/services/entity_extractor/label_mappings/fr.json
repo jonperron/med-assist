@@ -13,7 +13,7 @@
     },
     "symptoms": {
       "description": "Signs, symptoms and patient states",
-      "labels": ["sosy", "etatsosy"]
+      "labels": ["sosy", "etatsosy", "origine"]
     },
     "examinations": {
       "description": "Medical examinations and diagnostic procedures",
@@ -60,7 +60,7 @@
     },
     "other": {
       "description": "Other medical entities",
-      "labels": ["chimiques", "origine"]
+      "labels": ["chimiques"]
     }
   }
 }
