@@ -39,7 +39,7 @@ def test_entity_extractor_init(mock_ner_pipeline, mock_label_mapping):
         with patch("json.load", return_value=mock_label_mapping):
             extractor = EntityExtractor(model_name="Dummy/Model")
             mock_ner_pipeline.assert_called_once_with(
-                "ner", model="Dummy/Model", aggregation_strategy="simple"
+                "ner", model="Dummy/Model", aggregation_strategy="max"
             )
             assert extractor.ner_pipeline is not None
 
@@ -53,22 +53,22 @@ def test_extract_entities_detailed(mock_ner_pipeline, mock_label_mapping):
             "entity_group": "B-pathologie",
             "word": "grippe",
             "score": 0.95,
-            "start": 0,
-            "end": 6,
+            "start": 16,
+            "end": 22,
         },
         {
             "entity_group": "B-sosy",
             "word": "fièvre",
             "score": 0.92,
-            "start": 7,
-            "end": 13,
+            "start": 34,
+            "end": 40,
         },
         {
             "entity_group": "B-traitement",
             "word": "paracétamol",
             "score": 0.88,
-            "start": 14,
-            "end": 25,
+            "start": 57,
+            "end": 68,
         },
     ]
 
