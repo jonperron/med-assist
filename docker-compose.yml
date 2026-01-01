@@ -1,17 +1,31 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    container_name: med_assist_redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000" # Exposes backend on host port 8000
-    volumes:
-      - ./backend/app:/app # Mounts local app directory for live updates during development
-    container_name: med_assist_backend
+      - "8000:8000"
     environment:
-      - PYTHONUNBUFFERED=1 # Ensures print statements appear in logs
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+      - NER_MODEL_NAME=/app/models/
+    container_name: med_assist_backend
+    depends_on:
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
@@ -22,11 +36,3 @@ services:
     depends_on:
       - backend
     container_name: med_assist_frontend
-    # For development with create-react-app's dev server and hot reloading,
-    # you might use a different service definition that runs `npm start`.
-    # This current setup serves the built static files via Nginx.
-    # If you want live reload for frontend development:
-    # volumes:
-    #   - ./frontend/src:/app/src
-    #   - ./frontend/public:/app/public
-    # command: npm start # This would require node to be the CMD in frontend/Dockerfile, not nginx
