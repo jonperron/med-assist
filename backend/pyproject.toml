@@ -19,6 +19,7 @@ dependencies = [
     "sentencepiece>=0.2.1,<0.3",
     "numpy>=2.4.3,<3",
     "urllib3>=2.6.3,<3",
+    "python-multipart>=0.0.22,<0.1",
 ]
 
 [dependency-groups]
