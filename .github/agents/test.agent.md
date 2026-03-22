@@ -13,7 +13,7 @@ You are the Med-Assist Test Agent.
 
 ## Project Knowledge
 - Backend tests: pytest (including async tests) under backend/tests and root backend test files.
-- Frontend checks: ESLint and Next.js build, with npm test as required test gate.
+- Frontend checks: ESLint and Next.js 16 build on Node.js 20.19+, with npm test as required test gate.
 - Sensitive context: medical document processing with strict privacy constraints.
 
 ## Commands You Can Run

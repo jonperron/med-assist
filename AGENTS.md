@@ -4,6 +4,10 @@
 
 Run commands from the project root unless stated otherwise.
 
+Environment baseline:
+- Frontend Next.js 16 requires Node.js 20.19+.
+- Current validated local setup uses Node.js 24 managed by `n`.
+
 ```bash
 # Backend quality gates
 cd backend
@@ -33,7 +37,7 @@ The system must prioritize:
 ## 3) Tech Stack
 
 - Backend: Python 3.12+, FastAPI `0.128.0`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
-- Frontend: Next.js `15.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`.
+- Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `20.19+`.
 - Storage: local Redis only, UUID-based keys, limited retention footprint.
 - Infra: Docker Compose with `redis`, `backend`, and `frontend` services.
 
@@ -101,9 +105,37 @@ Expected behavior:
 
 ## 8) Mandatory Subagent Review Workflow
 
-For any non-trivial change, run two separate subagent passes before finalizing:
+For any non-trivial change, run four separate subagent passes before finalizing:
 
-1. Review pass (behavior and regressions)
+1. Lint pass (static checks and formatting safety)
+- Preferred subagent: `Lint Agent` in `.github/agents/lint.agent.md`.
+- Fallback subagent: `Explore` with a lint-focused prompt.
+- Goal: detect/fix lint and static-analysis issues without changing behavior.
+- Expected output: files changed, checks run, results, and any residual lint debt.
+
+Recommended prompt template:
+
+```text
+Run a lint/static-check pass in medium mode.
+Focus on minimal, behavior-preserving fixes and report changed files,
+executed checks, and remaining lint/type debt.
+```
+
+2. Test pass (coverage and reliability)
+- Preferred subagent: `Test Agent` in `.github/agents/test.agent.md`.
+- Fallback subagent: `Explore` with a test-focused prompt.
+- Goal: ensure tests are added/updated and quality gates are executed for touched scope.
+- Expected output: tests added/updated, commands executed, failures, and coverage gaps.
+
+Recommended prompt template:
+
+```text
+Run a test pass in medium mode.
+Focus on missing/updated tests for changed behavior and report executed test commands,
+failures with root-cause hypotheses, and remaining coverage gaps.
+```
+
+3. Review pass (behavior and regressions)
 - Preferred subagent: `Review Agent` in `.github/agents/review.agent.md`.
 - Fallback subagent: `Explore` with a review-focused prompt.
 - Goal: find functional bugs, regressions, API contract breaks, and missing tests.
@@ -117,7 +149,7 @@ Focus on behavior regressions, edge cases, API/schema compatibility, and missing
 Return findings ordered by severity with concrete file references and fix suggestions.
 ```
 
-2. Security pass (privacy and boundaries)
+4. Security pass (privacy and boundaries)
 - Preferred subagent: `Security Agent` in `.github/agents/security.agent.md`.
 - Fallback subagent: `Explore` with a security-focused prompt.
 - Goal: detect confidentiality leaks, unsafe error handling, weak input validation, and boundary violations.
@@ -133,10 +165,14 @@ Return only actionable findings with severity, affected files, and remediation s
 ```
 
 Required merge condition:
+- Lint pass completed with no unresolved high-impact lint/type issues.
+- Test pass completed with relevant tests/checks executed for touched scope.
 - No unresolved high-severity review or security findings.
 - If findings exist, either fix them or document an explicit risk acceptance.
 
 Invocation examples:
+- `@Lint Agent Run a lint/static-check pass in medium mode. Keep fixes minimal and behavior-preserving.`
+- `@Test Agent Run a test pass in medium mode. Focus on missing tests and execute relevant quality gates.`
 - `@Review Agent Review this change set in medium mode. Focus on behavior regressions, API compatibility, and missing tests.`
 - `@Security Agent Perform a thorough security review focused on patient data exposure, input validation, and Redis key safety.`
 

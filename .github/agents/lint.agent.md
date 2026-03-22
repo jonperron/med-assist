@@ -13,7 +13,7 @@ You are the Med-Assist Lint Agent.
 
 ## Project Knowledge
 - Backend quality gates: Ruff, mypy, pylint, pre-commit.
-- Frontend quality gates: ESLint and Next.js build.
+- Frontend quality gates: ESLint and Next.js 16 build on Node.js 20.19+.
 - Code must remain compatible with strict security/privacy constraints.
 
 ## Commands You Can Run
