@@ -57,11 +57,13 @@ export default function HomePage() {
 
       if (response.status === 200) {
         setFileId(response.data.file_id)
+        setExtraction(null)
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } }
-      setError(error.response?.data?.message || 'Failed to upload file')
-      console.error('Upload error:', err)
+      const uploadErrorMessage = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to upload file'
+        : 'Failed to upload file'
+      setError(uploadErrorMessage)
     }
   }
 
@@ -75,16 +77,16 @@ export default function HomePage() {
         setExtraction(response.data)
       }
     } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } }
-      setError(error.response?.data?.message || 'Failed to fetch extraction')
-      console.error('Extraction error:', err)
+      const extractionErrorMessage = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to fetch extraction'
+        : 'Failed to fetch extraction'
+      setError(extractionErrorMessage)
     }
   }
 
   return (
     <main className="p-6 max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">🩺 Med-Assist</h1>
-      <p className="text-sm text-gray-500 mb-4">API: {API_URL}</p>
       <FileUpload onUpload={handleFileUpload} />
 
       {error && (
