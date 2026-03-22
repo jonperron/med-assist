@@ -2,8 +2,7 @@ This is a [Next.js](https://nextjs.org) project for the Med-Assist frontend.
 
 ## Requirements
 
-- Node.js 20.19 or newer.
-- The repository is currently validated with Node.js 24 via `n`.
+- Node.js 24.x.
 
 ## Getting Started
 
@@ -26,6 +25,7 @@ Frontend quality gates:
 ```bash
 npm run lint
 npm run build
+npm test
 ```
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
