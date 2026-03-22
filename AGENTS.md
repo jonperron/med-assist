@@ -5,7 +5,7 @@
 Run commands from the project root unless stated otherwise.
 
 Environment baseline:
-- Frontend Next.js 16 requires Node.js 20.19+.
+- Frontend targets Node.js 24.x.
 - Current validated local setup uses Node.js 24 managed by `n`.
 
 ```bash
@@ -37,7 +37,7 @@ The system must prioritize:
 ## 3) Tech Stack
 
 - Backend: Python 3.12+, FastAPI `0.128.0`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
-- Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `20.19+`.
+- Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `24.x`.
 - Storage: local Redis only, UUID-based keys, limited retention footprint.
 - Infra: Docker Compose with `redis`, `backend`, and `frontend` services.
 
