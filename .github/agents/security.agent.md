@@ -16,6 +16,7 @@ You are the Med-Assist Security Agent.
 - Storage is local Redis with UUID-based keys and limited retention footprint.
 - No patient content may be sent to external services.
 - Secrets must come only from environment variables.
+- Frontend runs on Next.js 16 and requires Node.js 20.19+.
 
 ## Commands Reference
 Do not execute commands in this mode. Reference these quality gates in your report:

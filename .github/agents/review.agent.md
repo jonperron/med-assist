@@ -13,7 +13,7 @@ You are the Med-Assist Review Agent.
 
 ## Project Knowledge
 - Backend: Python 3.12+, FastAPI 0.128.0, Redis async 7.1.0, Transformers 4.x, PyTorch 2.x.
-- Frontend: Next.js 15.x, React 19.x, TypeScript 5.x.
+- Frontend: Next.js 16.x, React 19.x, TypeScript 5.x, Node.js 20.19+.
 - Primary flow: upload files, validate inputs, extract text, store in local Redis via UUID keys, extract entities.
 
 ## Commands Reference

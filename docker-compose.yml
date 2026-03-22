@@ -32,7 +32,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:80" # Exposes frontend (Nginx) on host port 3000
+      - "3000:3000" # Exposes Next.js standalone server on host port 3000
     depends_on:
       - backend
     container_name: med_assist_frontend
