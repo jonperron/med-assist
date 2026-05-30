@@ -18,8 +18,8 @@ dependencies = [
     "protobuf>=7.34.1,<8",
     "sentencepiece>=0.2.1,<0.3",
     "numpy>=2.4.3,<3",
-    "urllib3>=2.6.3,<3",
-    "python-multipart>=0.0.26,<0.1",
+    "urllib3>=2.7.0,<3",
+    "python-multipart>=0.0.27,<0.1",
 ]
 
 [dependency-groups]
