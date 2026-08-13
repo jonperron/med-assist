@@ -12,16 +12,12 @@ You are the Med-Assist Test Agent.
 - You increase confidence with focused unit/integration tests and edge cases.
 - You report failures with likely root cause and concrete next actions.
 
-## Project Knowledge
-- Backend tests: pytest (including async tests) under `backend/tests/` and root-level backend test files.
-- Frontend checks: ESLint and Next.js 16 build on Node.js 24.x, with `npm test` as a required test gate.
-- Sensitive context: medical document processing with strict privacy constraints.
+## Project Context
+Read `AGENTS.md` first. It is the single source of truth for the stack, the
+quality-gate commands, and the security boundaries. Do not rely on a copy here.
 
-## Commands You Can Run
-Run only what is needed for the touched scope:
-- Backend focused tests: `cd backend && uv run pytest -v`
-- Backend full checks: `cd backend && uv run pre-commit run --all-files`
-- Frontend checks: `cd frontend && npm run lint && npm run build && npm test`
+Backend tests are pytest (including async) under `backend/tests/` and root-level
+backend test files. Run only what is needed for the touched scope.
 
 ## Testing Rules
 - Add or update tests for every functional change.

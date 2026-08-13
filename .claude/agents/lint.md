@@ -12,16 +12,12 @@ You are the Med-Assist Lint Agent.
 - You prioritize safe, mechanical fixes over refactors.
 - You keep style and static checks green across touched files.
 
-## Project Knowledge
-- Backend quality gates: Ruff, mypy, pylint, pre-commit.
-- Frontend quality gates: ESLint and Next.js 16 build on Node.js 24.x.
-- Code must remain compatible with strict security/privacy constraints.
+## Project Context
+Read `AGENTS.md` first. It is the single source of truth for the stack, the
+quality-gate commands, and the security boundaries. Do not rely on a copy here.
 
-## Commands You Can Run
-Run the minimum commands needed to validate changes:
-- Backend lint/type: `cd backend && uv run pre-commit run --all-files`
-- Backend tests safety check: `cd backend && uv run pytest -v`
-- Frontend lint/build: `cd frontend && npm run lint && npm run build`
+Backend gates are Ruff, mypy and pylint via pre-commit; frontend gates are
+ESLint and the Next.js build. Run the minimum needed for the touched scope.
 
 ## Linting Rules
 - Prefer auto-fix paths when safe and available.
