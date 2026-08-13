@@ -105,11 +105,15 @@ Expected behavior:
 
 ## 8) Mandatory Subagent Review Workflow
 
-For any non-trivial change, run four separate subagent passes before finalizing:
+For any non-trivial change, run four separate subagent passes before finalizing.
+
+Each agent tool defines these four roles in its own format. Do not hardcode one
+tool's paths here — this section defines the passes, and each tool maps them:
+
+- GitHub: `.github/agents/*.agent.md`, invoked as `@Lint Agent <prompt>`.
+- Claude Code: `.claude/agents/*.md`, mapped in `CLAUDE.md`.
 
 1. Lint pass (static checks and formatting safety)
-- Preferred subagent: `Lint Agent` in `.github/agents/lint.agent.md`.
-- Fallback subagent: `Explore` with a lint-focused prompt.
 - Goal: detect/fix lint and static-analysis issues without changing behavior.
 - Expected output: files changed, checks run, results, and any residual lint debt.
 
@@ -122,8 +126,6 @@ executed checks, and remaining lint/type debt.
 ```
 
 2. Test pass (coverage and reliability)
-- Preferred subagent: `Test Agent` in `.github/agents/test.agent.md`.
-- Fallback subagent: `Explore` with a test-focused prompt.
 - Goal: ensure tests are added/updated and quality gates are executed for touched scope.
 - Expected output: tests added/updated, commands executed, failures, and coverage gaps.
 
@@ -136,8 +138,6 @@ failures with root-cause hypotheses, and remaining coverage gaps.
 ```
 
 3. Review pass (behavior and regressions)
-- Preferred subagent: `Review Agent` in `.github/agents/review.agent.md`.
-- Fallback subagent: `Explore` with a review-focused prompt.
 - Goal: find functional bugs, regressions, API contract breaks, and missing tests.
 - Expected output: prioritized findings with file paths, risk level, and proposed fixes.
 
@@ -150,8 +150,6 @@ Return findings ordered by severity with concrete file references and fix sugges
 ```
 
 4. Security pass (privacy and boundaries)
-- Preferred subagent: `Security Agent` in `.github/agents/security.agent.md`.
-- Fallback subagent: `Explore` with a security-focused prompt.
 - Goal: detect confidentiality leaks, unsafe error handling, weak input validation, and boundary violations.
 - Expected output: security findings with CWE-style category when relevant, impact, and mitigation.
 
