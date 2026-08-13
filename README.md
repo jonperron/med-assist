@@ -19,7 +19,21 @@ It is not intended for use in clinical decision-making and should not replace pr
   Med-Assist runs entirely on your infrastructure—no external APIs or cloud dependencies.
 
 - **Secure storage**
-  All data is stored in a local Redis instance, ensuring patient information remains private and compliant with data protection regulations.
+  All data is stored in a local Redis instance that is reachable only from the internal Docker network, requires a password, and never writes to disk.
+
+- **Automatic deletion**
+  Every stored document expires after `RETENTION_TTL_SECONDS` (one hour by default), and the remaining time is shown in the interface. `DELETE /api/documents/{file_id}` removes a document immediately.
+
+---
+
+## 🚀 Running Locally
+
+```bash
+cp .env.example .env      # then set REDIS_PASSWORD to a long random value
+docker compose up --build
+```
+
+The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
 
 ---
 

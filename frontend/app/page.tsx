@@ -5,6 +5,7 @@ import { useState } from 'react'
 import axios from 'axios'
 import FileUpload from './components/FileUpload'
 import ExtractionViewer from './components/ExtractionViewer'
+import RetentionNotice from './components/RetentionNotice'
 
 interface EntityDetail {
   text: string
@@ -36,13 +37,15 @@ interface ExtractionData {
     dataset: string
     description: string
   }
+  expires_in_seconds?: number | null
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function HomePage() {
   const [fileId, setFileId] = useState<string | null>(null)
   const [extraction, setExtraction] = useState<ExtractionData | null>(null)
+  const [expiresIn, setExpiresIn] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleFileUpload = async (file: File) => {
@@ -57,6 +60,7 @@ export default function HomePage() {
 
       if (response.status === 200) {
         setFileId(response.data.file_id)
+        setExpiresIn(response.data.expires_in_seconds ?? null)
         setExtraction(null)
       }
     } catch (err: unknown) {
@@ -64,6 +68,23 @@ export default function HomePage() {
         ? err.response?.data?.message || 'Failed to upload file'
         : 'Failed to upload file'
       setError(uploadErrorMessage)
+    }
+  }
+
+  const deleteDocument = async () => {
+    if (!fileId) return
+
+    try {
+      setError(null)
+      await axios.delete(`${API_URL}/api/documents/${fileId}`)
+      setFileId(null)
+      setExtraction(null)
+      setExpiresIn(null)
+    } catch (err: unknown) {
+      const deleteErrorMessage = axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to delete document'
+        : 'Failed to delete document'
+      setError(deleteErrorMessage)
     }
   }
 
@@ -75,6 +96,7 @@ export default function HomePage() {
       const response = await axios.get(`${API_URL}/api/get_extracted_text/${fileId}`)
       if (response.status === 200) {
         setExtraction(response.data)
+        setExpiresIn(response.data.expires_in_seconds ?? null)
       }
     } catch (err: unknown) {
       const extractionErrorMessage = axios.isAxiosError(err)
@@ -98,12 +120,24 @@ export default function HomePage() {
       {fileId && (
         <div className="mt-4">
           <p className="text-sm text-gray-600 mb-2">File ID: {fileId}</p>
-          <button
-            onClick={fetchExtraction}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Extract Text
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={fetchExtraction}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Extract Text
+            </button>
+            <button
+              onClick={deleteDocument}
+              className="px-4 py-2 border border-gray-400 text-gray-700 rounded hover:bg-gray-100"
+            >
+              Delete Now
+            </button>
+          </div>
+          {expiresIn !== null && (
+            // Keyed so a freshly reported expiry restarts the countdown at once.
+            <RetentionNotice key={`${fileId}-${expiresIn}`} expiresInSeconds={expiresIn} />
+          )}
         </div>
       )}
 

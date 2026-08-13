@@ -1,3 +1,4 @@
+import logging
 from io import BytesIO
 from typing import Optional
 import fitz
@@ -6,31 +7,45 @@ from fastapi import UploadFile
 
 from app.interfaces.service_interfaces import TextExtractionServiceInterface
 
+logger = logging.getLogger(__name__)
+
+PDF_CONTENT_TYPE = "application/pdf"
+DOCX_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
+PLAINTEXT_CONTENT_TYPE = "text/plain"
+SUPPORTED_CONTENT_TYPES = frozenset(
+    {PDF_CONTENT_TYPE, DOCX_CONTENT_TYPE, PLAINTEXT_CONTENT_TYPE}
+)
+
 
 class TextExtractor(TextExtractionServiceInterface):
     async def extract_text(self, file: UploadFile) -> Optional[str]:
         """
         Extracts text from the document based on its file type.
         """
-        try:
-            contents = await file.read()
-            file_bytes = BytesIO(contents)
+        if file.content_type not in SUPPORTED_CONTENT_TYPES:
+            raise ValueError("Unsupported file type")
 
-            if file.content_type == "application/pdf":
+        try:
+            file_bytes = BytesIO(await file.read())
+
+            if file.content_type == PDF_CONTENT_TYPE:
                 return self._extract_text_from_pdf(file_bytes)
 
-            if (
-                file.content_type
-                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            ):
+            if file.content_type == DOCX_CONTENT_TYPE:
                 return self._extract_text_from_docx(file_bytes)
 
-            if file.content_type == "text/plain":
-                return self._extract_text_from_plaintext(file_bytes)
-
-            raise ValueError("Unsupported file type")
+            return self._extract_text_from_plaintext(file_bytes)
         except Exception as e:
-            raise ValueError(f"Error extracting text: {str(e)}") from e
+            # Parser errors routinely quote the bytes that failed to parse, so
+            # neither the message nor a traceback may reach the log or the caller.
+            logger.error(
+                "Text extraction failed for a %s document (%s)",
+                file.content_type,
+                type(e).__name__,
+            )
+            raise ValueError("Unable to extract text from the document") from e
 
     def _extract_text_from_pdf(self, file_bytes: BytesIO) -> str:
         text = ""

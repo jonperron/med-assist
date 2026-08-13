@@ -2,7 +2,7 @@ import logging
 from typing import List, Union
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, File, UploadFile, Depends
+from fastapi import APIRouter, HTTPException, File, Path, UploadFile, Depends, status
 
 from app.schemas.upload import (
     FileValidationError,
@@ -12,8 +12,10 @@ from app.schemas.upload import (
 )
 from app.use_cases.save_file import save_batch, save_file
 from app.use_cases.validate_file import validate_upload_file
+from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
-from app.core.dependencies import get_file_handler
+from app.core.dependencies import get_file_handler, get_text_repository
+from app.core.validation import parse_file_id
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,6 +36,7 @@ logger = logging.getLogger(__name__)
 async def upload_document(
     file: UploadFile = File(..., description="The file to upload (PDF, DOCX, TXT)."),
     file_handler: FileHandler = Depends(get_file_handler),
+    text_repository: TextRepositoryInterface = Depends(get_text_repository),
 ):
     """
     Upload a medical document for text extraction and entity recognition.
@@ -64,6 +67,7 @@ async def upload_document(
             file_id=str(file_id),
             filename=file.filename or "unknown",
             message="File uploaded successfully. Extraction pending.",
+            expires_in_seconds=await text_repository.get_text_ttl(file_id),
         )
     except HTTPException:
         raise
@@ -147,3 +151,37 @@ async def upload_documents(
         file_ids=file_ids,
         message="Files uploaded successfully.",
     )
+
+
+@router.delete(
+    "/documents/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Document deleted"},
+        400: {"model": UploadErrorResponse, "description": "Invalid file ID format"},
+        404: {"model": UploadErrorResponse, "description": "Document not found"},
+    },
+)
+async def delete_document(
+    file_id: str = Path(
+        ...,
+        description="Unique identifier of the document to delete",
+        examples=["123e4567-e89b-12d3-a456-426614174000"],
+    ),
+    text_repository: TextRepositoryInterface = Depends(get_text_repository),
+) -> None:
+    """
+    Delete a stored document before its retention window expires.
+
+    Args:
+        file_id: The unique identifier of the document to delete
+        text_repository: Injected text repository dependency
+
+    Raises:
+        HTTPException: 400 for a malformed file ID, 404 if nothing was stored
+    """
+    if not await text_repository.delete_text(parse_file_id(file_id)):
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Document not found or already expired."},
+        )

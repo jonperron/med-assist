@@ -8,6 +8,7 @@ from app.schemas.extraction import ExtractionResponse, ErrorResponse, ExtractedE
 from app.repositories.text_repository import TextRepositoryInterface
 from app.services.entity_extractor import EntityExtractor
 from app.core.dependencies import get_text_repository, get_entity_extractor
+from app.core.validation import parse_file_id
 
 router = APIRouter()
 
@@ -49,16 +50,7 @@ async def get_extracted_text(
     Raises:
         HTTPException: 404 if file not found or not processed yet
     """
-    # Convert file_id to UUID
-    try:
-        file_uuid: UUID = UUID(file_id)
-    except ValueError as exc:
-        # If file_id is not a valid UUID, create a deterministic approach
-        # For now, we'll raise an error since we expect valid UUIDs
-        raise HTTPException(
-            status_code=400,
-            detail={"message": "Invalid file ID format. Expected UUID."},
-        ) from exc
+    file_uuid: UUID = parse_file_id(file_id)
 
     extracted_entities = await extract_entities(
         file_uuid, text_repository, entity_extractor
@@ -77,4 +69,5 @@ async def get_extracted_text(
         text=text or "",
         extracted_entities=ExtractedEntities(**extracted_entities),
         mapping_info=entity_extractor.get_mapping_info(),
+        expires_in_seconds=await text_repository.get_text_ttl(file_uuid),
     )

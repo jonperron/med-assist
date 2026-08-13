@@ -15,5 +15,13 @@ class TextRepositoryInterface(ABC):
         """Retrieve text by file ID."""
 
     @abstractmethod
+    async def get_text_ttl(self, file_id: UUID) -> Optional[int]:
+        """Seconds left before the stored text expires, or None if it is gone."""
+
+    @abstractmethod
+    async def delete_text(self, file_id: UUID) -> bool:
+        """Delete stored text. True when something was removed."""
+
+    @abstractmethod
     async def save_batch(self, batch_id: UUID, file_ids: list[str]) -> None:
         """Save batch information."""

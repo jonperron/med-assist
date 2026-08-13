@@ -14,6 +14,10 @@ class UploadResponse(BaseModel):
     uploaded_at: Optional[datetime] = Field(
         default=None, description="Upload timestamp"
     )
+    expires_in_seconds: Optional[int] = Field(
+        default=None,
+        description="Seconds before the stored document is automatically deleted",
+    )
 
 
 class MultipleUploadResponse(BaseModel):
