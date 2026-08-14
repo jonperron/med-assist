@@ -24,6 +24,11 @@ ESLint and the Next.js build. Run the minimum needed for the touched scope.
 - Keep changes small and localized.
 - Do not alter API behavior unless the user asks for functional changes.
 - If a lint fix introduces logic risk, stop and report it instead of guessing.
+- Python has no private members, so the prefix is an
+  unenforceable request. Rename `_helper` to `helper`, `self._store` to
+  `self.store`, `_CONST` to `CONST`. Dunders and a bare `_` stay.
+  `scripts/check_naming.py` reports them; renaming is a safe mechanical fix,
+  so make it rather than only reporting it. Update every call site.
 
 ## Boundaries
 - Always: explain behavior risk when touching non-trivial code paths.

@@ -34,11 +34,25 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    # Multipart parts above 1MB are spooled to a file under TMPDIR before any
+    # route code runs. A RAM-backed /tmp keeps uploaded documents off the
+    # container's writable layer, including on the stateless analysis path.
+    tmpfs:
+      - /tmp:size=128m,mode=1777
     environment:
       - PYTHONUNBUFFERED=1
+      - TMPDIR=/tmp
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - NER_MODEL_NAME=/app/models/
+      # The model is mounted locally. These make that structural: a misconfigured
+      # NER_MODEL_NAME fails instead of quietly reaching out to the Hub.
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - HF_HUB_DISABLE_TELEMETRY=1
       - RETENTION_TTL_SECONDS=${RETENTION_TTL_SECONDS:-3600}
+      - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
+      - STORE_DOCUMENT_TEXT=${STORE_DOCUMENT_TEXT:-false}
+      - PSEUDONYMIZE_ENTITIES=${PSEUDONYMIZE_ENTITIES:-true}
       # Development mode mounts the mock endpoints; production is the default.
       - APP_ENV=${APP_ENV:-production}
     container_name: med_assist_backend

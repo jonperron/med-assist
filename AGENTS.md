@@ -70,6 +70,9 @@ Nominal flow:
 - Preserve public API contracts unless explicitly asked to change them.
 - Keep error messages safe: no stack traces, secrets, or patient identifiers in responses.
 - Validate external input boundaries (file type, extension, ID format).
+- Never prefix a name with an underscore. Python has no private members, so
+  `_helper` hides nothing — it only asks politely, and the request is
+  unenforceable.
 
 One concrete example of expected backend style:
 

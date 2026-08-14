@@ -2,7 +2,16 @@ import logging
 from typing import List, Union
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, File, Path, UploadFile, Depends, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    UploadFile,
+    status,
+)
 
 from app.schemas.upload import (
     FileValidationError,
@@ -20,6 +29,10 @@ from app.core.validation import parse_file_id
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Each file is capped at 10 MB by validate_upload_file; this bounds how many of
+# them a single request can queue behind the model.
+MAX_BATCH_FILES = 20
+
 
 @router.post(
     "/upload_document/",
@@ -35,6 +48,13 @@ logger = logging.getLogger(__name__)
 )
 async def upload_document(
     file: UploadFile = File(..., description="The file to upload (PDF, DOCX, TXT)."),
+    pseudonymize: bool | None = Form(
+        default=None,
+        description=(
+            "Mask entities detected as patient information. Defaults to the "
+            "deployment's PSEUDONYMIZE_ENTITIES setting."
+        ),
+    ),
     file_handler: FileHandler = Depends(get_file_handler),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
 ):
@@ -43,6 +63,7 @@ async def upload_document(
 
     Args:
         file: The uploaded file (PDF, DOCX, TXT)
+        pseudonymize: Whether to mask detected patient identifiers
 
     Returns:
         UploadResponse: Contains file ID, filename, and upload confirmation
@@ -53,9 +74,10 @@ async def upload_document(
     # Validate file type
     await validate_upload_file(file)
 
+    file_id = uuid4()
+
     try:
-        file_id = uuid4()
-        success = await save_file(file_id, file, file_handler)
+        success = await save_file(file_id, file, file_handler, pseudonymize)
 
         if not success:
             raise HTTPException(
@@ -66,13 +88,20 @@ async def upload_document(
         return UploadResponse(
             file_id=str(file_id),
             filename=file.filename or "unknown",
-            message="File uploaded successfully. Extraction pending.",
-            expires_in_seconds=await text_repository.get_text_ttl(file_id),
+            message="File uploaded and analysed successfully.",
+            expires_in_seconds=await text_repository.get_document_ttl(file_id),
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Unexpected error while uploading document")
+        # The file id is the only identifier that may be logged: clinical
+        # filenames routinely carry patient names, and a traceback or an
+        # exception message can quote document content.
+        logger.error(
+            "Unexpected error while uploading document %s (%s)",
+            file_id,
+            type(e).__name__,
+        )
         raise HTTPException(
             status_code=500,
             detail={"message": "Internal server error"},
@@ -104,13 +133,21 @@ async def upload_documents(
             "PDF, DOCX, TXT. Maximum size: 10MB per file."
         ),
     ),
+    pseudonymize: bool | None = Form(
+        default=None,
+        description=(
+            "Mask entities detected as patient information. Defaults to the "
+            "deployment's PSEUDONYMIZE_ENTITIES setting."
+        ),
+    ),
     file_handler: FileHandler = Depends(get_file_handler),
 ) -> MultipleUploadResponse:
     """
     Upload multiple medical documents for text extraction and entity recognition.
 
     Args:
-        file: The uploaded file (PDF, DOCX, TXT)
+        files: The uploaded files (PDF, DOCX, TXT)
+        pseudonymize: Whether to mask detected patient identifiers
 
     Returns:
         MultipleUploadResponse: Contains batch id with associated file ids
@@ -118,15 +155,24 @@ async def upload_documents(
     Raises:
         HTTPException: 400 for invalid file type, 500 for server errors
     """
+    if len(files) > MAX_BATCH_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "message": "Too many files in one batch",
+                "max_files": MAX_BATCH_FILES,
+            },
+        )
+
     batch_id = uuid4()
     file_ids = []
 
     for file in files:
         await validate_upload_file(file)
+        file_id = uuid4()
 
         try:
-            file_id = uuid4()
-            success = await save_file(file_id, file, file_handler)
+            success = await save_file(file_id, file, file_handler, pseudonymize)
 
             if not success:
                 raise HTTPException(
@@ -139,7 +185,13 @@ async def upload_documents(
         except HTTPException:
             raise
         except Exception as e:
-            logger.exception("Unexpected error while uploading document in batch")
+            # See upload_document: never log the filename or the exception text.
+            logger.error(
+                "Unexpected error while uploading document %s in batch %s (%s)",
+                file_id,
+                batch_id,
+                type(e).__name__,
+            )
             raise HTTPException(
                 status_code=500,
                 detail={"message": "Internal server error"},
@@ -180,7 +232,7 @@ async def delete_document(
     Raises:
         HTTPException: 400 for a malformed file ID, 404 if nothing was stored
     """
-    if not await text_repository.delete_text(parse_file_id(file_id)):
+    if not await text_repository.delete_document(parse_file_id(file_id)):
         raise HTTPException(
             status_code=404,
             detail={"message": "Document not found or already expired."},

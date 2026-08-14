@@ -46,10 +46,10 @@ class EntityExtractor(EntityExtractionServiceInterface):
         )
 
         self.language = language
-        self.label_mapping = self._load_label_mapping(label_mapping_file, language)
-        self.categories = self._build_category_lookup()
+        self.label_mapping = self.load_label_mapping(label_mapping_file, language)
+        self.categories = self.build_category_lookup()
 
-    def _load_label_mapping(
+    def load_label_mapping(
         self,
         label_mapping_file: Optional[str],
         language: str = "fr",
@@ -91,7 +91,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in label mapping file: {e}")
 
-    def _build_category_lookup(self) -> Dict[str, str]:
+    def build_category_lookup(self) -> Dict[str, str]:
         """
         Build a reverse lookup from labels to categories.
 
@@ -108,7 +108,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
 
         return lookup
 
-    def _categorize_entity(self, entity_label: str) -> str:
+    def categorize_entity(self, entity_label: str) -> str:
         """
         Categorize an entity based on its label.
 
@@ -172,7 +172,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
 
         for ent in merged_results:
             entity_label = ent["entity_group"]
-            category = self._categorize_entity(entity_label)
+            category = self.categorize_entity(entity_label)
 
             # Use actual text from source instead of tokenizer's word (which may strip spaces)
             actual_text = text[ent["start"] : ent["end"]]

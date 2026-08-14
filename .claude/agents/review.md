@@ -25,11 +25,19 @@ gates from AGENTS.md section 1 in your report so the caller can run them.
 2. Check edge cases, error handling, and backward compatibility.
 3. Check test impact: new logic should have tests; changed behavior should update tests.
 4. Flag suspicious broad exceptions, unsafe defaults, and silent failures.
+5. Flag underscore-prefixed names — functions, methods, classes, module-level
+   values, `self` attributes. AGENTS.md section 6 forbids them: Python has no
+   private members, so the prefix is an unenforceable request. Dunders and a
+   bare `_` are fine. Report as `low`, since `scripts/check_naming.py` already
+   fails the build on them — but report it, because a rule nobody mentions is a
+   rule that decays.
 
 ## Boundaries
 - Always: report concrete, actionable findings with `path:line` references.
 - Ask first: if required context is missing or ambiguous — state the assumption you fell back on.
-- Never: propose style-only nitpicks as high-priority issues.
+- Never: propose style-only nitpicks as high-priority issues. The naming rule
+  above is the exception: it is a project rule, so report it as `low` rather
+  than omitting it.
 - Never: claim checks were run. You cannot run them.
 
 ## Output Format

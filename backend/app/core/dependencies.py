@@ -1,6 +1,10 @@
 from functools import lru_cache
 
-from app.core.config import NERModelConfiguration, RedisConfiguration
+from app.core.config import (
+    NERModelConfiguration,
+    PrivacyConfiguration,
+    RedisConfiguration,
+)
 from app.db.redis import RedisStorage
 from app.repositories.text_repository import (
     RedisTextRepository,
@@ -11,6 +15,11 @@ from app.repositories.text_repository import (
 @lru_cache()
 def get_redis_config() -> RedisConfiguration:
     return RedisConfiguration()
+
+
+@lru_cache()
+def get_privacy_config() -> PrivacyConfiguration:
+    return PrivacyConfiguration()
 
 
 @lru_cache()
@@ -34,12 +43,35 @@ def get_entity_extractor():
 
 
 @lru_cache()
+def get_text_extractor():
+    """Get text extractor instance."""
+    # Import here to avoid circular dependency
+    from app.services.text_extractor import TextExtractor
+
+    return TextExtractor()
+
+
+@lru_cache()
+def get_pseudonymizer():
+    """Get pseudonymizer instance."""
+    # Import here to avoid circular dependency
+    from app.services.pseudonymizer import Pseudonymizer
+
+    return Pseudonymizer()
+
+
+@lru_cache()
 def get_file_handler():
     """Get file handler instance with text repository."""
     # Import here to avoid circular dependency
     from app.services.file_handler import FileHandler
 
-    return FileHandler(text_repository=get_text_repository())
+    return FileHandler(
+        text_repository=get_text_repository(),
+        entity_extractor=get_entity_extractor(),
+        privacy_config=get_privacy_config(),
+        pseudonymizer=get_pseudonymizer(),
+    )
 
 
 @lru_cache()

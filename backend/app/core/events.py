@@ -52,19 +52,19 @@ class EventPublisher:
     """Publisher that notifies observers of events."""
 
     def __init__(self):
-        self._observers: List[EventObserver] = []
+        self.observers: List[EventObserver] = []
 
     def add_observer(self, observer: EventObserver) -> None:
         """Add an observer to the publisher."""
-        self._observers.append(observer)
+        self.observers.append(observer)
 
     def remove_observer(self, observer: EventObserver) -> None:
         """Remove an observer from the publisher."""
-        self._observers.remove(observer)
+        self.observers.remove(observer)
 
     async def publish_event(self, event: Event) -> None:
         """Publish an event to all observers."""
-        for observer in self._observers:
+        for observer in self.observers:
             try:
                 await observer.handle_event(event)
             except Exception as exc:  # pylint: disable=W0718

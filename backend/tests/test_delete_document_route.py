@@ -14,7 +14,7 @@ from app.interfaces.repositories_interfaces import TextRepositoryInterface
 @pytest.fixture
 def mock_repository():
     repository = MagicMock(spec=TextRepositoryInterface)
-    repository.delete_text = AsyncMock(return_value=True)
+    repository.delete_document = AsyncMock(return_value=True)
     return repository
 
 
@@ -34,11 +34,11 @@ def test_delete_document(client, mock_repository):
     response = client.delete(f"/api/documents/{file_id}")
 
     assert response.status_code == 204
-    mock_repository.delete_text.assert_called_once_with(file_id)
+    mock_repository.delete_document.assert_called_once_with(file_id)
 
 
 def test_delete_document_not_found(client, mock_repository):
-    mock_repository.delete_text.return_value = False
+    mock_repository.delete_document.return_value = False
 
     response = client.delete(f"/api/documents/{uuid4()}")
 
@@ -55,4 +55,4 @@ def test_delete_document_rejects_malformed_id(client, mock_repository):
     assert response.json()["detail"]["message"] == (
         "Invalid file ID format. Expected UUID."
     )
-    mock_repository.delete_text.assert_not_called()
+    mock_repository.delete_document.assert_not_called()
