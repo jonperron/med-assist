@@ -20,7 +20,7 @@ dependencies = [
     "numpy>=2.4.3,<3",
     "urllib3>=2.6.3,<3",
     "python-multipart>=0.0.26,<0.1",
-    "cryptography>=46,<47",
+    "cryptography>=50.0.0,<51",
 ]
 
 [dependency-groups]
