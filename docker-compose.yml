@@ -3,11 +3,27 @@ version: '3.8'
 services:
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     container_name: med_assist_redis
+    # No host port mapping: Redis is reachable only from the compose network.
+    # No RDB snapshot and no AOF: extracted clinical text never reaches the disk.
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - allkeys-lru
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env - see .env.example}
+    environment:
+      # Read by redis-cli so the healthcheck authenticates without exposing the
+      # password in the process list.
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -20,8 +36,11 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - NER_MODEL_NAME=/app/models/
+      - RETENTION_TTL_SECONDS=${RETENTION_TTL_SECONDS:-3600}
+      # Development mode mounts the mock endpoints; production is the default.
+      - APP_ENV=${APP_ENV:-production}
     container_name: med_assist_backend
     depends_on:
       redis:
@@ -31,6 +50,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Baked into the client bundle at build time, so it must be the URL the
+        # browser uses to reach the backend - not the compose service name.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000" # Exposes Next.js standalone server on host port 3000
     depends_on:

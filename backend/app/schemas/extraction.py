@@ -50,6 +50,10 @@ class ExtractionResponse(BaseModel):
         default=None,
         description="Information about the label mapping used (language, dataset)",
     )
+    expires_in_seconds: Optional[int] = Field(
+        default=None,
+        description="Seconds before the stored document is automatically deleted",
+    )
 
 
 class ErrorResponse(BaseModel):

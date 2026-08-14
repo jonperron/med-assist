@@ -72,10 +72,27 @@ async def test_unsupported_file_type(text_extractor):
 
 
 @pytest.mark.asyncio
-async def test_extraction_error(text_extractor):
+async def test_extraction_error_message_carries_no_document_content(text_extractor):
     mock_file = AsyncMock(spec=UploadFile)
     mock_file.content_type = "application/pdf"
-    mock_file.read.side_effect = Exception("Test error")
+    mock_file.read.side_effect = Exception("failed at byte 42: Patient Jean Dupont")
 
-    with pytest.raises(ValueError, match="Error extracting text: Test error"):
+    with pytest.raises(ValueError) as exc_info:
         await text_extractor.extract_text(mock_file)
+
+    assert str(exc_info.value) == "Unable to extract text from the document"
+
+
+@pytest.mark.asyncio
+async def test_extraction_error_is_not_logged_with_document_content(
+    text_extractor, caplog
+):
+    mock_file = AsyncMock(spec=UploadFile)
+    mock_file.content_type = "application/pdf"
+    mock_file.read.side_effect = Exception("failed at byte 42: Patient Jean Dupont")
+
+    with pytest.raises(ValueError):
+        await text_extractor.extract_text(mock_file)
+
+    assert "Jean Dupont" not in caplog.text
+    assert "Text extraction failed" in caplog.text

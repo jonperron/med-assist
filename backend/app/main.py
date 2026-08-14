@@ -37,7 +37,8 @@ app.include_router(health_router, tags=["Health Check"])
 app.include_router(uploads_router, prefix="/api", tags=["Document Uploads"])
 app.include_router(extractions_router, prefix="/api", tags=["Text Extractions"])
 
-if os.getenv("APP_ENV", "development") == "development":
+# Default to production so the mock endpoints require an explicit opt-in.
+if os.getenv("APP_ENV", "production") == "development":
     app.include_router(mock_router)
 
 

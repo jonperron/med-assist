@@ -23,6 +23,14 @@ class RedisTextRepository(TextRepositoryInterface):
         """Retrieve text by file ID."""
         return await self._storage.get_value(str(file_id))
 
+    async def get_text_ttl(self, file_id: UUID) -> Optional[int]:
+        """Seconds left before the stored text expires, or None if it is gone."""
+        return await self._storage.get_ttl(str(file_id))
+
+    async def delete_text(self, file_id: UUID) -> bool:
+        """Delete stored text. True when something was removed."""
+        return await self._storage.delete_value(str(file_id))
+
     async def save_batch(self, batch_id: UUID, file_ids: list[str]) -> None:
         """Save batch information."""
         await self._storage.store_value(str(batch_id), str(file_ids))

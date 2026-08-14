@@ -10,6 +10,12 @@ class RedisConfiguration(BaseSettings):
     )
 
     url: RedisDsn = Field(..., alias="REDIS_URL")
+    retention_ttl_seconds: int = Field(
+        default=3600,
+        alias="RETENTION_TTL_SECONDS",
+        gt=0,
+        description="Lifetime of every stored value, in seconds.",
+    )
 
 
 class NERModelConfiguration(BaseSettings):

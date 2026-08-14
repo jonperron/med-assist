@@ -29,14 +29,24 @@ The application uses Redis for storing extracted text and processing results. Co
 
 **Environment Variables:**
 
-* `APP_ENV`: Environment mode for the backend. Set to `development` to enable development-only features such as mock endpoints. For production, use `production` or leave unset.
-* `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`)
+* `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
+* `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`). Include the password when Redis requires one: `redis://:<password>@localhost:6379/0`.
+* `RETENTION_TTL_SECONDS`: Lifetime of every stored value, in seconds (default: `3600`). Every key written by the application carries this expiry, so extracted text is deleted automatically.
 
 **Example:**
 
 ```bash
 export REDIS_URL="redis://localhost:6379"
+export RETENTION_TTL_SECONDS=3600
 ```
+
+### Data retention
+
+Extracted text is never stored indefinitely:
+
+* Every key is written with an expiry of `RETENTION_TTL_SECONDS`.
+* `GET /api/get_extracted_text/{file_id}` and `POST /api/upload_document/` return `expires_in_seconds` so a client can show the remaining time.
+* `DELETE /api/documents/{file_id}` removes a document before its window closes. It answers `204` on success and `404` when nothing was stored.
 
 ### NER Model Configuration
 
