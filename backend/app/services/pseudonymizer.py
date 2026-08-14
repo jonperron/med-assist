@@ -14,6 +14,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from app.schemas.extraction import EntityDetail
+from app.services.identifier_detector import DirectIdentifierDetector
 
 PATIENT_INFO_CATEGORY = "patient_info"
 
@@ -44,11 +45,20 @@ def _occurrence_pattern(surface: str) -> re.Pattern:
 class Pseudonymizer:
     """Replaces patient-identifying spans with placeholders."""
 
+    def __init__(self, detector: Optional[DirectIdentifierDetector] = None) -> None:
+        self.detector = detector or DirectIdentifierDetector()
+
     def mask(
         self, text: str, entities: Dict[str, List[EntityDetail]]
     ) -> Tuple[str, Dict[str, List[EntityDetail]]]:
         """
-        Mask every occurrence of every detected ``patient_info`` identifier.
+        Mask every occurrence of every identifier found in the text.
+
+        Two sources feed the pass: the model's ``patient_info`` category, and a
+        pattern detector for the direct identifiers the model has no label for
+        (names, social-security and record numbers, contact details, dates,
+        addresses). Both are masked, and every later occurrence of the same
+        surface form goes with them.
 
         Offsets of the surviving entities are remapped onto the masked text, so
         the response stays internally consistent. Entities that overlap a masked
@@ -59,6 +69,24 @@ class Pseudonymizer:
         :param entities: Categorised entities, as returned by the extractor.
         :return: The masked text and the entities rewritten against it.
         """
+        detected = self.detector.detect(text)
+        # Reported alongside the model's own findings, so a reader can audit
+        # what was masked. They carry placeholders by the time they are returned.
+        entities = {
+            **entities,
+            PATIENT_INFO_CATEGORY: list(entities.get(PATIENT_INFO_CATEGORY, []))
+            + [
+                EntityDetail(
+                    text=text[item.start : item.end],
+                    label=item.label,
+                    score=1.0,
+                    start=item.start,
+                    end=item.end,
+                )
+                for item in detected
+            ],
+        }
+
         placeholders = self._assign_placeholders(text, entities)
         if not placeholders:
             return text, entities

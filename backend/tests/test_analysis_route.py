@@ -57,7 +57,9 @@ def client(mock_text_extractor, mock_entity_extractor, privacy_config):
     app.include_router(router, prefix="/api")
     app.dependency_overrides[get_text_extractor] = lambda: mock_text_extractor
     app.dependency_overrides[get_entity_extractor] = lambda: mock_entity_extractor
-    app.dependency_overrides[get_pseudonymizer] = Pseudonymizer
+    # A lambda, not the class: FastAPI would read the constructor signature and
+    # try to resolve the detector as a request field.
+    app.dependency_overrides[get_pseudonymizer] = lambda: Pseudonymizer()
     app.dependency_overrides[get_privacy_config] = lambda: privacy_config
     return TestClient(app)
 
@@ -81,11 +83,22 @@ def test_analyze_never_stores_anything(client):
     assert "expires_in_seconds" not in body
 
 
-def test_analyze_does_not_mask_by_default(client):
+def test_analyze_does_not_mask_when_the_deployment_turned_it_off(client):
     body = client.post("/api/analyze", files={"file": TXT_FILE}).json()
 
     assert body["pseudonymized"] is False
     assert body["text"] == TEXT
+
+
+def test_a_request_cannot_turn_off_the_deployment_policy(client, privacy_config):
+    privacy_config.pseudonymize = True
+
+    body = client.post(
+        "/api/analyze", files={"file": TXT_FILE}, data={"pseudonymize": "false"}
+    ).json()
+
+    assert body["pseudonymized"] is True
+    assert "homme" not in body["text"]
 
 
 def test_analyze_masks_patient_info_on_request(client):

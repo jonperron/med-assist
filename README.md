@@ -30,8 +30,10 @@ It is not intended for use in clinical decision-making and should not replace pr
 - **Automatic deletion**
   Every stored document expires after `RETENTION_TTL_SECONDS` (one hour by default), and the remaining time is shown in the interface. `DELETE /api/documents/{file_id}` removes a document immediately.
 
-- **Optional pseudonymisation**
-  Entities the model detects as patient information can be masked before they are displayed or stored, per request or through `PSEUDONYMIZE_ENTITIES`. It masks what the model labels — with the shipped French mapping that is age and gender, not names. See [`backend/README.md`](./backend/README.md) for the exact scope.
+- **Pseudonymisation by default**
+  Names, social-security and record numbers, phone numbers, email addresses, dates, addresses, age and gender are replaced with one-way placeholders before anything is displayed or stored. No re-identification mapping is kept. A request can ask for masking but cannot turn it off.
+
+  Pseudonymised health data is still personal data under GDPR (Recital 26): this is one Art. 32 measure, not compliance in itself, and the API is still unauthenticated. [`backend/README.md`](./backend/README.md) states the exact scope and the known gaps.
 
 ---
 

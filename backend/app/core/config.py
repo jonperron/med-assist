@@ -47,11 +47,13 @@ class PrivacyConfiguration(BaseSettings):
         ),
     )
     pseudonymize: bool = Field(
-        default=False,
+        default=True,
         alias="PSEUDONYMIZE_ENTITIES",
         description=(
-            "Mask entities detected as patient information before they are "
-            "returned or stored. Endpoints may override this per request."
+            "Mask detected patient identifiers before they are returned or "
+            "stored. On by default; a request may ask for masking but cannot "
+            "turn it off. Setting this to false is a deliberate decision to "
+            "handle identifiable patient data."
         ),
     )
 

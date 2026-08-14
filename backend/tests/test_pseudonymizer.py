@@ -245,3 +245,92 @@ def test_no_category_keeps_a_masked_identifier(pseudonymizer):
     for details in result.values():
         for entity in details:
             assert "homme" not in entity.text
+
+
+CLINICAL_NOTE = (
+    "Compte rendu d'hospitalisation.\n"
+    "Patient : Jean Martin, né le 12/03/1981, 06 12 34 56 78.\n"
+    "NIR 1 81 03 35 238 042 21. Adresse : 12 rue des Lilas, 35000 Rennes.\n"
+    "M. Martin, homme de 42 ans, présente une fièvre et une toux.\n"
+    "Traité par paracétamol. Contact : jean.martin@example.org\n"
+)
+
+
+@pytest.fixture
+def model_entities():
+    # What the clinical model actually labels: age and gender, nothing else.
+    return {
+        "patient_info": [
+            EntityDetail(
+                text="homme",
+                label="genre",
+                score=0.9,
+                start=CLINICAL_NOTE.index("homme"),
+                end=CLINICAL_NOTE.index("homme") + len("homme"),
+            )
+        ],
+        "symptoms": [
+            EntityDetail(
+                text="fièvre",
+                label="sosy",
+                score=0.8,
+                start=CLINICAL_NOTE.index("fièvre"),
+                end=CLINICAL_NOTE.index("fièvre") + len("fièvre"),
+            )
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "Jean Martin",
+        "12/03/1981",
+        "06 12 34 56 78",
+        "1 81 03 35 238 042 21",
+        "35000",
+        "jean.martin@example.org",
+        "homme",
+    ],
+)
+def test_no_direct_identifier_survives_the_mask(
+    pseudonymizer, model_entities, identifier
+):
+    masked, _ = pseudonymizer.mask(CLINICAL_NOTE, model_entities)
+
+    assert identifier not in masked
+
+
+def test_the_surname_is_masked_wherever_it_reappears(pseudonymizer, model_entities):
+    # "M. Martin" later in the note carries the same name as "Jean Martin".
+    masked, _ = pseudonymizer.mask(CLINICAL_NOTE, model_entities)
+
+    assert "Martin" not in masked
+
+
+def test_clinical_content_survives_the_mask(pseudonymizer, model_entities):
+    masked, entities = pseudonymizer.mask(CLINICAL_NOTE, model_entities)
+
+    assert "fièvre" in masked
+    assert "toux" in masked
+    assert "paracétamol" in masked
+    assert entities["symptoms"][0].text == "fièvre"
+
+
+def test_masked_identifiers_are_reported_for_audit(pseudonymizer, model_entities):
+    _, entities = pseudonymizer.mask(CLINICAL_NOTE, model_entities)
+
+    labels = {entity.label for entity in entities["patient_info"]}
+    assert {"nom", "date", "telephone", "nir", "email", "genre"} <= labels
+    # Reported, but only as placeholders.
+    for entity in entities["patient_info"]:
+        assert entity.text.startswith("[")
+
+
+def test_no_entity_carries_an_identifier_after_masking(pseudonymizer, model_entities):
+    _, entities = pseudonymizer.mask(CLINICAL_NOTE, model_entities)
+
+    for details in entities.values():
+        for entity in details:
+            assert "Martin" not in entity.text
+            assert "example.org" not in entity.text

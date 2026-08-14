@@ -39,6 +39,7 @@ interface ExtractionData {
   }
   expires_in_seconds?: number | null
   retained?: boolean
+  pseudonymized?: boolean
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -57,7 +58,9 @@ export default function HomePage() {
   const [expiresIn, setExpiresIn] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [storeOnServer, setStoreOnServer] = useState(false)
-  const [pseudonymize, setPseudonymize] = useState(false)
+  // Masking is the deployment's default. Unticking this asks the server not to
+  // mask; a server configured to mask does it anyway and says so in the response.
+  const [pseudonymize, setPseudonymize] = useState(true)
 
   const analyzeWithoutStoring = async (file: File) => {
     const formData = new FormData()
@@ -153,6 +156,13 @@ export default function HomePage() {
           />
           Mask detected patient identifiers
         </label>
+        {extraction?.pseudonymized && (
+          <p role="status" className="text-gray-500">
+            Detected patient identifiers were replaced with placeholders. This masks
+            what the model and the pattern rules found — check the result before
+            sharing it.
+          </p>
+        )}
         {!storeOnServer && (
           <p className="text-gray-500">
             Nothing is stored: the document is analyzed in one request and the result is

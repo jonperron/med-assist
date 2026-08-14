@@ -89,7 +89,17 @@ describe('HomePage', () => {
     expect(await screen.findByText(/File ID: abc/)).toBeInTheDocument()
   })
 
-  it('forwards the pseudonymisation choice', async () => {
+  it('asks for masking by default', async () => {
+    mockedAxios.post.mockResolvedValue(analysisResponse)
+
+    render(<HomePage />)
+    selectFile()
+
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
+    expect(postedForm().get('pseudonymize')).toBe('true')
+  })
+
+  it('forwards a request to skip masking', async () => {
     mockedAxios.post.mockResolvedValue(analysisResponse)
 
     render(<HomePage />)
@@ -97,17 +107,21 @@ describe('HomePage', () => {
     selectFile()
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
-    expect(postedForm().get('pseudonymize')).toBe('true')
+    expect(postedForm().get('pseudonymize')).toBe('false')
   })
 
-  it('defaults pseudonymisation to false', async () => {
-    mockedAxios.post.mockResolvedValue(analysisResponse)
+  it('reports when the result was pseudonymised', async () => {
+    mockedAxios.post.mockResolvedValue({
+      status: 200,
+      data: { ...analysisResponse.data, pseudonymized: true },
+    })
 
     render(<HomePage />)
     selectFile()
 
-    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
-    expect(postedForm().get('pseudonymize')).toBe('false')
+    expect(
+      await screen.findByText(/replaced with placeholders/)
+    ).toBeInTheDocument()
   })
 
   it('renders entities even when no text came back', async () => {
