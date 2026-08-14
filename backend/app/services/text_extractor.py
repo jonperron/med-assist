@@ -31,12 +31,12 @@ class TextExtractor(TextExtractionServiceInterface):
             file_bytes = BytesIO(await file.read())
 
             if file.content_type == PDF_CONTENT_TYPE:
-                return self._extract_text_from_pdf(file_bytes)
+                return self.extract_text_from_pdf(file_bytes)
 
             if file.content_type == DOCX_CONTENT_TYPE:
-                return self._extract_text_from_docx(file_bytes)
+                return self.extract_text_from_docx(file_bytes)
 
-            return self._extract_text_from_plaintext(file_bytes)
+            return self.extract_text_from_plaintext(file_bytes)
         except Exception as e:
             # Parser errors routinely quote the bytes that failed to parse, so
             # neither the message nor a traceback may reach the log or the caller.
@@ -47,16 +47,16 @@ class TextExtractor(TextExtractionServiceInterface):
             )
             raise ValueError("Unable to extract text from the document") from e
 
-    def _extract_text_from_pdf(self, file_bytes: BytesIO) -> str:
+    def extract_text_from_pdf(self, file_bytes: BytesIO) -> str:
         text = ""
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
             for page in doc:
                 text += page.get_text()
         return text
 
-    def _extract_text_from_docx(self, file_bytes: BytesIO) -> str:
+    def extract_text_from_docx(self, file_bytes: BytesIO) -> str:
         doc = Document(file_bytes)
         return "\n".join(paragraph.text for paragraph in doc.paragraphs)
 
-    def _extract_text_from_plaintext(self, file_bytes: BytesIO) -> str:
+    def extract_text_from_plaintext(self, file_bytes: BytesIO) -> str:
         return file_bytes.getvalue().decode("utf-8")

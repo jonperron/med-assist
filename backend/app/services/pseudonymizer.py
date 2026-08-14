@@ -18,21 +18,21 @@ from app.services.identifier_detector import DirectIdentifierDetector
 
 PATIENT_INFO_CATEGORY = "patient_info"
 
-_LABEL_CLEANUP = re.compile(r"[^\w]+", re.UNICODE)
+LABEL_CLEANUP = re.compile(r"[^\w]+", re.UNICODE)
 
 # (start, end) of a masked span -> its placeholder
 Replacements = Dict[Tuple[int, int], str]
 
 
-def _placeholder_label(label: str) -> str:
+def placeholder_label(label: str) -> str:
     """Turn a model label into a placeholder-safe token, e.g. ``B-age`` -> ``AGE``."""
-    cleaned = _LABEL_CLEANUP.sub("_", label.upper()).strip("_")
+    cleaned = LABEL_CLEANUP.sub("_", label.upper()).strip("_")
     if cleaned.startswith(("B_", "I_")):
         cleaned = cleaned[2:]
     return cleaned or "PATIENT_INFO"
 
 
-def _occurrence_pattern(surface: str) -> re.Pattern:
+def occurrence_pattern(surface: str) -> re.Pattern:
     """Match a surface form, without matching inside a longer word."""
     pattern = re.escape(surface)
     if surface[:1].isalnum():
@@ -87,22 +87,23 @@ class Pseudonymizer:
             ],
         }
 
-        placeholders = self._assign_placeholders(text, entities)
+        placeholders = self.assign_placeholders(text, entities)
         if not placeholders:
             return text, entities
 
-        spans = self._locate_spans(text, entities, placeholders)
-        masked_text, replacements = self._apply(text, spans)
+        spans = self.locate_spans(text, entities, placeholders)
+        masked_text, replacements = self.apply_spans(text, spans)
 
         return masked_text, {
             category: [
-                self._remap(entity, replacements, placeholders) for entity in details
+                self.remap_entity(entity, replacements, placeholders)
+                for entity in details
             ]
             for category, details in entities.items()
         }
 
     @staticmethod
-    def _assign_placeholders(
+    def assign_placeholders(
         text: str, entities: Dict[str, List[EntityDetail]]
     ) -> Dict[str, str]:
         """Map each distinct identifier, lowercased, to its stable placeholder."""
@@ -121,14 +122,14 @@ class Pseudonymizer:
             if not surface or surface.lower() in placeholders:
                 continue
 
-            label = _placeholder_label(entity.label)
+            label = placeholder_label(entity.label)
             counters[label] = counters.get(label, 0) + 1
             placeholders[surface.lower()] = f"[{label}_{counters[label]}]"
 
         return placeholders
 
     @staticmethod
-    def _locate_spans(
+    def locate_spans(
         text: str,
         entities: Dict[str, List[EntityDetail]],
         placeholders: Dict[str, str],
@@ -151,7 +152,7 @@ class Pseudonymizer:
                 spans.append((start, end, placeholders[surface]))
 
         for surface, placeholder in placeholders.items():
-            for match in _occurrence_pattern(surface).finditer(text):
+            for match in occurrence_pattern(surface).finditer(text):
                 spans.append((match.start(), match.end(), placeholder))
 
         # Widest span first at an equal start, so a nested span never wins and
@@ -160,7 +161,7 @@ class Pseudonymizer:
         return spans
 
     @staticmethod
-    def _apply(
+    def apply_spans(
         text: str, spans: List[Tuple[int, int, str]]
     ) -> Tuple[str, Replacements]:
         """Rewrite the text, returning it with the spans that were replaced."""
@@ -181,7 +182,7 @@ class Pseudonymizer:
         return "".join(parts), replacements
 
     @staticmethod
-    def _remap(
+    def remap_entity(
         entity: EntityDetail,
         replacements: Replacements,
         placeholders: Dict[str, str],

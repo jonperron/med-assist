@@ -20,7 +20,7 @@ class ValueCipher:
     def __init__(self, key: Optional[str] = None) -> None:
         if key:
             try:
-                self._fernet = Fernet(key.encode("utf-8"))
+                self.fernet = Fernet(key.encode("utf-8"))
                 logger.info("Storage encryption uses the configured key")
             except (ValueError, TypeError) as exc:
                 raise ValueError(
@@ -35,16 +35,16 @@ class ValueCipher:
                 "and every worker holds a different key - run a single worker "
                 "or configure a key."
             )
-            self._fernet = Fernet(Fernet.generate_key())
+            self.fernet = Fernet(Fernet.generate_key())
 
     def encrypt(self, value: str) -> str:
         """Encrypt a value for storage."""
-        return self._fernet.encrypt(value.encode("utf-8")).decode("utf-8")
+        return self.fernet.encrypt(value.encode("utf-8")).decode("utf-8")
 
     def decrypt(self, token: str) -> Optional[str]:
         """Decrypt a stored value, or None when it was written under another key."""
         try:
-            return self._fernet.decrypt(token.encode("utf-8")).decode("utf-8")
+            return self.fernet.decrypt(token.encode("utf-8")).decode("utf-8")
         except InvalidToken:
             # A rotated or ephemeral key leaves unreadable values behind. They
             # expire on their own, so treat them as absent rather than failing.

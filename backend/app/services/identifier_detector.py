@@ -18,14 +18,14 @@ from typing import List, Pattern, Tuple
 # A person's name never appears alone in a clinical note reliably enough to
 # detect it, so names are anchored to what precedes them: a civility, or a
 # field label. The capture group is the name, never the anchor.
-_NAME_ANCHOR = (
+NAME_ANCHOR = (
     r"(?:M\.|MM\.|Mme|Mmes|Mlle|Monsieur|Madame|Mademoiselle|"
     r"Dr\.?|Docteur|Pr\.?|Professeur|"
     r"Patient(?:e)?|Nom|Pr[ée]nom|N[ée]\(?e\)?)"
 )
-_NAME = r"[A-ZÀ-ÖØ-Þ][\w'’-]+(?:\s+[A-ZÀ-ÖØ-Þ][\w'’-]+)?"
+NAME_PATTERN = r"[A-ZÀ-ÖØ-Þ][\w'’-]+(?:\s+[A-ZÀ-ÖØ-Þ][\w'’-]+)?"
 
-_MONTHS = (
+MONTHS = (
     r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|"
     r"septembre|octobre|novembre|d[ée]cembre)"
 )
@@ -44,11 +44,11 @@ class DetectedIdentifier:
         return self.end - self.start
 
 
-def _compile(pattern: str) -> Pattern[str]:
+def compile_pattern(pattern: str) -> Pattern[str]:
     return re.compile(pattern, re.IGNORECASE | re.UNICODE)
 
 
-def _compile_cased(pattern: str) -> Pattern[str]:
+def compile_cased_pattern(pattern: str) -> Pattern[str]:
     """Compile case-sensitively.
 
     Capitalisation is what separates a name from ordinary prose: with
@@ -58,49 +58,53 @@ def _compile_cased(pattern: str) -> Pattern[str]:
 
 
 # (label, pattern, group holding the identifier itself)
-_PATTERNS: List[Tuple[str, Pattern[str], int]] = [
+PATTERNS: List[Tuple[str, Pattern[str], int]] = [
     # NIR: 13 digits plus a 2-digit key, commonly written in groups.
     (
         "nir",
-        _compile(r"\b[12][\s.]?\d{2}[\s.]?\d{2}[\s.]?\d{2,3}[\s.]?\d{3}[\s.]?\d{3}"
-                 r"(?:[\s.]?\d{2})?\b"),
+        compile_pattern(
+            r"\b[12][\s.]?\d{2}[\s.]?\d{2}[\s.]?\d{2,3}[\s.]?\d{3}[\s.]?\d{3}"
+            r"(?:[\s.]?\d{2})?\b"
+        ),
         0,
     ),
     (
         "email",
-        _compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"),
+        compile_pattern(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"),
         0,
     ),
     (
         "telephone",
-        _compile(r"(?:\+33[\s.-]?\(?0?\)?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b"),
+        compile_pattern(r"(?:\+33[\s.-]?\(?0?\)?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b"),
         0,
     ),
     (
         "dossier",
-        _compile(r"\b(?:IPP|NIP|NDA|dossier)\s*(?:n[o°]?)?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,})\b"),
+        compile_pattern(
+            r"\b(?:IPP|NIP|NDA|dossier)\s*(?:n[o°]?)?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,})\b"
+        ),
         1,
     ),
     (
         "nom",
-        _compile_cased(rf"\b(?i:{_NAME_ANCHOR})\s*:?\s+({_NAME})"),
+        compile_cased_pattern(rf"\b(?i:{NAME_ANCHOR})\s*:?\s+({NAME_PATTERN})"),
         1,
     ),
     (
         "date",
-        _compile(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"),
+        compile_pattern(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b"),
         0,
     ),
     (
         "date",
-        _compile(rf"\b\d{{1,2}}(?:er)?\s+{_MONTHS}\s+\d{{4}}\b"),
+        compile_pattern(rf"\b\d{{1,2}}(?:er)?\s+{MONTHS}\s+\d{{4}}\b"),
         0,
     ),
     # A postal code is only masked when a town plausibly follows it, so ordinary
     # five-digit clinical values are left alone.
     (
         "adresse",
-        _compile_cased(r"\b\d{5}\b(?=\s+[A-ZÀ-ÖØ-Þ])"),
+        compile_cased_pattern(r"\b\d{5}\b(?=\s+[A-ZÀ-ÖØ-Þ])"),
         0,
     ),
 ]
@@ -121,7 +125,7 @@ class DirectIdentifierDetector:
         """
         found: List[DetectedIdentifier] = []
 
-        for label, pattern, group in _PATTERNS:
+        for label, pattern, group in PATTERNS:
             for match in pattern.finditer(text):
                 start, end = match.span(group)
                 if start >= 0 and end > start:
