@@ -1,5 +1,6 @@
 """The shipped defaults are the privacy posture, so they are asserted."""
 
+# pylint: disable=W0621
 import pytest
 
 from app.core.config import PrivacyConfiguration
