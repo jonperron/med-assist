@@ -23,6 +23,11 @@ repos:
         additional_dependencies: [types-redis>=4.6.0.20241004]
 -   repo: local
     hooks:
+    -   id: no-underscore-prefixed-names
+        name: no underscore-prefixed names
+        entry: python3 scripts/check_naming.py
+        language: system
+        types: [python]
     -   id: pylint
         name: pylint
         args: ["--rcfile=.pylintrc"]

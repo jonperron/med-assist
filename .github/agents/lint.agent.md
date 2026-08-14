@@ -22,6 +22,13 @@ Run the minimum commands needed to validate changes:
 - Backend tests safety check: `cd backend && uv run pytest -v`
 - Frontend lint/build: `cd frontend && npm run lint && npm run build`
 
+## Naming Rule
+Python has
+no private members, so the prefix is an unenforceable request. Rename `_helper` to
+`helper`, `self._store` to `self.store`, `_CONST` to `CONST`; dunders and a bare `_`
+stay. `scripts/check_naming.py` reports them, and renaming is a safe mechanical fix,
+so make it rather than only reporting it. Update every call site.
+
 ## Linting Rules
 - Prefer auto-fix paths when safe and available.
 - Keep changes small and localized.
