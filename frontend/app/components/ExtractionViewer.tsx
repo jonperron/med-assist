@@ -4,8 +4,10 @@ interface EntityDetail {
   text: string
   label: string
   score: number
-  start: number
-  end: number
+  // Absent when the document text was not retained: an offset means nothing
+  // without the text it indexes.
+  start?: number | null
+  end?: number | null
 }
 
 interface ExtractedEntities {
@@ -22,8 +24,8 @@ interface ExtractedEntities {
 
 interface Props {
   data: {
-    file_id: string
-    text: string
+    file_id?: string
+    text?: string | null
     extracted_entities: ExtractedEntities
     processed_at?: string | null
     mapping_info?: {
@@ -31,11 +33,12 @@ interface Props {
       dataset: string
       description: string
     }
+    retained?: boolean
   }
 }
 
 export default function ExtractionViewer({ data }: Props) {
-  const { extracted_entities, mapping_info } = data
+  const { extracted_entities, mapping_info, text } = data
 
   const categories = [
     { key: 'patient_info', label: 'Patient Info', entities: extracted_entities.patient_info },
@@ -55,6 +58,12 @@ export default function ExtractionViewer({ data }: Props) {
         <div className="text-xs text-gray-500 mb-3">
           Model: {mapping_info.language} - {mapping_info.dataset}
         </div>
+      )}
+
+      {!text && (
+        <p className="text-xs text-gray-500 mb-3">
+          The document text is not kept on the server; only these entities were stored.
+        </p>
       )}
 
       <div>
