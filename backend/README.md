@@ -7,7 +7,9 @@ This is the backend for the Med-Assist application, built with FastAPI and uv.
 * Document upload (PDF, DOC, DOCX, TXT)
 * Text extraction from medical documents
 * Named Entity Recognition (NER) for medical terms
-* Redis-based storage for processed documents
+* Stateless analysis in a single request, storing nothing
+* Encrypted, entity-only Redis storage for documents kept for later
+* Optional pseudonymisation of detected patient identifiers
 * RESTful API with automatic OpenAPI documentation
 
 ## Getting Started
@@ -31,22 +33,78 @@ The application uses Redis for storing extracted text and processing results. Co
 
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
 * `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`). Include the password when Redis requires one: `redis://:<password>@localhost:6379/0`.
-* `RETENTION_TTL_SECONDS`: Lifetime of every stored value, in seconds (default: `3600`). Every key written by the application carries this expiry, so extracted text is deleted automatically.
+* `RETENTION_TTL_SECONDS`: Lifetime of every stored value, in seconds (default: `3600`). Every key written by the application carries this expiry, so stored documents are deleted automatically.
+* `STORAGE_ENCRYPTION_KEY`: Fernet key used to encrypt every value before it is written. When unset, an ephemeral key is generated at startup: values stay encrypted, but stored documents become unreadable after a restart. Generate one with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+* `STORE_DOCUMENT_TEXT`: Keep the extracted text next to the entities (default: `false`).
+* `PSEUDONYMIZE_ENTITIES`: Mask detected patient identifiers by default (default: `false`). Each request may override it.
 
 **Example:**
 
 ```bash
 export REDIS_URL="redis://localhost:6379"
 export RETENTION_TTL_SECONDS=3600
+export STORAGE_ENCRYPTION_KEY="<fernet key>"
 ```
+
+### What is stored
+
+The default is to store nothing at all:
+
+* `POST /api/analyze` extracts text, runs NER and returns the entities in the same
+  response. It never touches Redis, issues no file id, and leaves nothing to delete.
+* `POST /api/upload_document/` is for documents that must be reopened later. It stores
+  the categorised entities under `doc:{file_id}:entities` and, only when
+  `STORE_DOCUMENT_TEXT=true`, the text under `doc:{file_id}:text`.
+* Entities are extracted once, at upload. Reading a document never runs the model again.
+* When the text is not stored, entity `start`/`end` offsets are dropped: an offset
+  means nothing without the text it indexes.
+* Every value is encrypted before it reaches Redis.
+* Entity text is stored verbatim, including the `patient_info` category. Turn on
+  `PSEUDONYMIZE_ENTITIES` if a stored document must not carry the identifiers the model
+  found.
+* Uploaded files above 1 MB are spooled to `TMPDIR` by the HTTP server before any route
+  code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
+  the container's writable layer; a bare `uvicorn` run does not, and will write them to
+  disk.
+* With an unset `STORAGE_ENCRYPTION_KEY`, each worker generates its own key — run a
+  single worker, or configure a key.
 
 ### Data retention
 
-Extracted text is never stored indefinitely:
+Stored documents are never kept indefinitely:
 
 * Every key is written with an expiry of `RETENTION_TTL_SECONDS`.
 * `GET /api/get_extracted_text/{file_id}` and `POST /api/upload_document/` return `expires_in_seconds` so a client can show the remaining time.
-* `DELETE /api/documents/{file_id}` removes a document before its window closes. It answers `204` on success and `404` when nothing was stored.
+* `DELETE /api/documents/{file_id}` removes a document — text and entities — before its window closes. It answers `204` on success and `404` when nothing was stored.
+
+### Pseudonymisation
+
+The label mapping isolates a `patient_info` category. When pseudonymisation is on, every
+occurrence of those identifiers is replaced with a stable placeholder (`[AGE_1]`,
+`[GENRE_1]`) in the text and in the returned entities, and the offsets of the surviving
+entities are remapped onto the masked text. An entity from another category that overlaps
+a masked span reports the placeholder too — the characters are gone from the text, so
+repeating them would defeat the mask.
+
+`POST /api/analyze` and `POST /api/upload_document/` accept a `pseudonymize` form field.
+A request can only turn masking **on**: it cannot switch off a deployment that sets
+`PSEUDONYMIZE_ENTITIES=true`, since the caller is not the party that sets the policy.
+
+Two limits worth stating plainly:
+
+* Masking covers what the model labels as patient information. With the shipped French
+  mapping (`app/services/entity_extractor/label_mappings/fr.json`) that is `age`, `genre`,
+  `homme` and `femme` — **not** patient names, which the model does not label. Add the
+  relevant labels to `patient_info` if your model emits them.
+* `pseudonymized: true` reports that the pass ran over every detected identifier, not
+  that no identifier remains. An identifier the model misses is an identifier that
+  survives.
+
+### Logging
+
+The file id is the only identifier that may be logged. Clinical filenames routinely carry
+patient names, and parser errors quote the bytes that failed to parse, so error paths log
+the file id and the exception type — never the filename, the message or a traceback.
 
 ### NER Model Configuration
 

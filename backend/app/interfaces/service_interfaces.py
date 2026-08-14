@@ -4,7 +4,7 @@ Service interfaces following Interface Segregation Principle.
 
 from abc import ABC, abstractmethod
 from uuid import UUID
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import UploadFile
 
@@ -30,13 +30,19 @@ class EntityExtractionServiceInterface(ABC):
     def extract_entities(self, text: str) -> Dict[str, List["EntityDetail"]]:
         """Extract medical entities from text."""
 
+    @abstractmethod
+    def get_mapping_info(self) -> Dict[str, Any]:
+        """Describe the label mapping backing the extraction."""
+
 
 class FileProcessingServiceInterface(ABC):
     """Interface for file processing operations."""
 
     @abstractmethod
-    async def process_file(self, file_id: UUID, file: UploadFile) -> bool:
-        """Process uploaded file and save extracted text."""
+    async def process_file(
+        self, file_id: UUID, file: UploadFile, pseudonymize: Optional[bool] = None
+    ) -> bool:
+        """Process uploaded file and persist what the deployment allows."""
 
     @abstractmethod
     async def process_batch(self, batch_id: UUID, file_ids: list[str]) -> bool:

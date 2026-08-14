@@ -18,11 +18,20 @@ It is not intended for use in clinical decision-making and should not replace pr
 - **Local-first by design**
   Med-Assist runs entirely on your infrastructure—no external APIs or cloud dependencies.
 
+- **Nothing stored by default**
+  `POST /api/analyze` reads a document, extracts its entities and answers in a single request. Nothing reaches storage, so there is no file id to come back for and nothing to delete.
+
+- **Entities, not prose**
+  When a document is uploaded for later, only the categorised entities are kept — a few hundred bytes of clinical vocabulary rather than a complete patient record. Set `STORE_DOCUMENT_TEXT=true` to keep the text as well.
+
 - **Secure storage**
-  All data is stored in a local Redis instance that is reachable only from the internal Docker network, requires a password, and never writes to disk.
+  All data is stored in a local Redis instance that is reachable only from the internal Docker network, requires a password, and never writes to disk. Every value is encrypted with `STORAGE_ENCRYPTION_KEY` before it is written.
 
 - **Automatic deletion**
   Every stored document expires after `RETENTION_TTL_SECONDS` (one hour by default), and the remaining time is shown in the interface. `DELETE /api/documents/{file_id}` removes a document immediately.
+
+- **Optional pseudonymisation**
+  Entities the model detects as patient information can be masked before they are displayed or stored, per request or through `PSEUDONYMIZE_ENTITIES`. It masks what the model labels — with the shipped French mapping that is age and gender, not names. See [`backend/README.md`](./backend/README.md) for the exact scope.
 
 ---
 

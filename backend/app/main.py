@@ -2,13 +2,20 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health_router, mock_router, uploads_router, extractions_router
+from app.api import (
+    analysis_router,
+    extractions_router,
+    health_router,
+    mock_router,
+    uploads_router,
+)
 from app.core.exceptions import (
     MedAssistBaseException,
     FileProcessingError,
     ValidationError,
     StorageError,
 )
+from app.core.middleware import forbid_caching, reject_oversized_requests
 from app.core.exception_handlers import (
     med_assist_exception_handler,
     file_processing_exception_handler,
@@ -32,8 +39,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# The last one registered runs first, so forbid_caching wraps everything below
+# it - including a refusal - and an oversized body is refused before it is read.
+app.middleware("http")(reject_oversized_requests)
+app.middleware("http")(forbid_caching)
+
 # Include routers from the API layer
 app.include_router(health_router, tags=["Health Check"])
+app.include_router(analysis_router, prefix="/api", tags=["Stateless Analysis"])
 app.include_router(uploads_router, prefix="/api", tags=["Document Uploads"])
 app.include_router(extractions_router, prefix="/api", tags=["Text Extractions"])
 
