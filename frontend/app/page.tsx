@@ -6,41 +6,7 @@ import axios from 'axios'
 import FileUpload from './components/FileUpload'
 import ExtractionViewer from './components/ExtractionViewer'
 import RetentionNotice from './components/RetentionNotice'
-
-interface EntityDetail {
-  text: string
-  label: string
-  score: number
-  start?: number | null
-  end?: number | null
-}
-
-interface ExtractedEntities {
-  patient_info: EntityDetail[]
-  anatomy: EntityDetail[]
-  symptoms: EntityDetail[]
-  examinations: EntityDetail[]
-  treatments: EntityDetail[]
-  pathologies: EntityDetail[]
-  temporal: EntityDetail[]
-  measurements: EntityDetail[]
-  other: EntityDetail[]
-}
-
-interface ExtractionData {
-  file_id?: string
-  text?: string | null
-  extracted_entities: ExtractedEntities
-  processed_at?: string | null
-  mapping_info?: {
-    language: string
-    dataset: string
-    description: string
-  }
-  expires_in_seconds?: number | null
-  retained?: boolean
-  pseudonymized?: boolean
-}
+import type { ExtractionData } from './types/extraction'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 

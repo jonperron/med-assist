@@ -5,9 +5,17 @@ also lists error shapes hands the client a type it can never rely on.
 """
 
 # pylint: disable=W0621
+import json
+from pathlib import Path
+
 import pytest
 
 from app.main import app
+
+# Kept in step with scripts/export_openapi.py, which writes this file. Locating
+# it here rather than importing the script keeps the test independent of how
+# pytest was invoked.
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "openapi.json"
 
 # FastAPI's own request-validation answer. It has its own shape and is not
 # something the routes raise.
@@ -60,3 +68,14 @@ def test_failure_responses_document_the_envelope_the_api_sends(schema):
 def test_the_error_envelope_carries_a_message(schema):
     detail = schema["components"]["schemas"]["ErrorDetail"]
     assert detail["required"] == ["message"]
+
+
+def test_the_exported_schema_still_describes_the_app(schema):
+    # The frontend's types are generated from the exported document, so a
+    # backend change that skips the export is a client that has already drifted.
+    exported = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+    assert exported == schema, (
+        "backend/openapi.json is stale: run `uv run python scripts/export_openapi.py`, "
+        "then `npm run generate:types` in frontend/"
+    )
