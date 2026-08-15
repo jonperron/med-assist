@@ -3,7 +3,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, Depends
 
-from app.use_cases.read_entities import read_stored_entities
 from app.schemas.extraction import ExtractionResponse, ErrorResponse, ExtractedEntities
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
@@ -56,7 +55,7 @@ async def get_extracted_text(
     """
     file_uuid: UUID = parse_file_id(file_id)
 
-    extracted_entities = await read_stored_entities(file_uuid, text_repository)
+    extracted_entities = await text_repository.get_entities(file_uuid)
 
     if extracted_entities is None:
         raise HTTPException(

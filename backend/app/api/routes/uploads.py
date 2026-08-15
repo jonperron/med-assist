@@ -19,7 +19,6 @@ from app.schemas.upload import (
     UploadResponse,
     UploadErrorResponse,
 )
-from app.use_cases.save_file import save_file
 from app.use_cases.validate_file import validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
@@ -77,7 +76,7 @@ async def upload_document(
     file_id = uuid4()
 
     try:
-        success = await save_file(file_id, file, file_handler, pseudonymize)
+        success = await file_handler.process_file(file_id, file, pseudonymize)
 
         if not success:
             raise HTTPException(
@@ -176,7 +175,7 @@ async def upload_documents(
         file_id = uuid4()
 
         try:
-            success = await save_file(file_id, file, file_handler, pseudonymize)
+            success = await file_handler.process_file(file_id, file, pseudonymize)
 
             if not success:
                 raise HTTPException(
