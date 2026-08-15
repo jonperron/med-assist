@@ -174,12 +174,18 @@ def test_categorize_entity_reads_the_label_table(extractor, label, category):
     assert extractor.categorize_entity(label) == category
 
 
-@pytest.mark.parametrize("label", ["pathologies", "sous-traitement", "b-traitement-x"])
-def test_a_label_that_merely_contains_a_known_one_is_not_that_category(
+@pytest.mark.parametrize("label", ["pathologies", "traitements", "symptomatique"])
+def test_a_word_that_merely_contains_a_known_label_is_not_that_category(
     extractor, label
 ):
     # Substring matching categorised anything containing "dose" as a dose.
     assert extractor.categorize_entity(label) == "other"
+
+
+@pytest.mark.parametrize("label", ["sous-traitement", "b-traitement_x", "traitement 2"])
+def test_a_compound_label_is_matched_part_by_part(extractor, label):
+    # A part of a compound label is a label; a fragment of a word is not.
+    assert extractor.categorize_entity(label) == "treatments"
 
 
 def test_only_the_bio_prefix_is_stripped(extractor, mock_label_mapping):

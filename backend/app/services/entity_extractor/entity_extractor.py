@@ -1,10 +1,20 @@
 import json
+import logging
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from transformers import pipeline
 
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 from app.schemas.extraction import EntityDetail
+
+logger = logging.getLogger(__name__)
+
+# Labels are compared part by part when they do not match whole. Splitting on
+# everything that is not a letter or a digit handles "maladies cardiovasculaires",
+# "maladies_cardiovasculaires" and "MALADIES-CARDIOVASCULAIRES" alike.
+LABEL_SEPARATORS = re.compile(r"[\W_]+")
 
 
 class EntityExtractor(EntityExtractionServiceInterface):
@@ -43,6 +53,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
         self.language = language
         self.label_mapping = self.load_label_mapping(label_mapping_file, language)
         self.categories = self.build_category_lookup()
+        self.report_unmapped_model_labels()
 
     def load_label_mapping(
         self,
@@ -86,6 +97,18 @@ class EntityExtractor(EntityExtractionServiceInterface):
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in label mapping file: {e}")
 
+    @staticmethod
+    def normalize_label(label: str) -> str:
+        """
+        Fold a label to the form the lookup is keyed on.
+
+        Case and accents are dropped so a mapping written `duree` still answers
+        a model that emits `durée`. An unmatched label costs an entity its
+        category, and for `patient_info` it costs an identifier its mask.
+        """
+        decomposed = unicodedata.normalize("NFKD", label.strip().lower())
+        return "".join(char for char in decomposed if not unicodedata.combining(char))
+
     def build_category_lookup(self) -> Dict[str, str]:
         """
         Build a reverse lookup from labels to categories.
@@ -99,9 +122,60 @@ class EntityExtractor(EntityExtractionServiceInterface):
         for category_name, category_data in categories_config.items():
             labels = category_data.get("labels", [])
             for label in labels:
-                lookup[label.lower()] = category_name
+                lookup[self.normalize_label(label)] = category_name
 
         return lookup
+
+    def model_labels(self) -> List[str]:
+        """
+        The entity labels the loaded model can emit, when it declares them.
+
+        A model that does not expose `id2label` - or a test double standing in
+        for one - answers with nothing rather than raising.
+        """
+        config = getattr(getattr(self.ner_pipeline, "model", None), "config", None)
+        id2label = getattr(config, "id2label", None)
+        if not isinstance(id2label, dict):
+            return []
+
+        return [str(label) for label in id2label.values()]
+
+    def unmapped_model_labels(self) -> List[str]:
+        """Model labels this mapping sends to `other`, in sorted order."""
+        return sorted(
+            {
+                label
+                for label in self.model_labels()
+                if self.strip_bio_prefix(label) != "o"
+                and self.categorize_entity(label) == "other"
+                and self.categories.get(self.strip_bio_prefix(label)) != "other"
+            }
+        )
+
+    def report_unmapped_model_labels(self) -> None:
+        """
+        Say so when the model speaks labels the mapping does not know.
+
+        A label vocabulary is model metadata, never patient data, so it is safe
+        to log - and a silent mismatch is how a whole category stops being
+        recognised, masking included.
+        """
+        unmapped = self.unmapped_model_labels()
+        if unmapped:
+            logger.warning(
+                "The %s label mapping does not categorise %d model label(s): %s",
+                self.language,
+                len(unmapped),
+                ", ".join(unmapped),
+            )
+
+    @classmethod
+    def strip_bio_prefix(cls, entity_label: str) -> str:
+        """Drop a leading BIO marker, which says where a span starts, not what it is."""
+        label = cls.normalize_label(entity_label)
+        if label.startswith(("b-", "i-")):
+            return label[2:]
+        return label
 
     def categorize_entity(self, entity_label: str) -> str:
         """
@@ -113,18 +187,22 @@ class EntityExtractor(EntityExtractionServiceInterface):
         Returns:
             Category name for the entity
         """
-        label = entity_label.lower()
+        label = self.strip_bio_prefix(entity_label)
 
-        # BIO tagging marks where a span begins and continues; the label is
-        # what follows the prefix. Only the prefix is dropped: `replace` would
-        # also eat the "b-" in the middle of a label.
-        if label.startswith(("b-", "i-")):
-            label = label[2:]
+        category = self.categories.get(label)
+        if category is not None:
+            return category
 
-        # An exact hit in the reverse index, or nothing. Matching on substrings
-        # made every label containing "dose" a dose, and every label containing
-        # "age" patient information.
-        return self.categories.get(label, "other")
+        # A compound label is matched part by part - "maladies cardiovasculaires"
+        # is answered by "cardiovasculaires" - but never by raw containment,
+        # which made every label holding "dose" a dose and, worse, every label
+        # holding "age" patient information.
+        for part in LABEL_SEPARATORS.split(label):
+            category = self.categories.get(part)
+            if category is not None:
+                return category
+
+        return "other"
 
     def extract_entities(self, text: str) -> Dict[str, List[EntityDetail]]:
         """
@@ -180,7 +258,9 @@ class EntityExtractor(EntityExtractionServiceInterface):
                 end=ent["end"],
             )
 
-            entities[category].append(entity_detail)
+            # A mapping need not declare the fallback category, and the model
+            # decides what it emits, so the bucket is created on demand.
+            entities.setdefault(category, []).append(entity_detail)
 
         # Remove duplicates while preserving order
         for category in entities:
