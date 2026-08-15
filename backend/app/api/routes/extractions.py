@@ -1,9 +1,9 @@
-from typing import Union
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, Depends
 
-from app.schemas.extraction import ExtractionResponse, ErrorResponse, ExtractedEntities
+from app.schemas.errors import ErrorResponse
+from app.schemas.extraction import ExtractedEntities, ExtractionResponse
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 from app.core.dependencies import get_text_repository, get_entity_extractor
@@ -14,12 +14,9 @@ router = APIRouter()
 
 @router.get(
     "/get_extracted_text/{file_id}",
-    response_model=Union[ExtractionResponse, ErrorResponse],
+    response_model=ExtractionResponse,
     responses={
-        200: {
-            "model": ExtractionResponse,
-            "description": "Successfully extracted text and entities",
-        },
+        400: {"model": ErrorResponse, "description": "Invalid file ID format"},
         404: {
             "model": ErrorResponse,
             "description": "File not found or not processed yet",
@@ -34,7 +31,7 @@ async def get_extracted_text(
     ),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
     entity_extractor: EntityExtractionServiceInterface = Depends(get_entity_extractor),
-) -> Union[ExtractionResponse, ErrorResponse]:
+) -> ExtractionResponse:
     """
     Endpoint to retrieve the entities extracted from a processed file.
 

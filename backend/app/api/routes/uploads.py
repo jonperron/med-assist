@@ -1,5 +1,5 @@
 import logging
-from typing import List, Union
+from typing import List
 from uuid import uuid4
 
 from fastapi import (
@@ -13,12 +13,8 @@ from fastapi import (
     status,
 )
 
-from app.schemas.upload import (
-    FileValidationError,
-    MultipleUploadResponse,
-    UploadResponse,
-    UploadErrorResponse,
-)
+from app.schemas.errors import ErrorResponse
+from app.schemas.upload import MultipleUploadResponse, UploadResponse
 from app.use_cases.validate_file import validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
@@ -35,14 +31,11 @@ MAX_BATCH_FILES = 20
 
 @router.post(
     "/upload_document/",
-    response_model=Union[UploadResponse, UploadErrorResponse, FileValidationError],
+    response_model=UploadResponse,
     responses={
-        200: {"model": UploadResponse, "description": "File uploaded successfully"},
-        400: {
-            "model": FileValidationError,
-            "description": "Invalid file type or format",
-        },
-        500: {"model": UploadErrorResponse, "description": "Internal server error"},
+        400: {"model": ErrorResponse, "description": "Invalid file type or format"},
+        413: {"model": ErrorResponse, "description": "File too large"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def upload_document(
@@ -56,7 +49,7 @@ async def upload_document(
     ),
     file_handler: FileHandler = Depends(get_file_handler),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
-):
+) -> UploadResponse:
     """
     Upload a medical document for text extraction and entity recognition.
 
@@ -109,19 +102,14 @@ async def upload_document(
 
 @router.post(
     "/upload_documents/",
-    response_model=Union[
-        MultipleUploadResponse, UploadErrorResponse, FileValidationError
-    ],
+    response_model=MultipleUploadResponse,
     responses={
-        200: {
-            "model": MultipleUploadResponse,
-            "description": "File uploaded successfully",
+        400: {"model": ErrorResponse, "description": "Invalid file type or format"},
+        413: {
+            "model": ErrorResponse,
+            "description": "A file is too large, or the batch holds too many files",
         },
-        400: {
-            "model": FileValidationError,
-            "description": "Invalid file type or format",
-        },
-        500: {"model": UploadErrorResponse, "description": "Internal server error"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def upload_documents(
@@ -212,8 +200,8 @@ async def upload_documents(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         204: {"description": "Document deleted"},
-        400: {"model": UploadErrorResponse, "description": "Invalid file ID format"},
-        404: {"model": UploadErrorResponse, "description": "Document not found"},
+        400: {"model": ErrorResponse, "description": "Invalid file ID format"},
+        404: {"model": ErrorResponse, "description": "Document not found"},
     },
 )
 async def delete_document(

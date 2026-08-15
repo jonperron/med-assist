@@ -37,21 +37,3 @@ class MultipleUploadResponse(BaseModel):
         default=None, description="Upload timestamp"
     )
 
-
-class UploadErrorResponse(BaseModel):
-    message: str = Field(description="Error message")
-    error_code: Optional[str] = Field(default=None, description="Specific error code")
-    file_name: Optional[str] = Field(
-        default=None, description="Name of the problematic file"
-    )
-
-
-class FileValidationError(BaseModel):
-    message: str = Field(description="Validation error message")
-    allowed_types: List[str] = Field(description="List of allowed file types")
-    received_type: str = Field(
-        description="The received file type that failed validation"
-    )
-    field_name: Optional[str] = Field(
-        default=None, description="Name of the field that failed validation"
-    )
