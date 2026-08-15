@@ -113,18 +113,18 @@ class EntityExtractor(EntityExtractionServiceInterface):
         Returns:
             Category name for the entity
         """
-        entity_label_lower = entity_label.lower()
+        label = entity_label.lower()
 
-        # Remove B- or I- prefix if present (BIO tagging)
-        cleaned_label = entity_label_lower.replace("b-", "").replace("i-", "")
+        # BIO tagging marks where a span begins and continues; the label is
+        # what follows the prefix. Only the prefix is dropped: `replace` would
+        # also eat the "b-" in the middle of a label.
+        if label.startswith(("b-", "i-")):
+            label = label[2:]
 
-        # Look up in category mapping
-        for label, category in self.categories.items():
-            if label in cleaned_label:
-                return category
-
-        # Default category if no match
-        return "other"
+        # An exact hit in the reverse index, or nothing. Matching on substrings
+        # made every label containing "dose" a dose, and every label containing
+        # "age" patient information.
+        return self.categories.get(label, "other")
 
     def extract_entities(self, text: str) -> Dict[str, List[EntityDetail]]:
         """

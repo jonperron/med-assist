@@ -152,3 +152,40 @@ def test_the_extractor_never_imports_the_application_wiring():
         if isinstance(node, ast.ImportFrom) and node.module
     }
     assert "app.core.dependencies" not in imported
+
+
+@pytest.fixture
+def extractor(mock_ner_pipeline, mock_label_mapping):
+    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
+        with patch("json.load", return_value=mock_label_mapping):
+            yield EntityExtractor(model_name="Dummy/Model")
+
+
+@pytest.mark.parametrize(
+    "label, category",
+    [
+        ("pathologie", "diseases"),
+        ("B-pathologie", "diseases"),
+        ("I-sosy", "symptoms"),
+        ("TRAITEMENT", "treatments"),
+    ],
+)
+def test_categorize_entity_reads_the_label_table(extractor, label, category):
+    assert extractor.categorize_entity(label) == category
+
+
+@pytest.mark.parametrize("label", ["pathologies", "sous-traitement", "b-traitement-x"])
+def test_a_label_that_merely_contains_a_known_one_is_not_that_category(
+    extractor, label
+):
+    # Substring matching categorised anything containing "dose" as a dose.
+    assert extractor.categorize_entity(label) == "other"
+
+
+def test_only_the_bio_prefix_is_stripped(extractor, mock_label_mapping):
+    # "symptom" survives intact; a blanket replace of "b-"/"i-" would not have
+    # touched it either, but it would have turned "sosy-b-x" into "sosyx".
+    mock_label_mapping["categories"]["symptoms"]["labels"].append("sosy-b-x")
+    extractor.categories = extractor.build_category_lookup()
+
+    assert extractor.categorize_entity("B-sosy-b-x") == "symptoms"
