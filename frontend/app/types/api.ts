@@ -679,10 +679,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /**
-                 * @description Unique identifier of the uploaded file to extract text and entities from
-                 * @example 123e4567-e89b-12d3-a456-426614174000
-                 */
+                /** @description Unique identifier of the uploaded file to read entities from */
                 file_id: string;
             };
             cookie?: never;

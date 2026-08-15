@@ -794,13 +794,15 @@
         "operationId": "get_extracted_text_api_get_extracted_text__file_id__get",
         "parameters": [
           {
-            "description": "Unique identifier of the uploaded file to extract text and entities from",
-            "example": "123e4567-e89b-12d3-a456-426614174000",
+            "description": "Unique identifier of the uploaded file to read entities from",
             "in": "path",
             "name": "file_id",
             "required": true,
             "schema": {
-              "description": "Unique identifier of the uploaded file to extract text and entities from",
+              "description": "Unique identifier of the uploaded file to read entities from",
+              "examples": [
+                "123e4567-e89b-12d3-a456-426614174000"
+              ],
               "title": "File Id",
               "type": "string"
             }

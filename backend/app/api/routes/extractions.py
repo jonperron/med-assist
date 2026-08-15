@@ -26,8 +26,8 @@ router = APIRouter()
 async def get_extracted_text(
     file_id: str = Path(
         ...,
-        description="Unique identifier of the uploaded file to extract text and entities from",
-        example="123e4567-e89b-12d3-a456-426614174000",
+        description=("Unique identifier of the uploaded file to read entities from"),
+        examples=["123e4567-e89b-12d3-a456-426614174000"],
     ),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
     entity_extractor: EntityExtractionServiceInterface = Depends(get_entity_extractor),
