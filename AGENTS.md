@@ -43,7 +43,7 @@ The system must prioritize:
 
 ## 4) Project Structure
 
-- `backend/app/api/routes/`: HTTP routes (`uploads`, `extractions`, `health`, `mock`).
+- `backend/app/api/routes/`: HTTP routes (`analysis`, `uploads`, `extractions`, `health`, `mock`).
 - `backend/app/services/`: extraction and file processing logic.
 - `backend/app/repositories/` and `backend/app/db/`: Redis-backed persistence layer.
 - `backend/tests/` + root-level backend tests: unit/integration tests.
@@ -53,8 +53,11 @@ Nominal flow:
 1. Upload one or multiple medical files (PDF, DOC, DOCX, TXT).
 2. Validate MIME type and extension.
 3. Extract text.
-4. Store extracted content and batch references in local Redis using UUID keys.
-5. Extract medical entities and return API response.
+4. Extract medical entities.
+5. Return the API response. The default path (`POST /api/analyze`) stores nothing;
+   the upload path stores the categorised entities under UUID keys in local Redis,
+   and the document text only when `STORE_DOCUMENT_TEXT` is set. A multi-file
+   upload stores each file that way and writes nothing under its batch id.
 
 ## 5) Testing and Validation Rules
 
