@@ -185,6 +185,13 @@ async def upload_documents(
             },
         )
 
+    # Validate the whole batch before storing any of it. A refusal on the
+    # fourth file used to leave the first three in Redis under ids the client
+    # never receives in the error response, so nobody could delete them before
+    # the retention window closed.
+    for file in files:
+        await validate_upload_file(file)
+
     file_ids = [
         str(await store_document(file, file_handler, pseudonymize)) for file in files
     ]

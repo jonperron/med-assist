@@ -92,15 +92,14 @@ def test_batch_upload_rejects_a_batch_over_the_file_cap(client, mock_file_handle
     mock_file_handler.process_file.assert_not_awaited()
 
 
-def test_batch_upload_stops_at_the_first_bad_file_but_keeps_earlier_saves(
-    client, mock_file_handler
-):
-    # store_document runs sequentially with no rollback: a later refusal does
-    # not undo what an earlier file in the same batch already had saved.
+def test_a_batch_with_one_bad_file_stores_none_of_it(client, mock_file_handler):
+    # The refusal comes back without any file id, so anything already stored
+    # would sit out its retention window with nobody able to delete it. The
+    # whole batch is validated before a single file is stored.
     response = client.post(
         "/api/upload_documents/",
         files=[("files", TXT), ("files", BAD_EXTENSION)],
     )
 
     assert response.status_code == 400
-    mock_file_handler.process_file.assert_awaited_once()
+    mock_file_handler.process_file.assert_not_awaited()
