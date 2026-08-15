@@ -6,7 +6,12 @@ import axios from 'axios'
 import FileUpload from './components/FileUpload'
 import ExtractionViewer from './components/ExtractionViewer'
 import RetentionNotice from './components/RetentionNotice'
-import type { ExtractionData } from './types/extraction'
+import type {
+  AnalysisResponse,
+  ExtractionData,
+  ExtractionResponse,
+  UploadResponse,
+} from './types/extraction'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -33,7 +38,7 @@ export default function HomePage() {
     formData.append('file', file)
     formData.append('pseudonymize', String(pseudonymize))
 
-    const response = await axios.post(`${API_URL}/api/analyze`, formData, {
+    const response = await axios.post<AnalysisResponse>(`${API_URL}/api/analyze`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
 
@@ -49,7 +54,7 @@ export default function HomePage() {
     formData.append('file', file)
     formData.append('pseudonymize', String(pseudonymize))
 
-    const response = await axios.post(`${API_URL}/api/upload_document/`, formData, {
+    const response = await axios.post<UploadResponse>(`${API_URL}/api/upload_document/`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
 
@@ -90,7 +95,9 @@ export default function HomePage() {
 
     try {
       setError(null)
-      const response = await axios.get(`${API_URL}/api/get_extracted_text/${fileId}`)
+      const response = await axios.get<ExtractionResponse>(
+        `${API_URL}/api/get_extracted_text/${fileId}`,
+      )
       if (response.status === 200) {
         setExtraction(response.data)
         setExpiresIn(response.data.expires_in_seconds ?? null)
@@ -122,7 +129,7 @@ export default function HomePage() {
           />
           Mask detected patient identifiers
         </label>
-        {extraction?.pseudonymized && (
+        {extraction && 'pseudonymized' in extraction && extraction.pseudonymized && (
           <p role="status" className="text-gray-500">
             Detected patient identifiers were replaced with placeholders. This masks
             what the model and the pattern rules found — check the result before

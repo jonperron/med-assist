@@ -14,7 +14,6 @@ export type ErrorResponse = components['schemas']['ErrorResponse']
 
 // The page shows whichever of the two analysis paths ran: /analyze answers
 // without a file id, /get_extracted_text answers with one and may omit the
-// text. Only the entities are common to both.
-export type ExtractionData = Partial<ExtractionResponse & AnalysisResponse> & {
-  extracted_entities: ExtractedEntities
-}
+// text. Kept as a union rather than a merge, so reading a field only one of
+// them has has to be narrowed first.
+export type ExtractionData = ExtractionResponse | AnalysisResponse
