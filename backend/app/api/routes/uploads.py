@@ -19,7 +19,7 @@ from app.schemas.upload import (
     UploadResponse,
     UploadErrorResponse,
 )
-from app.use_cases.save_file import save_batch, save_file
+from app.use_cases.save_file import save_file
 from app.use_cases.validate_file import validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
@@ -145,6 +145,10 @@ async def upload_documents(
     """
     Upload multiple medical documents for text extraction and entity recognition.
 
+    Each file is processed on its own and answered with its own id. The batch id
+    only correlates the files of this request: nothing is written under it, so
+    there is one less patient-adjacent key living out a retention window.
+
     Args:
         files: The uploaded files (PDF, DOCX, TXT)
         pseudonymize: Whether to mask detected patient identifiers
@@ -197,7 +201,6 @@ async def upload_documents(
                 detail={"message": "Internal server error"},
             ) from e
 
-    await save_batch(batch_id, file_ids, file_handler)
     return MultipleUploadResponse(
         batch_id=str(batch_id),
         file_ids=file_ids,

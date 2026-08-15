@@ -77,7 +77,3 @@ class RedisTextRepository(TextRepositoryInterface):
         return await self.storage.delete_value(
             self.entities_key(file_id), self.text_key(file_id)
         )
-
-    async def save_batch(self, batch_id: UUID, file_ids: list[str]) -> None:
-        """Save batch information."""
-        await self.storage.store_value(f"batch:{batch_id}", json.dumps(file_ids))

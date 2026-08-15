@@ -43,7 +43,3 @@ class FileProcessingServiceInterface(ABC):
         self, file_id: UUID, file: UploadFile, pseudonymize: Optional[bool] = None
     ) -> bool:
         """Process uploaded file and persist what the deployment allows."""
-
-    @abstractmethod
-    async def process_batch(self, batch_id: UUID, file_ids: list[str]) -> bool:
-        """Process batch of files."""

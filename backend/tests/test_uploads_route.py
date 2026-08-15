@@ -1,0 +1,56 @@
+# pylint: disable=W0621
+import pytest
+from unittest.mock import AsyncMock, MagicMock
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.routes.uploads import router
+from app.core.dependencies import get_file_handler, get_text_repository
+from app.interfaces.repositories_interfaces import TextRepositoryInterface
+from app.services.file_handler import FileHandler
+
+TXT = ("report.txt", b"Le patient a de la fievre", "text/plain")
+
+
+@pytest.fixture
+def mock_file_handler():
+    handler = MagicMock(spec=FileHandler)
+    handler.process_file = AsyncMock(return_value=True)
+    return handler
+
+
+@pytest.fixture
+def mock_repository():
+    repository = MagicMock(spec=TextRepositoryInterface)
+    repository.get_document_ttl = AsyncMock(return_value=3600)
+    return repository
+
+
+@pytest.fixture
+def client(mock_file_handler, mock_repository):
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    app.dependency_overrides[get_file_handler] = lambda: mock_file_handler
+    app.dependency_overrides[get_text_repository] = lambda: mock_repository
+    return TestClient(app)
+
+
+def test_batch_upload_answers_one_id_per_file(client, mock_file_handler):
+    response = client.post(
+        "/api/upload_documents/",
+        files=[("files", TXT), ("files", ("second.txt", b"Toux seche", "text/plain"))],
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["file_ids"]) == 2
+    assert len(set(body["file_ids"])) == 2
+    assert mock_file_handler.process_file.await_count == 2
+
+
+def test_batch_upload_stores_nothing_under_the_batch_id():
+    # A batch key nothing can read is a patient-adjacent value living out a
+    # retention window for no one. It stays deleted.
+    assert not hasattr(TextRepositoryInterface, "save_batch")
+    assert not hasattr(FileHandler, "process_batch")

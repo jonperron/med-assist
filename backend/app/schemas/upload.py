@@ -21,7 +21,13 @@ class UploadResponse(BaseModel):
 
 
 class MultipleUploadResponse(BaseModel):
-    batch_id: str = Field(description="Unique identifier of the batch")
+    batch_id: str = Field(
+        description=(
+            "Identifier correlating the files of one upload request. Nothing is "
+            "stored under it: the batch cannot be resolved server-side, only the "
+            "file IDs can."
+        )
+    )
     file_ids: List[str] = Field(description="List of file IDs in the batch")
     message: str = Field(description="Batch upload status message")
     total_files: Optional[int] = Field(
