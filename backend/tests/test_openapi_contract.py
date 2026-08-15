@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app.main import app
+from app.main import PRODUCTION, create_app
 
 # Kept in step with scripts/export_openapi.py, which writes this file. Locating
 # it here rather than importing the script keeps the test independent of how
@@ -24,7 +24,8 @@ REQUEST_VALIDATION_STATUS = "422"
 
 @pytest.fixture(scope="module")
 def schema():
-    return app.openapi()
+    # The production contract, whatever APP_ENV says in this shell.
+    return create_app(PRODUCTION).openapi()
 
 
 def response_refs(response):

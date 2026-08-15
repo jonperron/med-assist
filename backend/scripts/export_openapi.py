@@ -14,14 +14,18 @@ Run it from the backend directory:
 import json
 from pathlib import Path
 
-from app.main import app
+from app.main import PRODUCTION, create_app
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "openapi.json"
 
 
 def export_schema(path: Path = SCHEMA_PATH) -> Path:
     """Write the application's OpenAPI document, sorted so diffs stay readable."""
-    document = json.dumps(app.openapi(), indent=2, ensure_ascii=False, sort_keys=True)
+    # Built for production explicitly: exporting from a shell with
+    # APP_ENV=development would advertise the dev-only mock endpoints to every
+    # generated client.
+    schema = create_app(PRODUCTION).openapi()
+    document = json.dumps(schema, indent=2, ensure_ascii=False, sort_keys=True)
     path.write_text(document + "\n", encoding="utf-8")
     return path
 
