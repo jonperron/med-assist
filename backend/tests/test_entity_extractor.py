@@ -1,6 +1,10 @@
 # pylint: disable=W0621
+import ast
+import inspect
+
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
+from app.services.entity_extractor import entity_extractor as entity_extractor_module
 from app.services.entity_extractor import EntityExtractor
 from app.schemas.extraction import EntityDetail
 
@@ -135,3 +139,16 @@ def test_get_mapping_info(mock_ner_pipeline, mock_label_mapping):
             assert info["language"] == "fr"
             assert info["dataset"] == "test_clinical"
             assert info["description"] == "Test mapping"
+
+
+def test_the_extractor_never_imports_the_application_wiring():
+    # app.core.dependencies builds the extractor. An extractor that imports it
+    # back closes a loop, and the loop is what forced dependencies.py to hide
+    # its imports inside function bodies.
+    tree = ast.parse(inspect.getsource(entity_extractor_module))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.core.dependencies" not in imported

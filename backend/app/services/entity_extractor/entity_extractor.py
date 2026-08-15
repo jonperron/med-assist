@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from transformers import pipeline
 
-from app.core.dependencies import get_ner_model_config
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 from app.schemas.extraction import EntityDetail
 
@@ -19,26 +18,22 @@ class EntityExtractor(EntityExtractionServiceInterface):
 
     def __init__(
         self,
-        model_name: Optional[str] = None,
+        model_name: str,
         label_mapping_file: Optional[str] = None,
         language: str = "fr",
     ):
         """
         Initialize the EntityExtractor.
 
+        The model name is passed in rather than read from the application
+        configuration: a service that reaches back into the wiring that builds
+        it makes the two modules import each other.
+
         Args:
-            model_name: Path to the NER model. If None, uses config default.
+            model_name: Path to the NER model.
             label_mapping_file: Path to custom label mapping JSON. If None, uses default for language.
             language: Language code (e.g., 'fr', 'es', 'da'). Defaults to 'fr'.
         """
-        if model_name is None:
-            try:
-                model_name = get_ner_model_config().model_name
-            except Exception as exc:
-                raise ValueError(
-                    "Model name must be provided or configured in settings."
-                ) from exc
-
         self.ner_pipeline = pipeline(
             "ner",
             model=model_name,
