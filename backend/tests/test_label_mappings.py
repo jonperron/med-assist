@@ -14,9 +14,12 @@ import pytest
 
 from app.schemas.extraction import ExtractedEntities
 from app.services.entity_extractor import EntityExtractor
+from app.services.entity_extractor import entity_extractor as entity_extractor_module
 from app.services.pseudonymizer import PATIENT_INFO_CATEGORY
 
-MAPPINGS = Path("app/services/entity_extractor/label_mappings").resolve()
+# Located from the package rather than the working directory: these are the
+# files that ship, wherever pytest was started from.
+MAPPINGS = Path(entity_extractor_module.__file__).parent / "label_mappings"
 
 # The label set of the CAS corpus of French clinical cases, which the shipped
 # model is trained on. See the references in the root README.
