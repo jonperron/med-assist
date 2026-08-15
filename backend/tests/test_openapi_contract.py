@@ -4,6 +4,7 @@ The frontend's types are generated from this document: a success contract that
 also lists error shapes hands the client a type it can never rely on.
 """
 
+# pylint: disable=W0621
 import pytest
 
 from app.main import app

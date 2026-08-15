@@ -132,4 +132,3 @@ async def test_delete_document_removes_text_and_entities(repository, mock_storag
 async def test_delete_document_missing_document(repository, mock_storage):
     mock_storage.delete_value.return_value = False
     assert await repository.delete_document(uuid4()) is False
-

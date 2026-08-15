@@ -36,4 +36,3 @@ class MultipleUploadResponse(BaseModel):
     uploaded_at: Optional[datetime] = Field(
         default=None, description="Upload timestamp"
     )
-

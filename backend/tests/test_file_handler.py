@@ -189,4 +189,3 @@ async def test_process_file_no_text(
     mock_entity_extractor.extract_entities.assert_not_called()
     mock_text_repository.save_text.assert_not_called()
     mock_text_repository.save_entities.assert_not_called()
-
