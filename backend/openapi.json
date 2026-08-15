@@ -184,13 +184,91 @@
         "type": "object"
       },
       "ErrorDetail": {
-        "additionalProperties": true,
+        "additionalProperties": false,
         "description": "The body of a refusal.\n\nRoutes raise HTTPException with a fixed message, and add context only when\nthe context is about the request rather than the document: the allowed file\ntypes, a size limit, a batch cap. Nothing here quotes document content.",
         "properties": {
+          "allowed_extensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "File extensions this endpoint accepts",
+            "title": "Allowed Extensions"
+          },
+          "allowed_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "File types this endpoint accepts",
+            "title": "Allowed Types"
+          },
+          "max_files": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest accepted number of files in one batch",
+            "title": "Max Files"
+          },
+          "max_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest accepted file, in bytes",
+            "title": "Max Size Bytes"
+          },
           "message": {
             "description": "Content-free description of the failure",
             "title": "Message",
             "type": "string"
+          },
+          "received_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Size of the rejected file, in bytes",
+            "title": "Received Size Bytes"
+          },
+          "received_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rejected content type, as the client declared it",
+            "title": "Received Type"
           }
         },
         "required": [

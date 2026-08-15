@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 # What the caller is told when a document cannot be read. The same wording on
@@ -15,10 +17,30 @@ class ErrorDetail(BaseModel):
     types, a size limit, a batch cap. Nothing here quotes document content.
     """
 
-    # Individual routes add request-level context alongside the message.
-    model_config = ConfigDict(extra="allow")
+    # The list is closed on purpose. An open body documents nothing, and the
+    # next field someone adds next to a parser is the one that carries a
+    # filename or a fragment of a document into a response.
+    model_config = ConfigDict(extra="forbid")
 
     message: str = Field(description="Content-free description of the failure")
+    allowed_types: Optional[List[str]] = Field(
+        default=None, description="File types this endpoint accepts"
+    )
+    allowed_extensions: Optional[List[str]] = Field(
+        default=None, description="File extensions this endpoint accepts"
+    )
+    received_type: Optional[str] = Field(
+        default=None, description="The rejected content type, as the client declared it"
+    )
+    max_size_bytes: Optional[int] = Field(
+        default=None, description="Largest accepted file, in bytes"
+    )
+    received_size_bytes: Optional[int] = Field(
+        default=None, description="Size of the rejected file, in bytes"
+    )
+    max_files: Optional[int] = Field(
+        default=None, description="Largest accepted number of files in one batch"
+    )
 
 
 class ErrorResponse(BaseModel):

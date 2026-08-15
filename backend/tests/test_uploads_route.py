@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.routes.uploads import MAX_BATCH_FILES, router
 from app.core.dependencies import get_file_handler, get_text_repository
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
-from app.schemas.errors import UNREADABLE_DOCUMENT
+from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorDetail
 from app.services.file_handler import FileHandler
 
 TXT = ("report.txt", b"Le patient a de la fievre", "text/plain")
@@ -142,3 +142,21 @@ def test_a_storage_failure_is_still_a_server_fault(client, mock_file_handler):
 
     assert response.status_code == 500
     assert response.json()["detail"]["message"] == "Internal server error"
+
+
+def test_a_refused_file_answers_a_body_the_schema_describes(client):
+    response = client.post("/api/upload_document/", files={"file": BAD_EXTENSION})
+
+    assert response.status_code == 400
+    # ErrorDetail forbids unknown keys: a route that starts answering with a
+    # filename or a parser message fails here rather than at a client.
+    ErrorDetail(**response.json()["detail"])
+
+
+def test_an_oversized_batch_answers_a_body_the_schema_describes(client):
+    files = [("files", TXT) for _ in range(MAX_BATCH_FILES + 1)]
+
+    response = client.post("/api/upload_documents/", files=files)
+
+    assert response.status_code == 413
+    ErrorDetail(**response.json()["detail"])

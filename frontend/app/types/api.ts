@@ -315,12 +315,40 @@ export interface components {
          */
         ErrorDetail: {
             /**
+             * Allowed Extensions
+             * @description File extensions this endpoint accepts
+             */
+            allowed_extensions?: string[] | null;
+            /**
+             * Allowed Types
+             * @description File types this endpoint accepts
+             */
+            allowed_types?: string[] | null;
+            /**
+             * Max Files
+             * @description Largest accepted number of files in one batch
+             */
+            max_files?: number | null;
+            /**
+             * Max Size Bytes
+             * @description Largest accepted file, in bytes
+             */
+            max_size_bytes?: number | null;
+            /**
              * Message
              * @description Content-free description of the failure
              */
             message: string;
-        } & {
-            [key: string]: unknown;
+            /**
+             * Received Size Bytes
+             * @description Size of the rejected file, in bytes
+             */
+            received_size_bytes?: number | null;
+            /**
+             * Received Type
+             * @description The rejected content type, as the client declared it
+             */
+            received_type?: string | null;
         };
         /**
          * ErrorResponse
