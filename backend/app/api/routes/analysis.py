@@ -14,7 +14,7 @@ from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
     TextExtractionServiceInterface,
 )
-from app.schemas.errors import ErrorResponse
+from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
 from app.schemas.extraction import AnalysisResponse, ExtractedEntities
 from app.services.pseudonymizer import Pseudonymizer
 from app.use_cases.analyze_document import analyze_document
@@ -97,7 +97,7 @@ async def analyze(
         # carries no document content.
         raise HTTPException(
             status_code=400,
-            detail={"message": "Unable to extract text from the document."},
+            detail={"message": UNREADABLE_DOCUMENT},
         ) from exc
     except Exception as exc:
         logger.error("Analysis failed (%s)", type(exc).__name__)

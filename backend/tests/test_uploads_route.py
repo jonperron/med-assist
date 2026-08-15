@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.routes.uploads import MAX_BATCH_FILES, router
 from app.core.dependencies import get_file_handler, get_text_repository
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
+from app.schemas.errors import UNREADABLE_DOCUMENT
 from app.services.file_handler import FileHandler
 
 TXT = ("report.txt", b"Le patient a de la fievre", "text/plain")
@@ -103,3 +104,41 @@ def test_a_batch_with_one_bad_file_stores_none_of_it(client, mock_file_handler):
 
     assert response.status_code == 400
     mock_file_handler.process_file.assert_not_awaited()
+
+
+def test_an_unreadable_document_is_refused_the_way_analyze_refuses_it(
+    client, mock_file_handler
+):
+    # /api/analyze answers 400 for a document it cannot parse. A corrupt PDF is
+    # the caller's problem on both endpoints, and a 500 here would also make
+    # server-error alerting fire on scanned paperwork.
+    mock_file_handler.process_file = AsyncMock(
+        side_effect=ValueError("Unable to extract text from the document")
+    )
+
+    response = client.post("/api/upload_document/", files={"file": TXT})
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["message"] == UNREADABLE_DOCUMENT
+
+
+def test_a_document_with_no_text_is_refused_not_reported_as_a_server_fault(
+    client, mock_file_handler
+):
+    mock_file_handler.process_file = AsyncMock(return_value=False)
+
+    response = client.post("/api/upload_document/", files={"file": TXT})
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["message"] == UNREADABLE_DOCUMENT
+
+
+def test_a_storage_failure_is_still_a_server_fault(client, mock_file_handler):
+    # Only the document's own unreadability is the caller's fault; Redis being
+    # down is not, and must not be reported as a bad request.
+    mock_file_handler.process_file = AsyncMock(side_effect=RuntimeError("redis down"))
+
+    response = client.post("/api/upload_document/", files={"file": TXT})
+
+    assert response.status_code == 500
+    assert response.json()["detail"]["message"] == "Internal server error"

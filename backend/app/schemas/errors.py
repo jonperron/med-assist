@@ -1,5 +1,10 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+# What the caller is told when a document cannot be read. The same wording on
+# every path: the two analysis endpoints answer the same document the same way,
+# and neither says anything about what was in it.
+UNREADABLE_DOCUMENT = "Unable to extract text from the document."
+
 
 class ErrorDetail(BaseModel):
     """

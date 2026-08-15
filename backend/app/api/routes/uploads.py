@@ -14,7 +14,7 @@ from fastapi import (
     status,
 )
 
-from app.schemas.errors import ErrorResponse
+from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
 from app.schemas.upload import MultipleUploadResponse, UploadResponse
 from app.use_cases.validate_file import validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
@@ -76,10 +76,24 @@ async def store_document(
 
     file_id = uuid4()
     async with failures_stay_generic(file_id):
-        if not await file_handler.process_file(file_id, file, pseudonymize):
+        try:
+            stored = await file_handler.process_file(file_id, file, pseudonymize)
+        except ValueError as exc:
+            # A document of a supported type that cannot be parsed is the
+            # caller's problem, not a server fault - and /api/analyze already
+            # answers 400 for the same file. The message is fixed upstream and
+            # quotes nothing from the document.
             raise HTTPException(
-                status_code=500,
-                detail={"message": "Failed to save file"},
+                status_code=400,
+                detail={"message": UNREADABLE_DOCUMENT},
+            ) from exc
+
+        if not stored:
+            # process_file answers False for a document with no extractable
+            # text: same cause, same answer.
+            raise HTTPException(
+                status_code=400,
+                detail={"message": UNREADABLE_DOCUMENT},
             )
 
     return file_id
@@ -89,7 +103,10 @@ async def store_document(
     "/upload_document/",
     response_model=UploadResponse,
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid file type or format"},
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid file type, or a document that cannot be read",
+        },
         413: {"model": ErrorResponse, "description": "File too large"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -134,7 +151,10 @@ async def upload_document(
     "/upload_documents/",
     response_model=MultipleUploadResponse,
     responses={
-        400: {"model": ErrorResponse, "description": "Invalid file type or format"},
+        400: {
+            "model": ErrorResponse,
+            "description": "Invalid file type, or a document that cannot be read",
+        },
         413: {
             "model": ErrorResponse,
             "description": "A file is too large, or the batch holds too many files",

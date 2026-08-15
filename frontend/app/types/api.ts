@@ -721,7 +721,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadResponse"];
                 };
             };
-            /** @description Invalid file type or format */
+            /** @description Invalid file type, or a document that cannot be read */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -781,7 +781,7 @@ export interface operations {
                     "application/json": components["schemas"]["MultipleUploadResponse"];
                 };
             };
-            /** @description Invalid file type or format */
+            /** @description Invalid file type, or a document that cannot be read */
             400: {
                 headers: {
                     [name: string]: unknown;
