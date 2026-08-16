@@ -45,3 +45,8 @@ Return only:
 1. Findings by severity (`high`, `medium`, `low`), each with file path, risk, and fix suggestion.
 2. Open questions/assumptions.
 3. Residual risk/testing gaps if no major findings.
+
+Do not quote source code. Cite `path:line` and describe the problem in prose.
+Quote at most one short line, and only when the exact text is the finding — a
+misspelled name, an inverted condition. The caller has the repository open; a
+pasted excerpt spends their context to tell them what they can already read.

@@ -11,7 +11,7 @@ with AGENTS.md, AGENTS.md wins — except where noted as Claude-only mechanics.
 ## Coding Rules
 
 AGENTS.md section 6 holds the summary. The detail lives in four files, each
-loaded by the mechanism that matches when it is needed:
+loaded by a different mechanism at the point listed in the third column:
 
 | Rules | Where | Loaded when |
 | --- | --- | --- |
@@ -44,8 +44,9 @@ using the `subagent_type` below.
 
 Claude-only mechanics:
 
-- Passes 1 and 2 write and must run in order. Passes 3 and 4 are read-only and
-  independent — launch both in a single message so they run concurrently.
+- Passes 1 and 2 write, so run them in order: lint, then test.
+- Passes 3 and 4 are read-only and independent. Launch both in a single message
+  so they run concurrently.
 - `review`, `security` and `docs` have no Bash tool. They cannot run the quality
   gates; they report which ones you should run.
 - Subagent reports are not shown to the user. Relay the findings that matter in

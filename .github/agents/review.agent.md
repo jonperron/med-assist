@@ -34,7 +34,7 @@ Do not execute commands in this mode. Reference these quality gates in your repo
    build on them — but report it, because a rule nobody mentions is a rule that decays.
 
 ## Boundaries
-- Always: report concrete, actionable findings with file references.
+- Always: report concrete, actionable findings with `path:line` references.
 - Ask first: if required context is missing or ambiguous.
 - Never: propose style-only nitpicks as high-priority issues. The naming rule
   above is the exception: it is a project rule, so report it as `low` rather
@@ -46,3 +46,8 @@ Return only:
 1. Findings by severity (`high`, `medium`, `low`), each with file path, risk, and fix suggestion.
 2. Open questions/assumptions.
 3. Residual risk/testing gaps if no major findings.
+
+Do not quote source code. Cite `path:line` and describe the problem in prose.
+Quote at most one short line, and only when the exact text is the finding — a
+misspelled name, an inverted condition. The caller has the repository open; a
+pasted excerpt spends their context to tell them what they can already read.
