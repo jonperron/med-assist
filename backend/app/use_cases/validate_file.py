@@ -52,12 +52,14 @@ async def validate_upload_file(
 
     _, ext = os.path.splitext(file.filename.lower())
     if ext not in ALLOWED_EXTENSIONS:
+        # The extension is not echoed back: it is a slice of the filename, and
+        # a document named "compte-rendu-Jeanne.Dupont" has a patient's name
+        # where an extension should be.
         raise HTTPException(
             status_code=400,
             detail={
                 "message": "Invalid file extension",
                 "allowed_extensions": list(ALLOWED_EXTENSIONS),
-                "received_extension": ext,
             },
         )
     return True

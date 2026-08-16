@@ -27,7 +27,6 @@ def mock_file_handler():
     handler.process_file = AsyncMock(
         side_effect=RuntimeError(f"failed reading {PATIENT_FILENAME}: Jeanne Dupont")
     )
-    handler.process_batch = AsyncMock(return_value=True)
     return handler
 
 

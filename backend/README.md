@@ -55,6 +55,9 @@ The default is to store nothing at all:
 * `POST /api/upload_document/` is for documents that must be reopened later. It stores
   the categorised entities under `doc:{file_id}:entities` and, only when
   `STORE_DOCUMENT_TEXT=true`, the text under `doc:{file_id}:text`.
+* `POST /api/upload_documents/` stores each file exactly as the single upload does. The
+  `batch_id` it returns correlates the files of that response only: nothing is written
+  under it and no endpoint resolves it.
 * Entities are extracted once, at upload. Reading a document never runs the model again.
 * When the text is not stored, entity `start`/`end` offsets are dropped: an offset
   means nothing without the text it indexes.
@@ -181,6 +184,19 @@ To run the automated tests for this system, use the following command:
 ```bash
 uv run pytest
 ```
+
+## API schema
+
+`openapi.json` is the document the frontend generates its TypeScript types from. After
+changing a route or a response model, re-export it:
+
+```bash
+uv run python scripts/export_openapi.py
+```
+
+`tests/test_openapi_contract.py` fails while the checked-in document differs from the
+application, so a client cannot drift from the API unnoticed. Regenerate the frontend
+types afterwards with `npm run generate:types` in `frontend/`.
 
 ## Contributing
 

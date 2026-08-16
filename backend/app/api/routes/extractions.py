@@ -1,10 +1,9 @@
-from typing import Union
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, Depends
 
-from app.use_cases.read_entities import read_stored_entities
-from app.schemas.extraction import ExtractionResponse, ErrorResponse, ExtractedEntities
+from app.schemas.errors import ErrorResponse
+from app.schemas.extraction import ExtractedEntities, ExtractionResponse
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 from app.core.dependencies import get_text_repository, get_entity_extractor
@@ -15,12 +14,9 @@ router = APIRouter()
 
 @router.get(
     "/get_extracted_text/{file_id}",
-    response_model=Union[ExtractionResponse, ErrorResponse],
+    response_model=ExtractionResponse,
     responses={
-        200: {
-            "model": ExtractionResponse,
-            "description": "Successfully extracted text and entities",
-        },
+        400: {"model": ErrorResponse, "description": "Invalid file ID format"},
         404: {
             "model": ErrorResponse,
             "description": "File not found or not processed yet",
@@ -30,12 +26,12 @@ router = APIRouter()
 async def get_extracted_text(
     file_id: str = Path(
         ...,
-        description="Unique identifier of the uploaded file to extract text and entities from",
-        example="123e4567-e89b-12d3-a456-426614174000",
+        description=("Unique identifier of the uploaded file to read entities from"),
+        examples=["123e4567-e89b-12d3-a456-426614174000"],
     ),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
     entity_extractor: EntityExtractionServiceInterface = Depends(get_entity_extractor),
-) -> Union[ExtractionResponse, ErrorResponse]:
+) -> ExtractionResponse:
     """
     Endpoint to retrieve the entities extracted from a processed file.
 
@@ -56,7 +52,7 @@ async def get_extracted_text(
     """
     file_uuid: UUID = parse_file_id(file_id)
 
-    extracted_entities = await read_stored_entities(file_uuid, text_repository)
+    extracted_entities = await text_repository.get_entities(file_uuid)
 
     if extracted_entities is None:
         raise HTTPException(

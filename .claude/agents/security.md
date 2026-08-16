@@ -45,3 +45,9 @@ Return only actionable findings with:
 - Affected file path(s)
 - Impact
 - Recommended mitigation
+
+Do not quote source code. Cite `path:line` and describe the problem in prose.
+Quote at most one short line, and only when the exact text is the finding — a
+hardcoded token, an unredacted log format string. The caller has the repository
+open; a pasted excerpt spends their context to tell them what they can already
+read, and every excerpt is one more chance to copy patient data into a report.

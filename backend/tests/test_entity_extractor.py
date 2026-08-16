@@ -1,6 +1,10 @@
 # pylint: disable=W0621
+import ast
+import inspect
+
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
+from app.services.entity_extractor import entity_extractor as entity_extractor_module
 from app.services.entity_extractor import EntityExtractor
 from app.schemas.extraction import EntityDetail
 
@@ -135,3 +139,59 @@ def test_get_mapping_info(mock_ner_pipeline, mock_label_mapping):
             assert info["language"] == "fr"
             assert info["dataset"] == "test_clinical"
             assert info["description"] == "Test mapping"
+
+
+def test_the_extractor_never_imports_the_application_wiring():
+    # app.core.dependencies builds the extractor. An extractor that imports it
+    # back closes a loop, and the loop is what forced dependencies.py to hide
+    # its imports inside function bodies.
+    tree = ast.parse(inspect.getsource(entity_extractor_module))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert "app.core.dependencies" not in imported
+
+
+@pytest.fixture
+def extractor(mock_ner_pipeline, mock_label_mapping):
+    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
+        with patch("json.load", return_value=mock_label_mapping):
+            yield EntityExtractor(model_name="Dummy/Model")
+
+
+@pytest.mark.parametrize(
+    "label, category",
+    [
+        ("pathologie", "diseases"),
+        ("B-pathologie", "diseases"),
+        ("I-sosy", "symptoms"),
+        ("TRAITEMENT", "treatments"),
+    ],
+)
+def test_categorize_entity_reads_the_label_table(extractor, label, category):
+    assert extractor.categorize_entity(label) == category
+
+
+@pytest.mark.parametrize("label", ["pathologies", "traitements", "symptomatique"])
+def test_a_word_that_merely_contains_a_known_label_is_not_that_category(
+    extractor, label
+):
+    # Substring matching categorised anything containing "dose" as a dose.
+    assert extractor.categorize_entity(label) == "other"
+
+
+@pytest.mark.parametrize("label", ["sous-traitement", "b-traitement_x", "traitement 2"])
+def test_a_compound_label_is_matched_part_by_part(extractor, label):
+    # A part of a compound label is a label; a fragment of a word is not.
+    assert extractor.categorize_entity(label) == "treatments"
+
+
+def test_only_the_bio_prefix_is_stripped(extractor, mock_label_mapping):
+    # "symptom" survives intact; a blanket replace of "b-"/"i-" would not have
+    # touched it either, but it would have turned "sosy-b-x" into "sosyx".
+    mock_label_mapping["categories"]["symptoms"]["labels"].append("sosy-b-x")
+    extractor.categories = extractor.build_category_lookup()
+
+    assert extractor.categorize_entity("B-sosy-b-x") == "symptoms"

@@ -1,6 +1,7 @@
 import logging
-from typing import List, Union
-from uuid import uuid4
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, List
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -13,13 +14,8 @@ from fastapi import (
     status,
 )
 
-from app.schemas.upload import (
-    FileValidationError,
-    MultipleUploadResponse,
-    UploadResponse,
-    UploadErrorResponse,
-)
-from app.use_cases.save_file import save_batch, save_file
+from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
+from app.schemas.upload import MultipleUploadResponse, UploadResponse
 from app.use_cases.validate_file import validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
@@ -34,16 +30,85 @@ logger = logging.getLogger(__name__)
 MAX_BATCH_FILES = 20
 
 
+@asynccontextmanager
+async def failures_stay_generic(file_id: UUID) -> AsyncIterator[None]:
+    """
+    Turn any unexpected failure into a fixed 500, logged by file id alone.
+
+    Clinical filenames routinely carry patient names, and a traceback or an
+    exception message can quote document content, so neither reaches the log
+    or the caller. Refusals raised on purpose pass through untouched.
+    """
+    try:
+        yield
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "Unexpected error while uploading document %s (%s)",
+            file_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Internal server error"},
+        ) from exc
+
+
+async def store_document(
+    file: UploadFile,
+    file_handler: FileHandler,
+    pseudonymize: bool | None,
+) -> UUID:
+    """
+    Validate one document, analyse it and persist what the deployment allows.
+
+    A single upload is a batch of one, so both routes come through here and
+    cannot drift apart in how they refuse a file.
+
+    :param file: The uploaded file.
+    :param file_handler: The service extracting and storing the document.
+    :param pseudonymize: Ask for masking even when the deployment default is off.
+    :return: The id the document was stored under.
+    :raises HTTPException: 400/413 for a rejected file, 500 when storing fails.
+    """
+    await validate_upload_file(file)
+
+    file_id = uuid4()
+    async with failures_stay_generic(file_id):
+        try:
+            stored = await file_handler.process_file(file_id, file, pseudonymize)
+        except ValueError as exc:
+            # A document of a supported type that cannot be parsed is the
+            # caller's problem, not a server fault - and /api/analyze already
+            # answers 400 for the same file. The message is fixed upstream and
+            # quotes nothing from the document.
+            raise HTTPException(
+                status_code=400,
+                detail={"message": UNREADABLE_DOCUMENT},
+            ) from exc
+
+        if not stored:
+            # process_file answers False for a document with no extractable
+            # text: same cause, same answer.
+            raise HTTPException(
+                status_code=400,
+                detail={"message": UNREADABLE_DOCUMENT},
+            )
+
+    return file_id
+
+
 @router.post(
     "/upload_document/",
-    response_model=Union[UploadResponse, UploadErrorResponse, FileValidationError],
+    response_model=UploadResponse,
     responses={
-        200: {"model": UploadResponse, "description": "File uploaded successfully"},
         400: {
-            "model": FileValidationError,
-            "description": "Invalid file type or format",
+            "model": ErrorResponse,
+            "description": "Invalid file type, or a document that cannot be read",
         },
-        500: {"model": UploadErrorResponse, "description": "Internal server error"},
+        413: {"model": ErrorResponse, "description": "File too large"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def upload_document(
@@ -57,7 +122,7 @@ async def upload_document(
     ),
     file_handler: FileHandler = Depends(get_file_handler),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
-):
+) -> UploadResponse:
     """
     Upload a medical document for text extraction and entity recognition.
 
@@ -71,58 +136,30 @@ async def upload_document(
     Raises:
         HTTPException: 400 for invalid file type, 500 for server errors
     """
-    # Validate file type
-    await validate_upload_file(file)
+    file_id = await store_document(file, file_handler, pseudonymize)
 
-    file_id = uuid4()
-
-    try:
-        success = await save_file(file_id, file, file_handler, pseudonymize)
-
-        if not success:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": "Failed to save file"},
-            )
-
+    async with failures_stay_generic(file_id):
         return UploadResponse(
             file_id=str(file_id),
             filename=file.filename or "unknown",
             message="File uploaded and analysed successfully.",
             expires_in_seconds=await text_repository.get_document_ttl(file_id),
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        # The file id is the only identifier that may be logged: clinical
-        # filenames routinely carry patient names, and a traceback or an
-        # exception message can quote document content.
-        logger.error(
-            "Unexpected error while uploading document %s (%s)",
-            file_id,
-            type(e).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail={"message": "Internal server error"},
-        ) from e
 
 
 @router.post(
     "/upload_documents/",
-    response_model=Union[
-        MultipleUploadResponse, UploadErrorResponse, FileValidationError
-    ],
+    response_model=MultipleUploadResponse,
     responses={
-        200: {
-            "model": MultipleUploadResponse,
-            "description": "File uploaded successfully",
-        },
         400: {
-            "model": FileValidationError,
-            "description": "Invalid file type or format",
+            "model": ErrorResponse,
+            "description": "Invalid file type, or a document that cannot be read",
         },
-        500: {"model": UploadErrorResponse, "description": "Internal server error"},
+        413: {
+            "model": ErrorResponse,
+            "description": "A file is too large, or the batch holds too many files",
+        },
+        500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def upload_documents(
@@ -145,6 +182,10 @@ async def upload_documents(
     """
     Upload multiple medical documents for text extraction and entity recognition.
 
+    Each file is processed on its own and answered with its own id. The batch id
+    only correlates the files of this request: nothing is written under it, so
+    there is one less patient-adjacent key living out a retention window.
+
     Args:
         files: The uploaded files (PDF, DOCX, TXT)
         pseudonymize: Whether to mask detected patient identifiers
@@ -164,42 +205,19 @@ async def upload_documents(
             },
         )
 
-    batch_id = uuid4()
-    file_ids = []
-
+    # Validate the whole batch before storing any of it. A refusal on the
+    # fourth file used to leave the first three in Redis under ids the client
+    # never receives in the error response, so nobody could delete them before
+    # the retention window closed.
     for file in files:
         await validate_upload_file(file)
-        file_id = uuid4()
 
-        try:
-            success = await save_file(file_id, file, file_handler, pseudonymize)
+    file_ids = [
+        str(await store_document(file, file_handler, pseudonymize)) for file in files
+    ]
 
-            if not success:
-                raise HTTPException(
-                    status_code=500,
-                    detail={"message": "Failed to save file"},
-                )
-
-            file_ids.append(str(file_id))
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            # See upload_document: never log the filename or the exception text.
-            logger.error(
-                "Unexpected error while uploading document %s in batch %s (%s)",
-                file_id,
-                batch_id,
-                type(e).__name__,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail={"message": "Internal server error"},
-            ) from e
-
-    await save_batch(batch_id, file_ids, file_handler)
     return MultipleUploadResponse(
-        batch_id=str(batch_id),
+        batch_id=str(uuid4()),
         file_ids=file_ids,
         message="Files uploaded successfully.",
     )
@@ -210,8 +228,8 @@ async def upload_documents(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         204: {"description": "Document deleted"},
-        400: {"model": UploadErrorResponse, "description": "Invalid file ID format"},
-        404: {"model": UploadErrorResponse, "description": "Document not found"},
+        400: {"model": ErrorResponse, "description": "Invalid file ID format"},
+        404: {"model": ErrorResponse, "description": "Document not found"},
     },
 )
 async def delete_document(

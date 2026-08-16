@@ -1,0 +1,76 @@
+# CLAUDE.md - backend
+
+Claude Code loads this file when a file under `backend/` enters context. It
+carries the Python rules for this repo. AGENTS.md stays the source of truth for
+the stack, the boundaries and the definition of done; where this file and
+AGENTS.md disagree, AGENTS.md wins.
+
+Path-scoped memory backstops the rules, it does not deliver them: this file
+loads once a backend file is already in context, which is usually after you have
+decided what to write. Read it before editing, not after.
+
+## Gates for a backend change
+
+```bash
+cd backend
+uv run pytest -v
+uv run pre-commit run --all-files
+```
+
+`pre-commit --all-files` collects files with `git ls-files`, which from
+`backend/` returns only what is under `backend/`. The hooks live in the
+repo-root `.pre-commit-config.yaml` and the pylint hook is pinned to
+`backend/app`. Run the same command from the repo root when a change touches
+tests or files outside `backend/app`, since that is a wider file set.
+
+## Code organization
+
+- Many small files over few large files
+- High cohesion, low coupling
+- 200-400 lines typical, 800 max per file
+- Organize by feature/domain, not by type
+- No circular import
+- Respect the layering: `api/routes/` holds HTTP concerns, `use_cases/`
+  orchestrates, `services/` does extraction, parsing and model work,
+  `repositories/` persists behind the protocols in `interfaces/`. A route that
+  reaches straight into Redis is a review finding, not a shortcut.
+
+## Code style
+
+- No emojis in code, comments, or documentation
+- Immutability by default: build new values rather than mutating arguments,
+  module-level containers, or shared state
+- Follow PEP 8
+- 4 spaces for indentation, never tabs
+- Meaningful, descriptive names. Avoid abbreviations.
+- snake_case for functions and variables, PascalCase for classes, UPPER_CASE for
+  constants
+- Line length follows the ruff formatter default of 88. `.pylintrc` allows 120
+  so that a string the formatter cannot split does not fail the build; that
+  headroom is not a licence to write 120-character lines.
+- No "fake" privacy: do not prefix functions, methods, classes, module-level
+  values, `self` attributes, or import aliases with a leading underscore. Python
+  does not enforce privacy — the underscore only hides names from `import *` and
+  adds noise. It is reserved for intentionally-unused names (`*_args`,
+  `**_kwargs`, `for _key, value in ...`). `scripts/check_naming.py` enforces
+  this in pre-commit and dunders are exempt. Rename rather than adding an
+  exemption.
+
+## Typing and async
+
+- Annotate every function signature. mypy runs in pre-commit and in CI.
+- Prefer Pydantic models in `schemas/` over dicts at API and service boundaries.
+- Redis access is async. Do not block the event loop with synchronous I/O inside
+  a coroutine, and keep CPU-bound model work off the request path where that is
+  avoidable.
+
+## Error handling
+
+- Validate at the boundary: file type, extension, declared size, and ID format
+  before any work happens.
+- Raise `HTTPException` with a `{"message": ...}` detail payload and nothing
+  else. Chain the cause with `from exc` so the traceback survives in the logs.
+- Never let a parser error, stack trace, filename, or document content reach the
+  client. Parser libraries quote the bytes that failed to parse, and those bytes
+  are patient data. Log the file id and the exception type.
+- Do not catch `Exception` broadly to make a check pass; catch what you handle.
