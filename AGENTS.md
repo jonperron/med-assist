@@ -86,14 +86,14 @@ from fastapi import HTTPException
 
 
 def parse_file_id(raw_file_id: str) -> UUID:
-	"""Validate and convert a file id to UUID without leaking internals."""
-	try:
-		return UUID(raw_file_id)
-	except ValueError as exc:
-		raise HTTPException(
-			status_code=400,
-			detail={"message": "Invalid file ID format. Expected UUID."},
-		) from exc
+    """Validate and convert a file id to UUID without leaking internals."""
+    try:
+        return UUID(raw_file_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Invalid file ID format. Expected UUID."},
+        ) from exc
 ```
 
 Expected behavior:
@@ -101,10 +101,19 @@ Expected behavior:
 - Explicit user-safe error payload.
 - No internal traceback exposure in API response.
 
+### Detailed coding rules
+
+This section is the summary and wins on any conflict. The granular per-language
+rules — file organization, layering, naming, typing, error handling, component
+conventions — live wherever each tool loads them from; do not hardcode one
+tool's paths here. Claude Code's mapping is in CLAUDE.md.
+
 ## 7) Git Workflow
 
 - Use short-lived branches: `feature/<scope>` or `fix/<scope>`.
-- Commit in logical units with clear messages.
+- Commit in logical units with clear messages: Conventional Commits
+  (`type(scope): summary`), imperative subject under 72 chars, body explaining
+  why. Never quote patient data or a real filename in a message.
 - Run quality gates before opening a PR.
 - Do not rewrite shared history unless explicitly requested.
 - In reviews, prioritize security, regressions, and missing tests over style-only comments.
@@ -197,6 +206,10 @@ Always do:
 - Keep CORS strict and environment-aligned.
 - Minimize persisted data and justify any new persistent field.
 - Prefer explicit Redis TTLs when retention is introduced.
+
+The working detail behind these boundaries is loaded on demand by each tool when
+a change touches upload handling, storage, logging, or deployment config. The
+list above wins on any conflict.
 
 ## 10) Definition of Done
 

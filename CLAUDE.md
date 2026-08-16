@@ -8,6 +8,25 @@ commands, stack, structure, security boundaries, and definition of done.
 Everything below is the Claude-Code-specific delta. If a rule here conflicts
 with AGENTS.md, AGENTS.md wins — except where noted as Claude-only mechanics.
 
+## Coding Rules
+
+AGENTS.md section 6 holds the summary. The detail lives in four files, each
+loaded by the mechanism that matches when it is needed:
+
+| Rules | Where | Loaded when |
+| --- | --- | --- |
+| Python, layering, error handling | `backend/CLAUDE.md` | a file under `backend/` enters context |
+| TypeScript, React, API access | `frontend/CLAUDE.md` | a file under `frontend/` enters context |
+| Patient data, secrets, retention | `data-boundaries` skill | storage, logging, uploads, CORS, deploy config |
+| Conventional commits, PR bodies | `commit-messages` skill | writing a commit message or PR body |
+
+Each also carries the gate commands or Claude-only mechanics for its scope, so
+the rule and the way to check it sit together.
+
+Path-scoped memory backstops the rules, it does not deliver them: a nested
+`CLAUDE.md` loads once a file in its directory is already in context, which is
+usually after you have decided what to write. Read it before editing.
+
 ## Subagent Mapping
 
 AGENTS.md section 8 defines four mandatory review passes. In Claude Code they
@@ -39,3 +58,7 @@ Claude-only mechanics:
   is correct.
 - `.claude/agents/` and `.github/agents/` are parallel definitions of the same
   four roles in incompatible frontmatter formats. Change both or neither.
+- The coding rules above are Claude Code config and have no `.github/`
+  counterpart. If GitHub tooling ever needs them, add `.github/instructions/`
+  files and keep them in sync the same way `agents/` is kept in sync — do not
+  point one tool at the other's paths.
