@@ -14,7 +14,8 @@ from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
     TextExtractionServiceInterface,
 )
-from app.schemas.extraction import AnalysisResponse, ErrorResponse, ExtractedEntities
+from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
+from app.schemas.extraction import AnalysisResponse, ExtractedEntities
 from app.services.pseudonymizer import Pseudonymizer
 from app.use_cases.analyze_document import analyze_document
 from app.use_cases.validate_file import validate_upload_file
@@ -27,11 +28,8 @@ logger = logging.getLogger(__name__)
     "/analyze",
     response_model=AnalysisResponse,
     responses={
-        200: {
-            "model": AnalysisResponse,
-            "description": "Entities extracted without storing anything",
-        },
         400: {"model": ErrorResponse, "description": "Invalid or unreadable document"},
+        413: {"model": ErrorResponse, "description": "File too large"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
@@ -99,7 +97,7 @@ async def analyze(
         # carries no document content.
         raise HTTPException(
             status_code=400,
-            detail={"message": "Unable to extract text from the document."},
+            detail={"message": UNREADABLE_DOCUMENT},
         ) from exc
     except Exception as exc:
         logger.error("Analysis failed (%s)", type(exc).__name__)

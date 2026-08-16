@@ -76,14 +76,3 @@ class FileHandler(FileProcessingServiceInterface):
 
         await self.text_repository.save_entities(file_id, entities)
         return True
-
-    async def process_batch(self, batch_id: UUID, file_ids: list[str]) -> bool:
-        """
-        Process batch of files.
-
-        :param batch_id: The unique identifier for the batch of files.
-        :param file_ids: The list of unique identifiers for the uploaded files
-        :return: True if batch was processed successfully
-        """
-        await self.text_repository.save_batch(batch_id, file_ids)
-        return True

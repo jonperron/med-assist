@@ -36,7 +36,3 @@ class TextRepositoryInterface(ABC):
     @abstractmethod
     async def delete_document(self, file_id: UUID) -> bool:
         """Delete everything stored for a document. True when something was removed."""
-
-    @abstractmethod
-    async def save_batch(self, batch_id: UUID, file_ids: list[str]) -> None:
-        """Save batch information."""

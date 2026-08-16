@@ -25,7 +25,6 @@ def mock_text_repository():
     mock = MagicMock(spec=TextRepositoryInterface)
     mock.save_text = AsyncMock()
     mock.save_entities = AsyncMock()
-    mock.save_batch = AsyncMock()
     return mock
 
 
@@ -190,28 +189,3 @@ async def test_process_file_no_text(
     mock_entity_extractor.extract_entities.assert_not_called()
     mock_text_repository.save_text.assert_not_called()
     mock_text_repository.save_entities.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_file_handler_process_batch_success(
-    mock_text_repository, mock_entity_extractor
-):
-    batch_id = uuid4()
-    file_ids = ["file1", "file2", "file3"]
-
-    handler = build_handler(mock_text_repository, mock_entity_extractor)
-    result = await handler.process_batch(batch_id, file_ids)
-    mock_text_repository.save_batch.assert_called_once_with(batch_id, file_ids)
-    assert result is True
-
-
-@pytest.mark.asyncio
-async def test_file_handler_process_batch_failure(
-    mock_text_repository, mock_entity_extractor
-):
-    mock_text_repository.save_batch = AsyncMock(side_effect=Exception("Save failed"))
-
-    handler = build_handler(mock_text_repository, mock_entity_extractor)
-
-    with pytest.raises(Exception):
-        await handler.process_batch(uuid4(), ["file1", "file2"])

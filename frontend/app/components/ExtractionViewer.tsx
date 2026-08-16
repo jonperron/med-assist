@@ -1,40 +1,9 @@
 'use client'
 
-interface EntityDetail {
-  text: string
-  label: string
-  score: number
-  // Absent when the document text was not retained: an offset means nothing
-  // without the text it indexes.
-  start?: number | null
-  end?: number | null
-}
-
-interface ExtractedEntities {
-  patient_info: EntityDetail[]
-  anatomy: EntityDetail[]
-  symptoms: EntityDetail[]
-  examinations: EntityDetail[]
-  treatments: EntityDetail[]
-  pathologies: EntityDetail[]
-  temporal: EntityDetail[]
-  measurements: EntityDetail[]
-  other: EntityDetail[]
-}
+import type { ExtractionData } from '../types/extraction'
 
 interface Props {
-  data: {
-    file_id?: string
-    text?: string | null
-    extracted_entities: ExtractedEntities
-    processed_at?: string | null
-    mapping_info?: {
-      language: string
-      dataset: string
-      description: string
-    }
-    retained?: boolean
-  }
+  data: ExtractionData
 }
 
 export default function ExtractionViewer({ data }: Props) {

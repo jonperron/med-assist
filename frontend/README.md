@@ -30,4 +30,20 @@ npm test
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## API types
+
+`app/types/api.ts` is generated from the backend's OpenAPI document and is not
+edited by hand. `app/types/extraction.ts` gives its schemas the names the
+components use.
+
+After a backend response model changes:
+
+```bash
+cd ../backend && uv run python scripts/export_openapi.py
+cd ../frontend && npm run generate:types
+```
+
+A backend test fails when `backend/openapi.json` no longer matches the app, so
+the export cannot be forgotten silently.
+
 When changing framework dependencies, regenerate the lockfile with the same Node.js major version used for validation.

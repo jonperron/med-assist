@@ -21,7 +21,13 @@ class UploadResponse(BaseModel):
 
 
 class MultipleUploadResponse(BaseModel):
-    batch_id: str = Field(description="Unique identifier of the batch")
+    batch_id: str = Field(
+        description=(
+            "Identifier correlating the files of one upload request. Nothing is "
+            "stored under it: the batch cannot be resolved server-side, only the "
+            "file IDs can."
+        )
+    )
     file_ids: List[str] = Field(description="List of file IDs in the batch")
     message: str = Field(description="Batch upload status message")
     total_files: Optional[int] = Field(
@@ -29,23 +35,4 @@ class MultipleUploadResponse(BaseModel):
     )
     uploaded_at: Optional[datetime] = Field(
         default=None, description="Upload timestamp"
-    )
-
-
-class UploadErrorResponse(BaseModel):
-    message: str = Field(description="Error message")
-    error_code: Optional[str] = Field(default=None, description="Specific error code")
-    file_name: Optional[str] = Field(
-        default=None, description="Name of the problematic file"
-    )
-
-
-class FileValidationError(BaseModel):
-    message: str = Field(description="Validation error message")
-    allowed_types: List[str] = Field(description="List of allowed file types")
-    received_type: str = Field(
-        description="The received file type that failed validation"
-    )
-    field_name: Optional[str] = Field(
-        default=None, description="Name of the field that failed validation"
     )

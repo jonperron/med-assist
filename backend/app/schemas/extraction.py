@@ -101,9 +101,3 @@ class AnalysisResponse(BaseModel):
         default=False,
         description="Always false: this endpoint never writes to storage",
     )
-
-
-class ErrorResponse(BaseModel):
-    message: str = Field(description="Error message")
-    error_code: Optional[str] = Field(default=None, description="Specific error code")
-    file_id: Optional[str] = Field(default=None, description="File ID if applicable")
