@@ -26,6 +26,18 @@ LABEL_SEPARATORS = re.compile(r"[\W_]+")
 # not silently start copying clinical text onto it.
 INFERENCE_DEVICE = "cpu"
 
+# A transformer reads a fixed window - 512 tokens for the BERT family this model
+# belongs to - and the pipeline drops everything past it without saying so, which
+# silently loses the tail of a real discharge summary. Given a stride, the
+# pipeline slides that window across the whole document instead and reconciles
+# the overlaps itself. A quarter-window overlap is what keeps an entity lying
+# across a boundary whole in one of the two chunks it appears in.
+WINDOW_OVERLAP_DIVISOR = 4
+
+# Past this, `model_max_length` is the sentinel a tokenizer uses for "no limit"
+# rather than a real window, and there is no window to slide.
+UNBOUNDED_WINDOW = 100_000
+
 
 def configure_inference_threads(inference_threads: int) -> None:
     """
@@ -91,10 +103,47 @@ class EntityExtractor(EntityExtractionServiceInterface):
         # RuntimeError.
         self.inference_slots = anyio.Semaphore(max_concurrent_inferences)
 
+        # Kept as call arguments rather than re-derived per request: the answer
+        # depends only on the tokenizer, which does not change after loading.
+        self.inference_arguments = self.sliding_window_arguments()
+
         self.language = language
         self.label_mapping = self.load_label_mapping(label_mapping_file, language)
         self.categories = self.build_category_lookup()
         self.report_unmapped_model_labels()
+        self.report_truncation_risk()
+
+    def sliding_window_arguments(self) -> Dict[str, int]:
+        """
+        The stride that makes the pipeline read a whole document, when it can.
+
+        Empty when the window cannot be established or the tokenizer is slow -
+        transformers refuses a stride there. The caller then gets the old
+        behaviour, which is truncation, so `report_truncation_risk` says so.
+        """
+        tokenizer = getattr(self.ner_pipeline, "tokenizer", None)
+        if not getattr(tokenizer, "is_fast", False):
+            return {}
+
+        window = getattr(tokenizer, "model_max_length", None)
+        if not isinstance(window, int) or not 0 < window < UNBOUNDED_WINDOW:
+            return {}
+
+        return {"stride": max(1, window // WINDOW_OVERLAP_DIVISOR)}
+
+    def report_truncation_risk(self) -> None:
+        """
+        Say so when a document longer than the window will lose its tail.
+
+        Truncation is invisible in the response - the entities that come back
+        look complete - so the warning is the only place it surfaces.
+        """
+        if not self.inference_arguments:
+            logger.warning(
+                "The tokenizer does not support a sliding window, so any "
+                "document longer than the model's window is truncated and its "
+                "tail is not analysed"
+            )
 
     def load_label_mapping(
         self,
@@ -276,7 +325,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
         Returns:
             Dictionary with categorized entities as EntityDetail instances
         """
-        ner_results = self.ner_pipeline(text)
+        ner_results = self.ner_pipeline(text, **self.inference_arguments)
 
         # Initialize categories from config
         categories_config = self.label_mapping.get("categories", {})

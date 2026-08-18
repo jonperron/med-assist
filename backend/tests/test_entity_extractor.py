@@ -2,6 +2,7 @@
 import ast
 import asyncio
 import inspect
+import logging
 import threading
 
 import pytest
@@ -347,3 +348,83 @@ def test_only_the_bio_prefix_is_stripped(extractor, mock_label_mapping):
     extractor.categories = extractor.build_category_lookup()
 
     assert extractor.categorize_entity("B-sosy-b-x") == "symptoms"
+
+
+def fast_tokenizer(model_max_length=512):
+    """A stand-in for the tokenizer the pipeline exposes."""
+    tokenizer = MagicMock()
+    tokenizer.is_fast = True
+    tokenizer.model_max_length = model_max_length
+    return tokenizer
+
+
+@pytest.mark.asyncio
+async def test_a_long_document_is_read_through_a_sliding_window(
+    mock_ner_pipeline, mock_label_mapping
+):
+    # Without a stride the pipeline reads the first window and drops the rest,
+    # so a discharge summary loses its tail and the response looks complete.
+    mock_pipeline_instance = MagicMock(return_value=[])
+    mock_pipeline_instance.tokenizer = fast_tokenizer()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    extractor = build_extractor(mock_label_mapping)
+
+    await extractor.extract_entities("texte")
+
+    # A quarter of the window: an entity lying across a boundary stays whole in
+    # one of the two chunks it appears in.
+    assert mock_pipeline_instance.call_args.kwargs["stride"] == 128
+
+
+@pytest.mark.parametrize(
+    "is_fast, model_max_length",
+    [
+        # transformers refuses a stride on a slow tokenizer.
+        (False, 512),
+        # The sentinel a tokenizer uses for "no limit": no window to slide.
+        (True, 1000000000000000019884624838656),
+        (True, 0),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_window_is_left_alone_when_it_cannot_be_slid(
+    mock_ner_pipeline, mock_label_mapping, is_fast, model_max_length
+):
+    mock_pipeline_instance = MagicMock(return_value=[])
+    mock_pipeline_instance.tokenizer = fast_tokenizer(model_max_length)
+    mock_pipeline_instance.tokenizer.is_fast = is_fast
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    extractor = build_extractor(mock_label_mapping)
+
+    await extractor.extract_entities("texte")
+
+    assert "stride" not in mock_pipeline_instance.call_args.kwargs
+
+
+def test_silent_truncation_is_reported_at_load_time(
+    mock_ner_pipeline, mock_label_mapping, caplog
+):
+    # Truncation cannot be seen in the response, so the log is the only place a
+    # deployment learns it is losing the end of every long document.
+    mock_pipeline_instance = MagicMock(return_value=[])
+    mock_pipeline_instance.tokenizer = fast_tokenizer()
+    mock_pipeline_instance.tokenizer.is_fast = False
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+
+    with caplog.at_level(logging.WARNING):
+        build_extractor(mock_label_mapping)
+
+    assert "truncated" in caplog.text
+
+
+def test_a_sliding_window_is_not_announced(
+    mock_ner_pipeline, mock_label_mapping, caplog
+):
+    mock_pipeline_instance = MagicMock(return_value=[])
+    mock_pipeline_instance.tokenizer = fast_tokenizer()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+
+    with caplog.at_level(logging.WARNING):
+        build_extractor(mock_label_mapping)
+
+    assert "truncated" not in caplog.text
