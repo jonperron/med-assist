@@ -23,6 +23,17 @@ dependencies = [
     "cryptography>=46,<47",
 ]
 
+# Inference runs on the CPU, always. The default PyPI `torch` resolves to the
+# CUDA build on Linux and drags the whole `nvidia-*` wheel set into the runtime
+# image - gigabytes of GPU runtime for a service that never touches a GPU.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
