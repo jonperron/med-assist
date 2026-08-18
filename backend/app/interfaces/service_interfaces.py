@@ -27,8 +27,8 @@ class EntityExtractionServiceInterface(ABC):
     """Interface for entity extraction operations."""
 
     @abstractmethod
-    def extract_entities(self, text: str) -> Dict[str, List["EntityDetail"]]:
-        """Extract medical entities from text."""
+    async def extract_entities(self, text: str) -> Dict[str, List["EntityDetail"]]:
+        """Extract medical entities from text, off the event loop."""
 
     @abstractmethod
     def get_mapping_info(self) -> Dict[str, Any]:

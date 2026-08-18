@@ -143,12 +143,71 @@ The application uses Hugging Face transformers for Named Entity Recognition. Con
 **Environment Variables:**
 
 * `NER_MODEL_NAME`: Name of the Hugging Face model to use for NER
+* `NER_INFERENCE_THREADS`: Threads torch may use for one inference (default: `0`, which keeps torch's own default of one thread per core). Set it to the container's CPU quota when there is one — torch reads the host's core count, not the quota, and spends the difference on contention.
+* `NER_MAX_CONCURRENT_INFERENCES`: How many documents may be inside the model at once (default: `1`). Peak memory is then a function of the largest document rather than of how many arrived together.
 
 **Example:**
 
 ```bash
 export NER_MODEL_NAME="dbmdz/bert-large-cased-finetuned-conll03-english"
+export NER_INFERENCE_THREADS=2
 ```
+
+### Inference runs on the CPU
+
+The service never uses a GPU, and three things hold that to be true rather than
+assume it:
+
+* `pyproject.toml` pins `torch` to the PyTorch CPU wheel index. The default PyPI
+  `torch` resolves to the CUDA build on Linux and pulls the whole `nvidia-*` wheel
+  set with it; the pin takes the installed environment from 4.6 GB to 1.2 GB.
+  Check what a resolution actually gives you with `uv tree --package torch`.
+* The pipeline is built with `device="cpu"`, so a host that happens to carry an
+  accelerator does not start copying clinical text onto it.
+* Inference runs on a worker thread behind a semaphore, so a long document does
+  not hold the event loop and concurrent uploads do not multiply the model's
+  peak memory. Note the queue itself is unbounded: requests waiting for the slot
+  hold their extracted text in memory, and there is no acquisition timeout.
+  Above one, the setting shares a single transformers pipeline across threads,
+  which transformers does not document as safe — prefer more worker processes.
+
+### Long documents are read whole
+
+A transformer reads a fixed window — 512 tokens for this model — and the
+pipeline drops whatever does not fit without saying so, which loses the tail of
+a real discharge summary while the response still looks complete. The extractor
+passes the pipeline a `stride` of a quarter of that window, so it slides the
+window across the whole document and reconciles the overlapping spans itself. A
+quarter-window overlap keeps an entity lying across a boundary whole in one of
+the two chunks it appears in.
+
+The stride needs a fast tokenizer and a declared window. When either is missing
+the old behaviour applies, and the extractor logs a warning at load time saying
+so — truncation cannot be seen in the response.
+
+### Startup and health
+
+The model is loaded once, by the lifespan handler, before the first request.
+Uvicorn opens its listening sockets only after that handler returns, so during
+the load the port is closed rather than slow — a connection is refused, not
+queued.
+
+* `GET /healthz` is liveness: the process is up and the loop is answering. It
+  says nothing about the model.
+* `GET /readyz` is readiness. It answers `200 {"status": "ready"}` once the
+  weights are in memory, and otherwise refuses with the same
+  `{"detail": {"message": ...}}` envelope as every other route.
+* A model that fails to load leaves the service up and permanently unready. The
+  exception type is logged; the model path is not.
+* The routes that need the model — `/api/analyze`, both uploads, and
+  `/api/get_extracted_text/{file_id}` — answer `503` while it is unloaded, so a
+  failed load costs one refusal per request rather than a fresh multi-second
+  load attempt each time (`functools.lru_cache` does not memoise an exception).
+  `DELETE /api/documents/{file_id}` is not gated: withdrawing a document must
+  not depend on inference being up.
+
+`docker-compose.yml` gives the backend a healthcheck on `/readyz` with a
+`start_period` long enough to cover the load.
 
 ### Installation
 

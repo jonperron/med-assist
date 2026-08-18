@@ -20,6 +20,7 @@ from app.use_cases.validate_file import validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
 from app.core.dependencies import get_file_handler, get_text_repository
+from app.core.readiness import require_the_model
 from app.core.validation import parse_file_id
 
 router = APIRouter()
@@ -102,6 +103,7 @@ async def store_document(
 @router.post(
     "/upload_document/",
     response_model=UploadResponse,
+    dependencies=[Depends(require_the_model)],
     responses={
         400: {
             "model": ErrorResponse,
@@ -109,6 +111,7 @@ async def store_document(
         },
         413: {"model": ErrorResponse, "description": "File too large"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
+        503: {"model": ErrorResponse, "description": "The model is not loaded yet"},
     },
 )
 async def upload_document(
@@ -150,6 +153,7 @@ async def upload_document(
 @router.post(
     "/upload_documents/",
     response_model=MultipleUploadResponse,
+    dependencies=[Depends(require_the_model)],
     responses={
         400: {
             "model": ErrorResponse,
@@ -160,6 +164,7 @@ async def upload_document(
             "description": "A file is too large, or the batch holds too many files",
         },
         500: {"model": ErrorResponse, "description": "Internal server error"},
+        503: {"model": ErrorResponse, "description": "The model is not loaded yet"},
     },
 )
 async def upload_documents(

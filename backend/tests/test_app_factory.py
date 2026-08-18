@@ -6,6 +6,7 @@ import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
+from app import main
 from app.main import DEVELOPMENT, PRODUCTION, create_app
 
 MOCK_PATH = "/mock_extracted_text/{file_id}"
@@ -33,6 +34,44 @@ def test_the_environment_decides_when_nothing_is_passed(monkeypatch):
     monkeypatch.setenv("APP_ENV", DEVELOPMENT)
 
     assert MOCK_PATH in paths(create_app())
+
+
+def test_the_model_is_read_at_startup_not_by_the_first_caller(monkeypatch):
+    # Lazily loaded, the weights were read inside the first analysis, which paid
+    # seconds of CPU for a cost that belongs to the process.
+    loads = []
+    monkeypatch.setattr(main, "get_entity_extractor", lambda: loads.append(1))
+
+    with TestClient(create_app(PRODUCTION)) as client:
+        assert loads == [1]
+        assert client.get("/readyz").status_code == 200
+
+
+def test_a_model_that_will_not_load_leaves_the_service_up_and_unready(monkeypatch):
+    def refuse_to_load():
+        raise OSError("no model at /app/models")
+
+    monkeypatch.setattr(main, "get_entity_extractor", refuse_to_load)
+
+    with TestClient(create_app(PRODUCTION)) as client:
+        # Up, and honest about it: a crash loop says nothing about why.
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/readyz").status_code == 503
+
+
+def test_a_failed_load_logs_a_type_and_never_the_path(monkeypatch, caplog):
+    def refuse_to_load():
+        # A model path is deployment configuration, and the exceptions raised
+        # around a document quote the value they choked on.
+        raise OSError("no model at /home/jeanne-dupont/models")
+
+    monkeypatch.setattr(main, "get_entity_extractor", refuse_to_load)
+
+    with TestClient(create_app(PRODUCTION)):
+        pass
+
+    assert "OSError" in caplog.text
+    assert "jeanne-dupont" not in caplog.text
 
 
 @pytest.fixture

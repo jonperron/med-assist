@@ -45,6 +45,10 @@ def mock_ner_pipeline():
     with patch(
         "app.services.entity_extractor.entity_extractor.pipeline"
     ) as mock_pipeline:
+        # A tokenizer the extractor can slide its window over, so the only
+        # warnings these tests see are the ones they are about.
+        mock_pipeline.return_value.tokenizer.is_fast = True
+        mock_pipeline.return_value.tokenizer.model_max_length = 512
         yield mock_pipeline
 
 

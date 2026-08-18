@@ -63,7 +63,7 @@ class FileHandler(FileProcessingServiceInterface):
         if not text:
             return False
 
-        entities = self.entity_extractor.extract_entities(text)
+        entities = await self.entity_extractor.extract_entities(text)
 
         # A request may ask for masking, never turn a deployment's policy off.
         if self.privacy_config.pseudonymize or bool(pseudonymize):

@@ -10,6 +10,7 @@ from app.core.dependencies import (
     get_text_extractor,
 )
 from app.core.config import PrivacyConfiguration
+from app.core.readiness import require_the_model
 from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
     TextExtractionServiceInterface,
@@ -27,10 +28,12 @@ logger = logging.getLogger(__name__)
 @router.post(
     "/analyze",
     response_model=AnalysisResponse,
+    dependencies=[Depends(require_the_model)],
     responses={
         400: {"model": ErrorResponse, "description": "Invalid or unreadable document"},
         413: {"model": ErrorResponse, "description": "File too large"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
+        503: {"model": ErrorResponse, "description": "The model is not loaded yet"},
     },
 )
 async def analyze(

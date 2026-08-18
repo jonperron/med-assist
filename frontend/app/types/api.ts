@@ -189,9 +189,37 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description Health check endpoint to verify if the API is running.
+         * @description Liveness: the process is up and the event loop is answering.
+         *
+         *     This says nothing about the model. Uvicorn opens its sockets only once the
+         *     lifespan handler returns, so a served answer here already implies the load
+         *     has finished one way or the other - use `/readyz` for which way.
          */
         get: operations["health_check_healthz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readyz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness Check
+         * @description Readiness: the model is loaded, so an analysis will not wait for weights.
+         *
+         *     Refuses with the same envelope and the same message as the routes that need
+         *     the model, so a caller reads one answer rather than two. The body carries a
+         *     fixed string - no path, no configuration, no reason.
+         */
+        get: operations["readiness_check_readyz_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -624,6 +652,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The model is not loaded yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     delete_document_api_documents__file_id__delete: {
@@ -722,6 +759,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description The model is not loaded yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     upload_document_api_upload_document__post: {
@@ -775,6 +821,15 @@ export interface operations {
             };
             /** @description Internal server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The model is not loaded yet */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -842,6 +897,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description The model is not loaded yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     health_check_healthz_get: {
@@ -860,6 +924,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    readiness_check_readyz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description The model is not loaded yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
