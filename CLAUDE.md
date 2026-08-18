@@ -52,14 +52,3 @@ Claude-only mechanics:
 - Subagent reports are not shown to the user. Relay the findings that matter in
   your own response, and never predict or fabricate the result of a pass that
   has not returned yet.
-
-## Claude-Specific Notes
-
-- Node.js is 24.x. The files under `.github/agents/` still say 20.19+; AGENTS.md
-  is correct.
-- `.claude/agents/` and `.github/agents/` are parallel definitions of the same
-  four roles in incompatible frontmatter formats. Change both or neither.
-- The coding rules above are Claude Code config and have no `.github/`
-  counterpart. If GitHub tooling ever needs them, add `.github/instructions/`
-  files and keep them in sync the same way `agents/` is kept in sync — do not
-  point one tool at the other's paths.
