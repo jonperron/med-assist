@@ -7,6 +7,7 @@ from app.schemas.extraction import ExtractedEntities, ExtractionResponse
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 from app.core.dependencies import get_text_repository, get_entity_extractor
+from app.core.readiness import require_the_model
 from app.core.validation import parse_file_id
 
 router = APIRouter()
@@ -15,12 +16,16 @@ router = APIRouter()
 @router.get(
     "/get_extracted_text/{file_id}",
     response_model=ExtractionResponse,
+    # Reading entities never runs the model, but the response reports the label
+    # mapping, which is read off the loaded extractor.
+    dependencies=[Depends(require_the_model)],
     responses={
         400: {"model": ErrorResponse, "description": "Invalid file ID format"},
         404: {
             "model": ErrorResponse,
             "description": "File not found or not processed yet",
         },
+        503: {"model": ErrorResponse, "description": "The model is not loaded yet"},
     },
 )
 async def get_extracted_text(

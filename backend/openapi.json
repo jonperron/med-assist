@@ -719,6 +719,16 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The model is not loaded yet"
           }
         },
         "summary": "Analyze",
@@ -848,6 +858,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The model is not loaded yet"
           }
         },
         "summary": "Get Extracted Text",
@@ -920,6 +940,16 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The model is not loaded yet"
           }
         },
         "summary": "Upload Document",
@@ -992,6 +1022,16 @@
               }
             },
             "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The model is not loaded yet"
           }
         },
         "summary": "Upload Documents",
@@ -1002,7 +1042,7 @@
     },
     "/healthz": {
       "get": {
-        "description": "Health check endpoint to verify if the API is running.",
+        "description": "Liveness: the process is up and the event loop is answering.\n\nThis says nothing about the model. Uvicorn opens its sockets only once the\nlifespan handler returns, so a served answer here already implies the load\nhas finished one way or the other - use `/readyz` for which way.",
         "operationId": "health_check_healthz_get",
         "responses": {
           "200": {
@@ -1015,6 +1055,36 @@
           }
         },
         "summary": "Health Check",
+        "tags": [
+          "Health Check"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness: the model is loaded, so an analysis will not wait for weights.\n\nRefuses with the same envelope and the same message as the routes that need\nthe model, so a caller reads one answer rather than two. The body carries a\nfixed string - no path, no configuration, no reason.",
+        "operationId": "readiness_check_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The model is not loaded yet"
+          }
+        },
+        "summary": "Readiness Check",
         "tags": [
           "Health Check"
         ]

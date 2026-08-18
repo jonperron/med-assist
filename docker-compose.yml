@@ -58,6 +58,21 @@ services:
       - PSEUDONYMIZE_ENTITIES=${PSEUDONYMIZE_ENTITIES:-true}
       # Development mode mounts the mock endpoints; production is the default.
       - APP_ENV=${APP_ENV:-production}
+    # Ready means the weights are in memory, not merely that the port is open.
+    # The model loads at startup and takes seconds on a CPU, hence start_period.
+    healthcheck:
+      # The probe is caught rather than left to raise: urlopen answers a 503
+      # with an exception, and an uncaught one writes a traceback into the
+      # container log on every check while the service is not ready.
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/readyz').status == 200 else 1)"
+          2>/dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     container_name: med_assist_backend
     depends_on:
       redis:

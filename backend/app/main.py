@@ -1,7 +1,10 @@
 import logging
 import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -12,12 +15,46 @@ from app.api import (
     mock_router,
     uploads_router,
 )
+from app.core.dependencies import get_entity_extractor
 from app.core.middleware import forbid_caching, reject_oversized_requests
 
 logger = logging.getLogger(__name__)
 
 DEVELOPMENT = "development"
 PRODUCTION = "production"
+
+
+@asynccontextmanager
+async def load_the_model_before_serving(
+    application: FastAPI,
+) -> AsyncIterator[None]:
+    """
+    Read the weights at startup, and record whether it worked.
+
+    Loading takes seconds on a CPU. Left to the first request, that caller paid
+    for it - and every later caller paid again whenever the load failed, since
+    `lru_cache` does not memoise an exception. Doing it here means the cost is
+    the process's, and `model_loaded` is what the routes and `/readyz` read
+    afterwards.
+
+    Uvicorn opens its sockets only after this returns, so nothing is served
+    during the load: the port is closed, not slow. The threadpool call is
+    discipline rather than concurrency - blocking work does not belong on the
+    loop even when nothing else is using it yet.
+    """
+    application.state.model_loaded = False
+    try:
+        await run_in_threadpool(get_entity_extractor)
+        application.state.model_loaded = True
+        logger.info("The NER model is loaded and the service is ready")
+    except Exception as exc:  # pylint: disable=W0718
+        # Anything a missing, unreadable or misconfigured model directory can
+        # raise. The process stays up and answers 503 on /readyz rather than
+        # crash-looping, which says nothing about why. The type is safe to log:
+        # no document has been read yet.
+        logger.error("The NER model failed to load (%s)", type(exc).__name__)
+
+    yield
 
 
 async def unexpected_failures_stay_generic(
@@ -52,7 +89,9 @@ def create_app(app_env: str | None = None) -> FastAPI:
     """
     environment = app_env or os.getenv("APP_ENV", PRODUCTION)
 
-    application = FastAPI(title="Med-Assist Backend")
+    application = FastAPI(
+        title="Med-Assist Backend", lifespan=load_the_model_before_serving
+    )
 
     application.add_exception_handler(Exception, unexpected_failures_stay_generic)
 
