@@ -4,6 +4,10 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import anyio
+import torch
+from fastapi.concurrency import run_in_threadpool
 from transformers import pipeline
 
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
@@ -15,6 +19,25 @@ logger = logging.getLogger(__name__)
 # everything that is not a letter or a digit handles "maladies cardiovasculaires",
 # "maladies_cardiovasculaires" and "MALADIES-CARDIOVASCULAIRES" alike.
 LABEL_SEPARATORS = re.compile(r"[\W_]+")
+
+# Inference is pinned to the CPU rather than left to whatever transformers finds.
+# The runtime installs the CPU build of torch, so this is what would happen
+# anyway - saying it means a machine that happens to carry an accelerator does
+# not silently start copying clinical text onto it.
+INFERENCE_DEVICE = "cpu"
+
+
+def configure_inference_threads(inference_threads: int) -> None:
+    """
+    Cap the threads torch spends on one inference.
+
+    Torch reads the host's core count once, at first use, and a container with a
+    CPU quota below that count spends the difference on contention. Zero leaves
+    the default alone, which is the right answer on a machine that is only
+    running this.
+    """
+    if inference_threads > 0:
+        torch.set_num_threads(inference_threads)
 
 
 class EntityExtractor(EntityExtractionServiceInterface):
@@ -31,6 +54,8 @@ class EntityExtractor(EntityExtractionServiceInterface):
         model_name: str,
         label_mapping_file: Optional[str] = None,
         language: str = "fr",
+        inference_threads: int = 0,
+        max_concurrent_inferences: int = 1,
     ):
         """
         Initialize the EntityExtractor.
@@ -43,12 +68,28 @@ class EntityExtractor(EntityExtractionServiceInterface):
             model_name: Path to the NER model.
             label_mapping_file: Path to custom label mapping JSON. If None, uses default for language.
             language: Language code (e.g., 'fr', 'es', 'da'). Defaults to 'fr'.
+            inference_threads: Threads torch may use per inference. 0 keeps its default.
+            max_concurrent_inferences: How many documents may be in the model at once.
         """
+        configure_inference_threads(inference_threads)
+
         self.ner_pipeline = pipeline(
             "ner",
             model=model_name,
             aggregation_strategy="max",
+            device=INFERENCE_DEVICE,
         )
+
+        # Inference runs in a worker thread, so without this every request in
+        # flight would hold its own copy of the activations. One at a time is
+        # what keeps the model's peak memory a function of the largest document
+        # rather than of how many arrived together.
+        #
+        # anyio's semaphore rather than asyncio's: the extractor is a
+        # process-wide singleton, and asyncio's binds itself to whichever loop
+        # first awaits it, which turns a second loop in the same process into a
+        # RuntimeError.
+        self.inference_slots = anyio.Semaphore(max_concurrent_inferences)
 
         self.language = language
         self.label_mapping = self.load_label_mapping(label_mapping_file, language)
@@ -204,9 +245,30 @@ class EntityExtractor(EntityExtractionServiceInterface):
 
         return "other"
 
-    def extract_entities(self, text: str) -> Dict[str, List[EntityDetail]]:
+    async def extract_entities(self, text: str) -> Dict[str, List[EntityDetail]]:
         """
         Extract named entities from clinical text with detailed information.
+
+        The model is synchronous and CPU-bound: a long document held the event
+        loop for the whole of its inference, so every other request - including
+        the health check - waited behind it. The work is handed to a worker
+        thread instead, and only as many at a time as the deployment allows.
+
+        Args:
+            text: Clinical text to analyze
+
+        Returns:
+            Dictionary with categorized entities as EntityDetail instances
+        """
+        async with self.inference_slots:
+            return await run_in_threadpool(self.run_inference, text)
+
+    def run_inference(self, text: str) -> Dict[str, List[EntityDetail]]:
+        """
+        Run the model over one document and categorise what it emits.
+
+        This is the blocking half of `extract_entities`, kept separate so it can
+        be called on a worker thread. Nothing here touches the event loop.
 
         Args:
             text: Clinical text to analyze

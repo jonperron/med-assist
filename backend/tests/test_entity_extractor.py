@@ -1,6 +1,8 @@
 # pylint: disable=W0621
 import ast
+import asyncio
 import inspect
+import threading
 
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
@@ -15,6 +17,13 @@ def mock_ner_pipeline():
         "app.services.entity_extractor.entity_extractor.pipeline"
     ) as mock_pipeline:
         yield mock_pipeline
+
+
+def build_extractor(mock_label_mapping, **kwargs):
+    """An extractor over a mocked pipeline and the test label table."""
+    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
+        with patch("json.load", return_value=mock_label_mapping):
+            return EntityExtractor(model_name="Dummy/Model", **kwargs)
 
 
 @pytest.fixture
@@ -39,13 +48,146 @@ def mock_label_mapping():
 
 
 def test_entity_extractor_init(mock_ner_pipeline, mock_label_mapping):
-    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
-        with patch("json.load", return_value=mock_label_mapping):
-            extractor = EntityExtractor(model_name="Dummy/Model")
-            mock_ner_pipeline.assert_called_once_with(
-                "ner", model="Dummy/Model", aggregation_strategy="max"
-            )
-            assert extractor.ner_pipeline is not None
+    extractor = build_extractor(mock_label_mapping)
+
+    mock_ner_pipeline.assert_called_once_with(
+        "ner", model="Dummy/Model", aggregation_strategy="max", device="cpu"
+    )
+    assert extractor.ner_pipeline is not None
+
+
+def test_the_model_is_pinned_to_the_cpu(mock_ner_pipeline, mock_label_mapping):
+    # The runtime installs the CPU build of torch, so this is what would happen
+    # anyway. Saying it means a host that happens to carry an accelerator does
+    # not silently start copying clinical text onto it.
+    build_extractor(mock_label_mapping)
+
+    assert mock_ner_pipeline.call_args.kwargs["device"] == "cpu"
+
+
+def test_the_default_thread_count_is_left_to_torch(
+    mock_ner_pipeline, mock_label_mapping
+):
+    with patch.object(entity_extractor_module.torch, "set_num_threads") as set_threads:
+        build_extractor(mock_label_mapping)
+
+    set_threads.assert_not_called()
+
+
+def test_a_configured_thread_count_reaches_torch(mock_ner_pipeline, mock_label_mapping):
+    with patch.object(entity_extractor_module.torch, "set_num_threads") as set_threads:
+        build_extractor(mock_label_mapping, inference_threads=2)
+
+    set_threads.assert_called_once_with(2)
+
+
+@pytest.mark.asyncio
+async def test_inference_never_runs_on_the_event_loop(
+    mock_ner_pipeline, mock_label_mapping
+):
+    # A synchronous model awaited from the loop holds every other request -
+    # including the health check - for the length of the document.
+    mock_pipeline_instance = MagicMock()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    threads = []
+
+    def record_the_thread(text):
+        threads.append(threading.current_thread())
+        return []
+
+    mock_pipeline_instance.side_effect = record_the_thread
+    extractor = build_extractor(mock_label_mapping)
+
+    await extractor.extract_entities("Le patient va bien.")
+
+    assert threads and threads[0] is not threading.current_thread()
+
+
+@pytest.mark.asyncio
+async def test_one_document_is_in_the_model_at_a_time_by_default(
+    mock_ner_pipeline, mock_label_mapping
+):
+    mock_pipeline_instance = MagicMock()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    lock = threading.Lock()
+    in_flight = 0
+    peak = 0
+
+    def run_slowly(text):
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        threading.Event().wait(0.05)
+        with lock:
+            in_flight -= 1
+        return []
+
+    mock_pipeline_instance.side_effect = run_slowly
+    extractor = build_extractor(mock_label_mapping)
+
+    await asyncio.gather(*(extractor.extract_entities("texte") for _ in range(4)))
+
+    # Peak memory is then a function of the largest document, not of how many
+    # arrived together - which is what makes the small-hardware claim hold.
+    assert peak == 1
+
+
+@pytest.mark.asyncio
+async def test_the_deployment_can_widen_the_concurrency(
+    mock_ner_pipeline, mock_label_mapping
+):
+    mock_pipeline_instance = MagicMock()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    # Both halves have to be inside the model together for this to return.
+    both_arrived = threading.Barrier(2, timeout=5)
+
+    def wait_for_the_other(text):
+        both_arrived.wait()
+        return []
+
+    mock_pipeline_instance.side_effect = wait_for_the_other
+    extractor = build_extractor(mock_label_mapping, max_concurrent_inferences=2)
+
+    await asyncio.gather(*(extractor.extract_entities("texte") for _ in range(2)))
+
+    assert not both_arrived.broken
+
+
+@pytest.mark.asyncio
+async def test_a_failed_inference_gives_its_slot_back(
+    mock_ner_pipeline, mock_label_mapping
+):
+    # The slot is released by `async with`. A refactor to a manual acquire that
+    # forgets the failure path deadlocks every later request instead.
+    mock_pipeline_instance = MagicMock()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    mock_pipeline_instance.side_effect = RuntimeError("the model gave up")
+    extractor = build_extractor(mock_label_mapping)
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            await extractor.extract_entities("texte")
+
+    mock_pipeline_instance.side_effect = None
+    mock_pipeline_instance.return_value = []
+    assert await extractor.extract_entities("texte") is not None
+
+
+def test_one_extractor_serves_more_than_one_event_loop(
+    mock_ner_pipeline, mock_label_mapping
+):
+    # The extractor is an lru_cache singleton. asyncio's semaphore binds itself
+    # to the loop that first awaits it and raises on the second one, which is
+    # why this uses anyio's.
+    mock_pipeline_instance = MagicMock(return_value=[])
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    extractor = build_extractor(mock_label_mapping)
+
+    for _ in range(2):
+        asyncio.run(extractor.extract_entities("texte"))
+
+    assert mock_pipeline_instance.call_count == 2
 
 
 def test_extract_entities_detailed(mock_ner_pipeline, mock_label_mapping):
@@ -76,69 +218,81 @@ def test_extract_entities_detailed(mock_ner_pipeline, mock_label_mapping):
         },
     ]
 
-    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
-        with patch("json.load", return_value=mock_label_mapping):
-            extractor = EntityExtractor(model_name="Dummy/Model")
-            text = (
-                "Le patient a la grippe avec de la fièvre, traité avec du paracétamol."
-            )
-            entities = extractor.extract_entities(text)
+    extractor = build_extractor(mock_label_mapping)
+    text = "Le patient a la grippe avec de la fièvre, traité avec du paracétamol."
 
-            # Check that entities are EntityDetail instances
-            assert len(entities["diseases"]) == 1
-            assert isinstance(entities["diseases"][0], EntityDetail)
-            assert entities["diseases"][0].text == "grippe"
-            assert entities["diseases"][0].score == 0.95
+    entities = extractor.run_inference(text)
 
-            assert len(entities["symptoms"]) == 1
-            assert isinstance(entities["symptoms"][0], EntityDetail)
-            assert entities["symptoms"][0].text == "fièvre"
+    # Check that entities are EntityDetail instances
+    assert len(entities["diseases"]) == 1
+    assert isinstance(entities["diseases"][0], EntityDetail)
+    assert entities["diseases"][0].text == "grippe"
+    assert entities["diseases"][0].score == 0.95
 
-            assert len(entities["treatments"]) == 1
-            assert isinstance(entities["treatments"][0], EntityDetail)
-            assert entities["treatments"][0].text == "paracétamol"
+    assert len(entities["symptoms"]) == 1
+    assert isinstance(entities["symptoms"][0], EntityDetail)
+    assert entities["symptoms"][0].text == "fièvre"
 
-            mock_pipeline_instance.assert_called_once_with(text)
+    assert len(entities["treatments"]) == 1
+    assert isinstance(entities["treatments"][0], EntityDetail)
+    assert entities["treatments"][0].text == "paracétamol"
+
+    mock_pipeline_instance.assert_called_once_with(text)
+
+
+@pytest.mark.asyncio
+async def test_extract_entities_returns_what_the_model_found(
+    mock_ner_pipeline, mock_label_mapping
+):
+    # The same result, through the coroutine callers actually use.
+    mock_pipeline_instance = MagicMock()
+    mock_ner_pipeline.return_value = mock_pipeline_instance
+    mock_pipeline_instance.return_value = [
+        {
+            "entity_group": "B-sosy",
+            "word": "fièvre",
+            "score": 0.92,
+            "start": 3,
+            "end": 9,
+        }
+    ]
+    extractor = build_extractor(mock_label_mapping)
+
+    entities = await extractor.extract_entities("Le fièvre")
+
+    assert entities["symptoms"][0].text == "fièvre"
 
 
 def test_extract_entities_no_entities(mock_ner_pipeline, mock_label_mapping):
     mock_pipeline_instance = MagicMock()
     mock_ner_pipeline.return_value = mock_pipeline_instance
     mock_pipeline_instance.return_value = []
+    extractor = build_extractor(mock_label_mapping)
+    text = "Le patient va bien."
 
-    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
-        with patch("json.load", return_value=mock_label_mapping):
-            extractor = EntityExtractor(model_name="Dummy/Model")
-            text = "Le patient va bien."
-            entities = extractor.extract_entities(text)
+    entities = extractor.run_inference(text)
 
-            assert entities["diseases"] == []
-            assert entities["symptoms"] == []
-            assert entities["treatments"] == []
-            mock_pipeline_instance.assert_called_once_with(text)
+    assert entities["diseases"] == []
+    assert entities["symptoms"] == []
+    assert entities["treatments"] == []
+    mock_pipeline_instance.assert_called_once_with(text)
 
 
 def test_get_available_categories(mock_ner_pipeline, mock_label_mapping):
-    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
-        with patch("json.load", return_value=mock_label_mapping):
-            extractor = EntityExtractor(model_name="Dummy/Model")
-            categories = extractor.get_available_categories()
+    categories = build_extractor(mock_label_mapping).get_available_categories()
 
-            assert "diseases" in categories
-            assert "symptoms" in categories
-            assert "treatments" in categories
-            assert categories["diseases"] == "Diseases"
+    assert "diseases" in categories
+    assert "symptoms" in categories
+    assert "treatments" in categories
+    assert categories["diseases"] == "Diseases"
 
 
 def test_get_mapping_info(mock_ner_pipeline, mock_label_mapping):
-    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
-        with patch("json.load", return_value=mock_label_mapping):
-            extractor = EntityExtractor(model_name="Dummy/Model")
-            info = extractor.get_mapping_info()
+    info = build_extractor(mock_label_mapping).get_mapping_info()
 
-            assert info["language"] == "fr"
-            assert info["dataset"] == "test_clinical"
-            assert info["description"] == "Test mapping"
+    assert info["language"] == "fr"
+    assert info["dataset"] == "test_clinical"
+    assert info["description"] == "Test mapping"
 
 
 def test_the_extractor_never_imports_the_application_wiring():
@@ -156,9 +310,7 @@ def test_the_extractor_never_imports_the_application_wiring():
 
 @pytest.fixture
 def extractor(mock_ner_pipeline, mock_label_mapping):
-    with patch("builtins.open", mock_open(read_data=str(mock_label_mapping))):
-        with patch("json.load", return_value=mock_label_mapping):
-            yield EntityExtractor(model_name="Dummy/Model")
+    return build_extractor(mock_label_mapping)
 
 
 @pytest.mark.parametrize(

@@ -32,7 +32,7 @@ async def analyze_document(
     if not text:
         raise ValueError("The document contains no extractable text")
 
-    entities = entity_extractor.extract_entities(text)
+    entities = await entity_extractor.extract_entities(text)
 
     if pseudonymize:
         text, entities = pseudonymizer.mask(text, entities)

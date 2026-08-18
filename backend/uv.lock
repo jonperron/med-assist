@@ -886,6 +886,7 @@ name = "med-assist-backend"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "cryptography" },
     { name = "fastapi", extra = ["standard"] },
     { name = "numpy" },
@@ -916,6 +917,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.14.2,<5" },
     { name = "cryptography", specifier = ">=46,<47" },
     { name = "fastapi", extras = ["standard"], specifier = "==0.135.1" },
     { name = "numpy", specifier = ">=2.4.3,<3" },
