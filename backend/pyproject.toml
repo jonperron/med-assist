@@ -46,6 +46,12 @@ dev = [
     "virtualenv>=21.2.0",
 ]
 
+# The model training project lives in backend/training/ with its own
+# environment. Without this, a local `pytest` walks into its tests and fails on
+# imports that only exist there.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.hatch.build.targets.sdist]
 include = ["app"]
 

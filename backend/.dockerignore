@@ -1,0 +1,16 @@
+# The build context is ./backend, and everything in it is sent to the Docker
+# daemon and cached there - whether or not a COPY ever mentions it.
+#
+# training/ is the first entry for a reason: it holds the clinical corpus and a
+# multi-gigabyte CUDA environment, neither of which belongs anywhere near an
+# image build. .gitignore does not apply here.
+training/
+
+.venv/
+tests/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
