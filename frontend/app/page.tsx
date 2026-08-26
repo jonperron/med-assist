@@ -3,32 +3,76 @@
 
 import { useState } from 'react'
 import axios from 'axios'
-import FileUpload from './components/FileUpload'
+import { AnalysisFailure } from './components/AnalysisFailure'
+import { AppHeader } from './components/AppHeader'
+import { CautionNote } from './components/CautionNote'
+import { DocumentList } from './components/DocumentList'
+import { FileDropzone } from './components/FileDropzone'
+import { PrivacyBadge } from './components/PrivacyBadge'
+import { ReadingProgress } from './components/ReadingProgress'
 import SummaryView from './components/SummaryView'
+import { errorMessage } from './lib/apiError'
+import { describeRejection, type SelectedDocument } from './lib/documentSelection'
 import type { AnalysisResponse, ClinicalSummary } from './types/extraction'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// The API answers errors as {"detail": {"message": ...}}; older shapes and
-// network failures fall back to the caller's wording.
-function errorMessage(err: unknown, fallback: string): string {
-  if (!axios.isAxiosError(err)) return fallback
-  const data = err.response?.data
-  return data?.detail?.message || data?.message || fallback
+const ANALYSIS_FAILED = "Échec de l'analyse des documents."
+
+const CAVEAT =
+  "Un résumé est un point de départ, pas un diagnostic. Relisez-le sur les documents eux-mêmes avant d'agir."
+
+let nextDocumentId = 0
+
+function asSelected(files: File[]): SelectedDocument[] {
+  return files.map(file => ({ id: `document-${(nextDocumentId += 1)}`, file }))
+}
+
+function actionLabel(count: number): string {
+  return count === 1 ? 'Résumer ce document' : `Résumer ces ${count} documents`
 }
 
 export default function HomePage() {
+  const [documents, setDocuments] = useState<SelectedDocument[]>([])
   const [summary, setSummary] = useState<ClinicalSummary | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Two separate refusals. A file this interface will not accept is the
+  // clinician's next move at the dropzone; an analysis that failed is a
+  // report on the request they already made, and they must not read as one.
+  const [selectionError, setSelectionError] = useState<string | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  const handleUpload = async (files: File[]) => {
+  const addDocuments = (files: File[]) => {
+    const rejection = describeRejection(files, documents.length)
+    if (rejection) {
+      setSelectionError(rejection)
+      return
+    }
+
+    setSelectionError(null)
+    setDocuments(current => [...current, ...asSelected(files)])
+  }
+
+  const removeDocument = (id: string) => {
+    setDocuments(current => current.filter(document => document.id !== id))
+  }
+
+  const startOver = () => {
+    setDocuments([])
+    setSummary(null)
+    setSelectionError(null)
+    setAnalysisError(null)
+  }
+
+  const analyse = async (selected: SelectedDocument[]) => {
+    if (selected.length === 0) return
+
     const formData = new FormData()
     // One field name repeated per file: what FastAPI reads as List[UploadFile].
-    files.forEach(file => formData.append('files', file))
+    selected.forEach(({ file }) => formData.append('files', file))
 
     try {
-      setError(null)
+      setAnalysisError(null)
       setPending(true)
       setSummary(null)
 
@@ -40,31 +84,81 @@ export default function HomePage() {
 
       setSummary(response.data.summary)
     } catch (err: unknown) {
-      setError(errorMessage(err, "Échec de l'analyse des documents."))
+      setAnalysisError(errorMessage(err, ANALYSIS_FAILED))
     } finally {
       setPending(false)
     }
   }
 
+  if (summary) {
+    return (
+      <SummaryView summary={summary} documents={documents} onStartOver={startOver} />
+    )
+  }
+
   return (
-    <main className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4">Med-Assist</h1>
+    <div className="flex min-h-screen flex-col bg-paper">
+      <AppHeader>
+        <PrivacyBadge />
+      </AppHeader>
 
-      <FileUpload onUpload={handleUpload} disabled={pending} />
-
-      {pending && (
-        <p role="status" className="mt-4 text-gray-600">
-          Analyse en cours…
-        </p>
-      )}
-
-      {error && (
-        <div role="alert" className="mt-4 p-3 bg-red-100 text-red-700 rounded">
-          {error}
+      <main className="mx-auto flex w-full max-w-[760px] grow flex-col gap-8 px-6 py-13">
+        <div className="flex flex-col gap-3.5">
+          <h1 className="font-serif text-[38px] leading-[1.15] font-normal tracking-[-0.015em] text-ink">
+            Résumer les documents d&apos;un patient
+          </h1>
+          <p className="max-w-[580px] text-[15.5px] leading-[1.6] text-pretty text-ink-soft">
+            Ajoutez autant de documents que vous en avez. Med-Assist les lit ensemble et
+            vous rend un seul résumé : les pathologies, les symptômes, les examens et les
+            traitements qu&apos;ils contiennent.
+          </p>
         </div>
-      )}
 
-      {summary && <SummaryView summary={summary} />}
-    </main>
+        {pending ? (
+          <ReadingProgress documents={documents} />
+        ) : (
+          <>
+            <FileDropzone onAdd={addDocuments} />
+
+            {selectionError && (
+              <p role="alert" className="text-sm font-medium text-failure">
+                {selectionError}
+              </p>
+            )}
+
+            <DocumentList
+              documents={documents}
+              onRemove={removeDocument}
+              onRemoveAll={() => setDocuments([])}
+            />
+
+            {analysisError && (
+              <AnalysisFailure
+                message={analysisError}
+                onRetry={() => analyse(documents)}
+                onStartOver={startOver}
+              />
+            )}
+
+            {documents.length > 0 && (
+              <div className="flex flex-wrap items-center gap-[18px]">
+                <button
+                  type="button"
+                  onClick={() => analyse(documents)}
+                  className="h-13 cursor-pointer rounded-lg border border-accent bg-accent px-7 text-[15.5px] font-semibold text-surface hover:bg-accent-strong"
+                >
+                  {actionLabel(documents.length)}
+                </button>
+                <span className="text-[13.5px] text-ink-muted">
+                  Environ une demi-minute.
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        <CautionNote>{CAVEAT}</CautionNote>
+      </main>
+    </div>
   )
 }

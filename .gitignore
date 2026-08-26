@@ -12,6 +12,13 @@ eggs/
 .eggs/
 lib/
 lib64/
+
+# ...but `lib/` above is a Python build artifact rule and matches at any depth,
+# which silently swallows the frontend's own source directory. Next.js keeps
+# shared modules in `app/lib/` by convention, and a contributor adding one there
+# would lose the files with no error.
+!frontend/app/lib/
+!frontend/app/lib/**
 parts/
 sdist/
 var/

@@ -28,13 +28,17 @@ const analysisResponse = {
   },
 }
 
-function selectFiles(count = 1) {
+function selectFiles(count = 1, type = 'text/plain') {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement
   const files = Array.from(
     { length: count },
-    (_, index) => new File(['content'], `report${index}.txt`, { type: 'text/plain' })
+    (_, index) => new File(['content'], `report${index}.txt`, { type })
   )
   fireEvent.change(input, { target: { files } })
+}
+
+function submit() {
+  fireEvent.click(screen.getByRole('button', { name: /^Résumer / }))
 }
 
 function postedForm() {
@@ -54,11 +58,20 @@ describe('HomePage', () => {
 
     render(<HomePage />)
     selectFiles()
+    submit()
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
     expect(mockedAxios.post.mock.calls[0][0]).toContain('/api/analyze')
-    expect(await screen.findByText('Fièvre.')).toBeInTheDocument()
+    expect(await screen.findByText('fièvre')).toBeInTheDocument()
     expect(screen.getByText('Patient, 67 ans, homme.')).toBeInTheDocument()
+  })
+
+  it('asks the backend nothing until the clinician submits', () => {
+    render(<HomePage />)
+    selectFiles(2)
+
+    expect(mockedAxios.post).not.toHaveBeenCalled()
+    expect(screen.getByText('2 documents prêts')).toBeInTheDocument()
   })
 
   it('posts every document under the field the API reads', async () => {
@@ -66,9 +79,31 @@ describe('HomePage', () => {
 
     render(<HomePage />)
     selectFiles(3)
+    submit()
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
     expect(postedForm().getAll('files')).toHaveLength(3)
+  })
+
+  it('refuses an unsupported document without asking the backend', () => {
+    render(<HomePage />)
+    selectFiles(1, 'image/png')
+
+    expect(mockedAxios.post).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/PDF, DOCX ou TXT/)
+    expect(screen.queryByRole('button', { name: /^Résumer / })).not.toBeInTheDocument()
+  })
+
+  it('drops a document from the batch before submitting', async () => {
+    mockedAxios.post.mockResolvedValue(analysisResponse)
+
+    render(<HomePage />)
+    selectFiles(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer report0.txt' }))
+    submit()
+
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
+    expect(postedForm().getAll('files')).toHaveLength(1)
   })
 
   it('never stores and never issues an id', async () => {
@@ -76,6 +111,7 @@ describe('HomePage', () => {
 
     render(<HomePage />)
     selectFiles()
+    submit()
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
     expect(mockedAxios.post.mock.calls[0][0]).not.toContain('/api/upload')
@@ -96,12 +132,13 @@ describe('HomePage', () => {
 
     render(<HomePage />)
     selectFiles()
+    submit()
 
-    expect(await screen.findByText(/Analyse en cours/)).toBeInTheDocument()
+    expect(await screen.findByText(/Lecture du document/)).toBeInTheDocument()
 
     settle(analysisResponse)
     await waitFor(() =>
-      expect(screen.queryByText(/Analyse en cours/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Lecture du document/)).not.toBeInTheDocument()
     )
   })
 
@@ -115,25 +152,42 @@ describe('HomePage', () => {
 
     render(<HomePage />)
     selectFiles()
+    submit()
 
-    expect(
-      await screen.findByRole('alert')
-    ).toHaveTextContent('Unable to extract text from the document.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to extract text from the document.'
+    )
   })
 
-  it('clears a previous summary before a new analysis', async () => {
+  it('keeps the batch so a failed analysis can be retried', async () => {
+    mockedAxios.post.mockRejectedValue({
+      isAxiosError: true,
+      response: { data: { detail: { message: 'Internal server error' } } },
+    })
+
+    render(<HomePage />)
+    selectFiles(2)
+    submit()
+    await screen.findByRole('alert')
+
+    mockedAxios.post.mockResolvedValue(analysisResponse)
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledTimes(2))
+    expect((mockedAxios.post.mock.calls[1][1] as FormData).getAll('files')).toHaveLength(2)
+  })
+
+  it('clears a previous summary when starting over', async () => {
     mockedAxios.post.mockResolvedValue(analysisResponse)
 
     render(<HomePage />)
     selectFiles()
-    expect(await screen.findByText('Fièvre.')).toBeInTheDocument()
+    submit()
+    expect(await screen.findByText('fièvre')).toBeInTheDocument()
 
-    mockedAxios.post.mockRejectedValue({
-      isAxiosError: true,
-      response: { data: { detail: { message: 'Unable to extract text from the document.' } } },
-    })
-    selectFiles()
+    fireEvent.click(screen.getByRole('button', { name: 'Nouveau résumé' }))
 
-    await waitFor(() => expect(screen.queryByText('Fièvre.')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('fièvre')).not.toBeInTheDocument())
+    expect(screen.queryByText(/documents prêts/)).not.toBeInTheDocument()
   })
 })
