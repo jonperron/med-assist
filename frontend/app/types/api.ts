@@ -32,20 +32,22 @@ export interface paths {
         put?: never;
         /**
          * Analyze
-         * @description Analyze a medical document in a single request, storing nothing.
+         * @description Summarise one or more medical documents in a single request, storing nothing.
          *
-         *     The document is read, analysed and answered in memory. No file id is issued
-         *     because there is nothing to come back for, and nothing to delete later.
+         *     The documents are read, analysed and answered in memory. No file id is
+         *     issued because there is nothing to come back for, and nothing to delete
+         *     later. The document text is not echoed back: the summary is the product,
+         *     and returning the text would widen what leaves the server for no gain.
          *
          *     Args:
-         *         file: The uploaded file (PDF, DOCX, TXT)
-         *         pseudonymize: Whether to mask detected patient identifiers
+         *         files: The uploaded documents (PDF, DOCX, TXT)
          *
          *     Returns:
-         *         AnalysisResponse: The extracted text and its medical entities
+         *         AnalysisResponse: The merged summary and the entities behind it
          *
          *     Raises:
-         *         HTTPException: 400 for an invalid or unreadable file, 500 for server errors
+         *         HTTPException: 400 for an invalid or unreadable file, 413 for a file or
+         *             batch that is too large, 500 for server errors
          */
         post: operations["analyze_api_analyze_post"];
         delete?: never;
@@ -131,7 +133,6 @@ export interface paths {
          *
          *     Args:
          *         file: The uploaded file (PDF, DOCX, TXT)
-         *         pseudonymize: Whether to mask detected patient identifiers
          *
          *     Returns:
          *         UploadResponse: Contains file ID, filename, and upload confirmation
@@ -165,7 +166,6 @@ export interface paths {
          *
          *     Args:
          *         files: The uploaded files (PDF, DOCX, TXT)
-         *         pseudonymize: Whether to mask detected patient identifiers
          *
          *     Returns:
          *         MultipleUploadResponse: Contains batch id with associated file ids
@@ -237,8 +237,11 @@ export interface components {
          * @description Result of a stateless analysis. Nothing behind this response is stored.
          */
         AnalysisResponse: {
-            /** @description Medical entities found in the text with detailed information */
-            extracted_entities: components["schemas"]["ExtractedEntities"];
+            /**
+             * Documents
+             * @description The entities found in each submitted document, in submission order, for a caller that needs more than the summary.
+             */
+            documents: components["schemas"]["ExtractedEntities"][];
             /**
              * Mapping Info
              * @description Information about the label mapping used (language, dataset)
@@ -247,34 +250,21 @@ export interface components {
                 [key: string]: string;
             } | null;
             /**
-             * Pseudonymized
-             * @description Whether the masking pass ran. It reports that every identifier the model detected was replaced, not that no identifier remains: an identifier the model misses is an identifier that survives.
-             */
-            pseudonymized: boolean;
-            /**
              * Retained
              * @description Always false: this endpoint never writes to storage
              * @default false
              */
             retained: boolean;
-            /**
-             * Text
-             * @description Text extracted from the submitted document, pseudonymised when requested. Returned to the caller and kept nowhere else.
-             */
-            text: string;
+            /** @description The submitted documents merged into one readable patient summary. This is what the endpoint is for; the rest is detail behind it. */
+            summary: components["schemas"]["ClinicalSummary"];
         };
         /** Body_analyze_api_analyze_post */
         Body_analyze_api_analyze_post: {
             /**
-             * File
-             * @description The file to analyze (PDF, DOCX, TXT).
+             * Files
+             * @description The documents to summarise (PDF, DOCX, TXT). Several documents are taken to be about the same patient and merged into one summary.
              */
-            file: string;
-            /**
-             * Pseudonymize
-             * @description Mask entities detected as patient information. Defaults to the deployment's PSEUDONYMIZE_ENTITIES setting.
-             */
-            pseudonymize?: boolean | null;
+            files: string[];
         };
         /** Body_upload_document_api_upload_document__post */
         Body_upload_document_api_upload_document__post: {
@@ -283,11 +273,6 @@ export interface components {
              * @description The file to upload (PDF, DOCX, TXT).
              */
             file: string;
-            /**
-             * Pseudonymize
-             * @description Mask entities detected as patient information. Defaults to the deployment's PSEUDONYMIZE_ENTITIES setting.
-             */
-            pseudonymize?: boolean | null;
         };
         /** Body_upload_documents_api_upload_documents__post */
         Body_upload_documents_api_upload_documents__post: {
@@ -296,11 +281,38 @@ export interface components {
              * @description List of medical documents to upload. Supported formats: PDF, DOCX, TXT. Maximum size: 10MB per file.
              */
             files: string[];
+        };
+        /**
+         * ClinicalSummary
+         * @description A readable summary of one or more documents about the same patient.
+         *
+         *     Everything here is assembled from what the NER model emitted. No wording is
+         *     generated: each finding is a span the model marked, deduplicated across the
+         *     submitted documents and placed under a fixed heading.
+         */
+        ClinicalSummary: {
             /**
-             * Pseudonymize
-             * @description Mask entities detected as patient information. Defaults to the deployment's PSEUDONYMIZE_ENTITIES setting.
+             * Document Count
+             * @description How many documents were read to build this summary
              */
-            pseudonymize?: boolean | null;
+            document_count: number;
+            /**
+             * Empty
+             * @description True when nothing clinical was found. The caller should say so rather than render an empty page.
+             * @default false
+             */
+            empty: boolean;
+            /**
+             * Patient
+             * @description The demographic line, e.g. 'Patient, 67 ans, homme.' Absent when the documents carry no demographic mention.
+             */
+            patient?: string | null;
+            /**
+             * Sections
+             * @description Clinical sections, in reading order. Empty ones are omitted.
+             * @default []
+             */
+            sections: components["schemas"]["SummarySection"][];
         };
         /**
          * EntityDetail
@@ -514,6 +526,32 @@ export interface components {
              */
             uploaded_at?: string | null;
         };
+        /**
+         * SummarySection
+         * @description One clinical axis of the summary, as a heading and its findings.
+         */
+        SummarySection: {
+            /**
+             * Findings
+             * @description The same findings as a list, most-supported first, for a caller that would rather lay them out itself
+             */
+            findings: string[];
+            /**
+             * Heading
+             * @description Human-readable heading for the section
+             */
+            heading: string;
+            /**
+             * Key
+             * @description Stable category key, e.g. 'pathologies'
+             */
+            key: string;
+            /**
+             * Sentence
+             * @description The section's findings as one sentence, ready to read
+             */
+            sentence: string;
+        };
         /** UploadResponse */
         UploadResponse: {
             /**
@@ -625,7 +663,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description File too large */
+            /** @description A file is too large, or the batch holds too many files */
             413: {
                 headers: {
                     [name: string]: unknown;

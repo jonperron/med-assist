@@ -30,9 +30,10 @@ AGENTS.md wins.
 - Persist as little as possible and justify any new persisted field. Stored
   values are encrypted before they reach Redis and every key carries a TTL.
 - Responses carrying clinical content must be uncacheable.
-- Pseudonymisation reduces risk; it does not make the data non-personal. Do not
-  describe masked output as anonymised, and do not describe any change as making
-  the system compliant with a regulation.
+- Extracted entities are patient data in their own right. Categorising a span
+  does not de-identify it, and neither does dropping the surrounding text. Do
+  not describe extraction output as anonymised, and do not describe any change
+  as making the system compliant with a regulation.
 
 ## Boundaries and config
 

@@ -3,33 +3,39 @@ from typing import Dict, List
 from fastapi import APIRouter, Path, Query
 
 from app.core.validation import parse_file_id
+from app.use_cases.validate_file import MAX_BATCH_FILES
 from app.schemas.extraction import (
+    AnalysisResponse,
     EntityDetail,
     ExtractedEntities,
     ExtractionResponse,
 )
 from app.services.file_handler import drop_offsets
+from app.services.summarizer import summarize
 
 mock_router = APIRouter()
 
 # A mock is only worth having if it answers the shape the real API answers, so
 # it is built from the same models with the offsets the text really has.
 MOCK_TEXT = (
-    "Le patient présente une fièvre et a été traité avec du paracétamol "
-    "pour la grippe."
+    "Le patient de 67 ans présente une fièvre et a été traité "
+    "avec du paracétamol pour la grippe."
 )
 
 MOCK_ENTITIES: Dict[str, List[EntityDetail]] = {
+    "patient_info": [
+        EntityDetail(text="67 ans", label="age", score=0.97, start=14, end=20),
+    ],
     "symptoms": [
-        EntityDetail(text="fièvre", label="sosy", score=0.98, start=24, end=30)
+        EntityDetail(text="fièvre", label="sosy", score=0.98, start=34, end=40)
     ],
     "treatments": [
         EntityDetail(
-            text="paracétamol", label="substance", score=0.96, start=55, end=66
+            text="paracétamol", label="substance", score=0.96, start=65, end=76
         )
     ],
     "pathologies": [
-        EntityDetail(text="grippe", label="pathologie", score=0.94, start=75, end=81)
+        EntityDetail(text="grippe", label="pathologie", score=0.94, start=85, end=91)
     ],
 }
 
@@ -75,4 +81,39 @@ async def mock_extracted_text(
         extracted_entities=ExtractedEntities(**entities),
         mapping_info={"language": "fr", "dataset": "french_clinical"},
         expires_in_seconds=3600,
+    )
+
+
+@mock_router.get(
+    "/mock_summary",
+    response_model=AnalysisResponse,
+    responses={
+        200: {
+            "model": AnalysisResponse,
+            "description": "Mocked clinical summary (dev only)",
+        }
+    },
+    tags=["dev", "mock"],
+)
+async def mock_summary(
+    documents: int = Query(
+        default=1,
+        ge=1,
+        le=MAX_BATCH_FILES,
+        description="How many documents to pretend were submitted and merged.",
+    ),
+) -> AnalysisResponse:
+    """
+    Mock endpoint for frontend development against the summary.
+
+    No model runs, but the summary is built by the real `summarize`, so the
+    shape and the merging rules are the ones the API actually applies - a mock
+    that assembled the payload by hand would drift from them silently.
+    """
+    entities = [MOCK_ENTITIES for _ in range(documents)]
+
+    return AnalysisResponse(
+        summary=summarize(entities),
+        documents=[ExtractedEntities(**document) for document in entities],
+        mapping_info={"language": "fr", "dataset": "french_clinical"},
     )

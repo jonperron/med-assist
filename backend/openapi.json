@@ -4,9 +4,13 @@
       "AnalysisResponse": {
         "description": "Result of a stateless analysis. Nothing behind this response is stored.",
         "properties": {
-          "extracted_entities": {
-            "$ref": "#/components/schemas/ExtractedEntities",
-            "description": "Medical entities found in the text with detailed information"
+          "documents": {
+            "description": "The entities found in each submitted document, in submission order, for a caller that needs more than the summary.",
+            "items": {
+              "$ref": "#/components/schemas/ExtractedEntities"
+            },
+            "title": "Documents",
+            "type": "array"
           },
           "mapping_info": {
             "anyOf": [
@@ -23,54 +27,38 @@
             "description": "Information about the label mapping used (language, dataset)",
             "title": "Mapping Info"
           },
-          "pseudonymized": {
-            "description": "Whether the masking pass ran. It reports that every identifier the model detected was replaced, not that no identifier remains: an identifier the model misses is an identifier that survives.",
-            "title": "Pseudonymized",
-            "type": "boolean"
-          },
           "retained": {
             "default": false,
             "description": "Always false: this endpoint never writes to storage",
             "title": "Retained",
             "type": "boolean"
           },
-          "text": {
-            "description": "Text extracted from the submitted document, pseudonymised when requested. Returned to the caller and kept nowhere else.",
-            "title": "Text",
-            "type": "string"
+          "summary": {
+            "$ref": "#/components/schemas/ClinicalSummary",
+            "description": "The submitted documents merged into one readable patient summary. This is what the endpoint is for; the rest is detail behind it."
           }
         },
         "required": [
-          "text",
-          "extracted_entities",
-          "pseudonymized"
+          "summary",
+          "documents"
         ],
         "title": "AnalysisResponse",
         "type": "object"
       },
       "Body_analyze_api_analyze_post": {
         "properties": {
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "description": "The file to analyze (PDF, DOCX, TXT).",
-            "title": "File",
-            "type": "string"
-          },
-          "pseudonymize": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Mask entities detected as patient information. Defaults to the deployment's PSEUDONYMIZE_ENTITIES setting.",
-            "title": "Pseudonymize"
+          "files": {
+            "description": "The documents to summarise (PDF, DOCX, TXT). Several documents are taken to be about the same patient and merged into one summary.",
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
           }
         },
         "required": [
-          "file"
+          "files"
         ],
         "title": "Body_analyze_api_analyze_post",
         "type": "object"
@@ -82,18 +70,6 @@
             "description": "The file to upload (PDF, DOCX, TXT).",
             "title": "File",
             "type": "string"
-          },
-          "pseudonymize": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Mask entities detected as patient information. Defaults to the deployment's PSEUDONYMIZE_ENTITIES setting.",
-            "title": "Pseudonymize"
           }
         },
         "required": [
@@ -112,24 +88,54 @@
             },
             "title": "Files",
             "type": "array"
-          },
-          "pseudonymize": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Mask entities detected as patient information. Defaults to the deployment's PSEUDONYMIZE_ENTITIES setting.",
-            "title": "Pseudonymize"
           }
         },
         "required": [
           "files"
         ],
         "title": "Body_upload_documents_api_upload_documents__post",
+        "type": "object"
+      },
+      "ClinicalSummary": {
+        "description": "A readable summary of one or more documents about the same patient.\n\nEverything here is assembled from what the NER model emitted. No wording is\ngenerated: each finding is a span the model marked, deduplicated across the\nsubmitted documents and placed under a fixed heading.",
+        "properties": {
+          "document_count": {
+            "description": "How many documents were read to build this summary",
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "empty": {
+            "default": false,
+            "description": "True when nothing clinical was found. The caller should say so rather than render an empty page.",
+            "title": "Empty",
+            "type": "boolean"
+          },
+          "patient": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The demographic line, e.g. 'Patient, 67 ans, homme.' Absent when the documents carry no demographic mention.",
+            "title": "Patient"
+          },
+          "sections": {
+            "default": [],
+            "description": "Clinical sections, in reading order. Empty ones are omitted.",
+            "items": {
+              "$ref": "#/components/schemas/SummarySection"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "document_count"
+        ],
+        "title": "ClinicalSummary",
         "type": "object"
       },
       "EntityDetail": {
@@ -516,6 +522,42 @@
         "title": "MultipleUploadResponse",
         "type": "object"
       },
+      "SummarySection": {
+        "description": "One clinical axis of the summary, as a heading and its findings.",
+        "properties": {
+          "findings": {
+            "description": "The same findings as a list, most-supported first, for a caller that would rather lay them out itself",
+            "items": {
+              "type": "string"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "heading": {
+            "description": "Human-readable heading for the section",
+            "title": "Heading",
+            "type": "string"
+          },
+          "key": {
+            "description": "Stable category key, e.g. 'pathologies'",
+            "title": "Key",
+            "type": "string"
+          },
+          "sentence": {
+            "description": "The section's findings as one sentence, ready to read",
+            "title": "Sentence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "heading",
+          "sentence",
+          "findings"
+        ],
+        "title": "SummarySection",
+        "type": "object"
+      },
       "UploadResponse": {
         "properties": {
           "content_type": {
@@ -657,7 +699,7 @@
     },
     "/api/analyze": {
       "post": {
-        "description": "Analyze a medical document in a single request, storing nothing.\n\nThe document is read, analysed and answered in memory. No file id is issued\nbecause there is nothing to come back for, and nothing to delete later.\n\nArgs:\n    file: The uploaded file (PDF, DOCX, TXT)\n    pseudonymize: Whether to mask detected patient identifiers\n\nReturns:\n    AnalysisResponse: The extracted text and its medical entities\n\nRaises:\n    HTTPException: 400 for an invalid or unreadable file, 500 for server errors",
+        "description": "Summarise one or more medical documents in a single request, storing nothing.\n\nThe documents are read, analysed and answered in memory. No file id is\nissued because there is nothing to come back for, and nothing to delete\nlater. The document text is not echoed back: the summary is the product,\nand returning the text would widen what leaves the server for no gain.\n\nArgs:\n    files: The uploaded documents (PDF, DOCX, TXT)\n\nReturns:\n    AnalysisResponse: The merged summary and the entities behind it\n\nRaises:\n    HTTPException: 400 for an invalid or unreadable file, 413 for a file or\n        batch that is too large, 500 for server errors",
         "operationId": "analyze_api_analyze_post",
         "requestBody": {
           "content": {
@@ -698,7 +740,7 @@
                 }
               }
             },
-            "description": "File too large"
+            "description": "A file is too large, or the batch holds too many files"
           },
           "422": {
             "content": {
@@ -878,7 +920,7 @@
     },
     "/api/upload_document/": {
       "post": {
-        "description": "Upload a medical document for text extraction and entity recognition.\n\nArgs:\n    file: The uploaded file (PDF, DOCX, TXT)\n    pseudonymize: Whether to mask detected patient identifiers\n\nReturns:\n    UploadResponse: Contains file ID, filename, and upload confirmation\n\nRaises:\n    HTTPException: 400 for invalid file type, 500 for server errors",
+        "description": "Upload a medical document for text extraction and entity recognition.\n\nArgs:\n    file: The uploaded file (PDF, DOCX, TXT)\n\nReturns:\n    UploadResponse: Contains file ID, filename, and upload confirmation\n\nRaises:\n    HTTPException: 400 for invalid file type, 500 for server errors",
         "operationId": "upload_document_api_upload_document__post",
         "requestBody": {
           "content": {
@@ -960,7 +1002,7 @@
     },
     "/api/upload_documents/": {
       "post": {
-        "description": "Upload multiple medical documents for text extraction and entity recognition.\n\nEach file is processed on its own and answered with its own id. The batch id\nonly correlates the files of this request: nothing is written under it, so\nthere is one less patient-adjacent key living out a retention window.\n\nArgs:\n    files: The uploaded files (PDF, DOCX, TXT)\n    pseudonymize: Whether to mask detected patient identifiers\n\nReturns:\n    MultipleUploadResponse: Contains batch id with associated file ids\n\nRaises:\n    HTTPException: 400 for invalid file type, 500 for server errors",
+        "description": "Upload multiple medical documents for text extraction and entity recognition.\n\nEach file is processed on its own and answered with its own id. The batch id\nonly correlates the files of this request: nothing is written under it, so\nthere is one less patient-adjacent key living out a retention window.\n\nArgs:\n    files: The uploaded files (PDF, DOCX, TXT)\n\nReturns:\n    MultipleUploadResponse: Contains batch id with associated file ids\n\nRaises:\n    HTTPException: 400 for invalid file type, 500 for server errors",
         "operationId": "upload_documents_api_upload_documents__post",
         "requestBody": {
           "content": {

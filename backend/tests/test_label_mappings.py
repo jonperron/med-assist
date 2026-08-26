@@ -2,8 +2,8 @@
 
 Every other extractor test builds a synthetic three-category mapping, which is
 why nothing noticed that `fr.json` and `es.json` themselves were never loaded.
-A label the mapping does not recognise costs an entity its category - and in
-`patient_info`, an identifier its mask.
+A label the mapping does not recognise costs an entity its category - and a
+category the summary reads from, its whole section.
 """
 
 # pylint: disable=W0621
@@ -15,21 +15,25 @@ import pytest
 from app.schemas.extraction import ExtractedEntities
 from app.services.entity_extractor import EntityExtractor
 from app.services.entity_extractor import entity_extractor as entity_extractor_module
-from app.services.pseudonymizer import PATIENT_INFO_CATEGORY
+from app.services.summarizer import PATIENT_INFO_CATEGORY, SECTION_ORDER
 
 # Located from the package rather than the working directory: these are the
 # files that ship, wherever pytest was started from.
 MAPPINGS = Path(entity_extractor_module.__file__).parent / "label_mappings"
 
-# The label set of the CAS corpus of French clinical cases, which the shipped
-# model is trained on. See the references in the root README.
+# The label set the shipped model is trained on: the thirteen fine-grained
+# types of the DEFT 2020 task over the CAS corpus of French clinical cases, plus
+# the two demographic types the summary's opening line is built from. See the
+# references in the root README.
 CAS_LABELS = [
+    "age",
     "anatomie",
     "date",
     "dose",
     "duree",
     "examen",
     "frequence",
+    "genre",
     "mode",
     "moment",
     "pathologie",
@@ -74,12 +78,21 @@ def test_every_shipped_category_exists_on_the_response_model(
 
 
 @pytest.mark.parametrize("language", ["fr", "es"])
-def test_the_masked_category_is_one_the_pseudonymizer_looks_for(
+def test_the_demographic_category_is_the_one_the_summary_reads(
     mock_ner_pipeline, language
 ):
     extractor = build_extractor(language)
 
     assert PATIENT_INFO_CATEGORY in extractor.get_available_categories()
+
+
+@pytest.mark.parametrize("language", ["fr", "es"])
+def test_every_summary_section_has_a_category_to_read(mock_ner_pipeline, language):
+    # A section whose key no mapping produces renders as nothing, for every
+    # document, without failing anywhere.
+    categories = set(build_extractor(language).get_available_categories())
+
+    assert {key for key, _ in SECTION_ORDER} <= categories
 
 
 @pytest.mark.parametrize("label", CAS_LABELS)

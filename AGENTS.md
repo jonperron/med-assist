@@ -55,7 +55,11 @@ Nominal flow:
 2. Validate MIME type and extension.
 3. Extract text.
 4. Extract medical entities.
-5. Return the API response. The default path (`POST /api/analyze`) stores nothing;
+5. Merge the documents into one clinical summary. Several documents in a request
+   are taken to be about the same patient. The summary is assembled from the
+   marked spans by fixed rules in `backend/app/services/summarizer.py` - no
+   language model, and no wording that is not a heading or a span.
+6. Return the API response. The default path (`POST /api/analyze`) stores nothing;
    the upload path stores the categorised entities under UUID keys in local Redis,
    and the document text only when `STORE_DOCUMENT_TEXT` is set. A multi-file
    upload stores each file that way and writes nothing under its batch id.

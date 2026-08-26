@@ -4,14 +4,8 @@
 import { useState } from 'react'
 import axios from 'axios'
 import FileUpload from './components/FileUpload'
-import ExtractionViewer from './components/ExtractionViewer'
-import RetentionNotice from './components/RetentionNotice'
-import type {
-  AnalysisResponse,
-  ExtractionData,
-  ExtractionResponse,
-  UploadResponse,
-} from './types/extraction'
+import SummaryView from './components/SummaryView'
+import type { AnalysisResponse, ClinicalSummary } from './types/extraction'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -24,157 +18,53 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 export default function HomePage() {
-  const [fileId, setFileId] = useState<string | null>(null)
-  const [extraction, setExtraction] = useState<ExtractionData | null>(null)
-  const [expiresIn, setExpiresIn] = useState<number | null>(null)
+  const [summary, setSummary] = useState<ClinicalSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [storeOnServer, setStoreOnServer] = useState(false)
-  // Masking is the deployment's default. Unticking this asks the server not to
-  // mask; a server configured to mask does it anyway and says so in the response.
-  const [pseudonymize, setPseudonymize] = useState(true)
+  const [pending, setPending] = useState(false)
 
-  const analyzeWithoutStoring = async (file: File) => {
+  const handleUpload = async (files: File[]) => {
     const formData = new FormData()
-    formData.append('file', file)
-    formData.append('pseudonymize', String(pseudonymize))
-
-    const response = await axios.post<AnalysisResponse>(`${API_URL}/api/analyze`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-
-    if (response.status === 200) {
-      setFileId(null)
-      setExpiresIn(null)
-      setExtraction(response.data)
-    }
-  }
-
-  const uploadForLater = async (file: File) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('pseudonymize', String(pseudonymize))
-
-    const response = await axios.post<UploadResponse>(`${API_URL}/api/upload_document/`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-
-    if (response.status === 200) {
-      setFileId(response.data.file_id)
-      setExpiresIn(response.data.expires_in_seconds ?? null)
-      setExtraction(null)
-    }
-  }
-
-  const handleFileUpload = async (file: File) => {
-    try {
-      setError(null)
-      // The stateless path is the default: nothing about the document reaches
-      // the server's storage, so there is nothing to expire or delete.
-      await (storeOnServer ? uploadForLater(file) : analyzeWithoutStoring(file))
-    } catch (err: unknown) {
-      setError(errorMessage(err, 'Failed to analyze file'))
-    }
-  }
-
-  const deleteDocument = async () => {
-    if (!fileId) return
+    // One field name repeated per file: what FastAPI reads as List[UploadFile].
+    files.forEach(file => formData.append('files', file))
 
     try {
       setError(null)
-      await axios.delete(`${API_URL}/api/documents/${fileId}`)
-      setFileId(null)
-      setExtraction(null)
-      setExpiresIn(null)
-    } catch (err: unknown) {
-      setError(errorMessage(err, 'Failed to delete document'))
-    }
-  }
+      setPending(true)
+      setSummary(null)
 
-  const fetchExtraction = async () => {
-    if (!fileId) return
-
-    try {
-      setError(null)
-      const response = await axios.get<ExtractionResponse>(
-        `${API_URL}/api/get_extracted_text/${fileId}`,
+      const response = await axios.post<AnalysisResponse>(
+        `${API_URL}/api/analyze`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
       )
-      if (response.status === 200) {
-        setExtraction(response.data)
-        setExpiresIn(response.data.expires_in_seconds ?? null)
-      }
+
+      setSummary(response.data.summary)
     } catch (err: unknown) {
-      setError(errorMessage(err, 'Failed to fetch extraction'))
+      setError(errorMessage(err, "Échec de l'analyse des documents."))
+    } finally {
+      setPending(false)
     }
   }
 
   return (
     <main className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4">🩺 Med-Assist</h1>
-      <FileUpload onUpload={handleFileUpload} />
+      <h1 className="text-3xl font-bold mb-4">Med-Assist</h1>
 
-      <div className="mt-3 space-y-2 text-sm text-gray-700">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={storeOnServer}
-            onChange={e => setStoreOnServer(e.target.checked)}
-          />
-          Keep the document on the server so it can be reopened later
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={pseudonymize}
-            onChange={e => setPseudonymize(e.target.checked)}
-          />
-          Mask detected patient identifiers
-        </label>
-        {extraction && 'pseudonymized' in extraction && extraction.pseudonymized && (
-          <p role="status" className="text-gray-500">
-            Detected patient identifiers were replaced with placeholders. This masks
-            what the model and the pattern rules found — check the result before
-            sharing it.
-          </p>
-        )}
-        {!storeOnServer && (
-          <p className="text-gray-500">
-            Nothing is stored: the document is analyzed in one request and the result is
-            only in this page.
-          </p>
-        )}
-      </div>
+      <FileUpload onUpload={handleUpload} disabled={pending} />
+
+      {pending && (
+        <p role="status" className="mt-4 text-gray-600">
+          Analyse en cours…
+        </p>
+      )}
 
       {error && (
-        <div className="mt-4 p-3 bg-red-100 text-red-700 rounded">
+        <div role="alert" className="mt-4 p-3 bg-red-100 text-red-700 rounded">
           {error}
         </div>
       )}
 
-      {fileId && (
-        <div className="mt-4">
-          <p className="text-sm text-gray-600 mb-2">File ID: {fileId}</p>
-          <div className="flex gap-2">
-            <button
-              onClick={fetchExtraction}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Extract Text
-            </button>
-            <button
-              onClick={deleteDocument}
-              className="px-4 py-2 border border-gray-400 text-gray-700 rounded hover:bg-gray-100"
-            >
-              Delete Now
-            </button>
-          </div>
-          {expiresIn !== null && (
-            // Keyed so a freshly reported expiry restarts the countdown at once.
-            <RetentionNotice key={`${fileId}-${expiresIn}`} expiresInSeconds={expiresIn} />
-          )}
-        </div>
-      )}
-
-      {extraction && <ExtractionViewer data={extraction} />}
+      {summary && <SummaryView summary={summary} />}
     </main>
   )
 }

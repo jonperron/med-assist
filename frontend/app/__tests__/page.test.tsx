@@ -7,35 +7,34 @@ vi.mock('axios')
 
 const mockedAxios = vi.mocked(axios, true)
 
-const emptyEntities = {
-  patient_info: [],
-  anatomy: [],
-  symptoms: [],
-  examinations: [],
-  treatments: [],
-  pathologies: [],
-  temporal: [],
-  measurements: [],
-  other: [],
-}
-
 const analysisResponse = {
   status: 200,
   data: {
-    text: 'Le patient présente une fièvre.',
-    extracted_entities: {
-      ...emptyEntities,
-      symptoms: [{ text: 'fièvre', label: 'sosy', score: 0.9, start: 26, end: 32 }],
+    summary: {
+      patient: 'Patient, 67 ans, homme.',
+      sections: [
+        {
+          key: 'symptoms',
+          heading: 'Signes et symptômes',
+          sentence: 'Fièvre.',
+          findings: ['fièvre'],
+        },
+      ],
+      document_count: 1,
+      empty: false,
     },
-    pseudonymized: false,
+    documents: [],
     retained: false,
   },
 }
 
-function selectFile() {
+function selectFiles(count = 1) {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement
-  const file = new File(['content'], 'report.txt', { type: 'text/plain' })
-  fireEvent.change(input, { target: { files: [file] } })
+  const files = Array.from(
+    { length: count },
+    (_, index) => new File(['content'], `report${index}.txt`, { type: 'text/plain' })
+  )
+  fireEvent.change(input, { target: { files } })
 }
 
 function postedForm() {
@@ -50,119 +49,91 @@ describe('HomePage', () => {
     )
   })
 
-  it('analyzes without storing by default', async () => {
+  it('summarises the selected documents', async () => {
     mockedAxios.post.mockResolvedValue(analysisResponse)
 
     render(<HomePage />)
-    selectFile()
+    selectFiles()
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
     expect(mockedAxios.post.mock.calls[0][0]).toContain('/api/analyze')
-    expect(await screen.findByText(/fièvre/)).toBeInTheDocument()
+    expect(await screen.findByText('Fièvre.')).toBeInTheDocument()
+    expect(screen.getByText('Patient, 67 ans, homme.')).toBeInTheDocument()
   })
 
-  it('issues no file id on the stateless path', async () => {
+  it('posts every document under the field the API reads', async () => {
     mockedAxios.post.mockResolvedValue(analysisResponse)
 
     render(<HomePage />)
-    selectFile()
+    selectFiles(3)
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
-    expect(screen.queryByText(/File ID:/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Delete Now/)).not.toBeInTheDocument()
+    expect(postedForm().getAll('files')).toHaveLength(3)
   })
 
-  it('uploads for later when the user opts into storage', async () => {
-    mockedAxios.post.mockResolvedValue({
-      status: 200,
-      data: { file_id: 'abc', expires_in_seconds: 3600 },
-    })
+  it('never stores and never issues an id', async () => {
+    mockedAxios.post.mockResolvedValue(analysisResponse)
 
     render(<HomePage />)
-    fireEvent.click(
-      screen.getByLabelText(/Keep the document on the server/)
+    selectFiles()
+
+    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
+    expect(mockedAxios.post.mock.calls[0][0]).not.toContain('/api/upload')
+    expect(screen.queryByText(/File ID/)).not.toBeInTheDocument()
+  })
+
+  it('offers no storage, retention or masking controls', () => {
+    render(<HomePage />)
+
+    // The clinician is asked for documents, not for a data-handling policy.
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0)
+    expect(screen.queryByText(/serveur|supprim|masqu/i)).not.toBeInTheDocument()
+  })
+
+  it('shows progress while the analysis runs', async () => {
+    let settle: (value: unknown) => void = () => {}
+    mockedAxios.post.mockReturnValue(new Promise(resolve => (settle = resolve)))
+
+    render(<HomePage />)
+    selectFiles()
+
+    expect(await screen.findByText(/Analyse en cours/)).toBeInTheDocument()
+
+    settle(analysisResponse)
+    await waitFor(() =>
+      expect(screen.queryByText(/Analyse en cours/)).not.toBeInTheDocument()
     )
-    selectFile()
-
-    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
-    expect(mockedAxios.post.mock.calls[0][0]).toContain('/api/upload_document/')
-    expect(await screen.findByText(/File ID: abc/)).toBeInTheDocument()
-  })
-
-  it('asks for masking by default', async () => {
-    mockedAxios.post.mockResolvedValue(analysisResponse)
-
-    render(<HomePage />)
-    selectFile()
-
-    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
-    expect(postedForm().get('pseudonymize')).toBe('true')
-  })
-
-  it('forwards a request to skip masking', async () => {
-    mockedAxios.post.mockResolvedValue(analysisResponse)
-
-    render(<HomePage />)
-    fireEvent.click(screen.getByLabelText(/Mask detected patient identifiers/))
-    selectFile()
-
-    await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledOnce())
-    expect(postedForm().get('pseudonymize')).toBe('false')
-  })
-
-  it('reports when the result was pseudonymised', async () => {
-    mockedAxios.post.mockResolvedValue({
-      status: 200,
-      data: { ...analysisResponse.data, pseudonymized: true },
-    })
-
-    render(<HomePage />)
-    selectFile()
-
-    expect(
-      await screen.findByText(/replaced with placeholders/)
-    ).toBeInTheDocument()
-  })
-
-  it('renders entities even when no text came back', async () => {
-    mockedAxios.post.mockResolvedValue({
-      status: 200,
-      data: { file_id: 'abc', expires_in_seconds: 3600 },
-    })
-    mockedAxios.get.mockResolvedValue({
-      status: 200,
-      data: {
-        file_id: 'abc',
-        text: null,
-        extracted_entities: {
-          ...emptyEntities,
-          pathologies: [{ text: 'grippe', label: 'pathologie', score: 0.9 }],
-        },
-        expires_in_seconds: 3500,
-      },
-    })
-
-    render(<HomePage />)
-    fireEvent.click(screen.getByLabelText(/Keep the document on the server/))
-    selectFile()
-
-    fireEvent.click(await screen.findByText('Extract Text'))
-
-    expect(await screen.findByText(/grippe/)).toBeInTheDocument()
-    expect(screen.getByText(/document text is not kept/)).toBeInTheDocument()
   })
 
   it('surfaces the API error message', async () => {
     mockedAxios.post.mockRejectedValue({
       isAxiosError: true,
-      response: { data: { detail: { message: 'Unable to extract text from the document.' } } },
+      response: {
+        data: { detail: { message: 'Unable to extract text from the document.' } },
+      },
     })
 
     render(<HomePage />)
-    selectFile()
+    selectFiles()
 
     expect(
-      await screen.findByText('Unable to extract text from the document.')
-    ).toBeInTheDocument()
+      await screen.findByRole('alert')
+    ).toHaveTextContent('Unable to extract text from the document.')
+  })
+
+  it('clears a previous summary before a new analysis', async () => {
+    mockedAxios.post.mockResolvedValue(analysisResponse)
+
+    render(<HomePage />)
+    selectFiles()
+    expect(await screen.findByText('Fièvre.')).toBeInTheDocument()
+
+    mockedAxios.post.mockRejectedValue({
+      isAxiosError: true,
+      response: { data: { detail: { message: 'Unable to extract text from the document.' } } },
+    })
+    selectFiles()
+
+    await waitFor(() => expect(screen.queryByText('Fièvre.')).not.toBeInTheDocument())
   })
 })

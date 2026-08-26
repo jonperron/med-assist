@@ -63,3 +63,6 @@ Thumbs.db
 
 # Model
 models/
+
+# Model training lives in its own private repository
+backend/training/

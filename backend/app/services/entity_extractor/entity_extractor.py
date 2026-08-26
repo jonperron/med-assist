@@ -194,7 +194,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
 
         Case and accents are dropped so a mapping written `duree` still answers
         a model that emits `durée`. An unmatched label costs an entity its
-        category, and for `patient_info` it costs an identifier its mask.
+        category, and for `patient_info` it costs an entity its category.
         """
         decomposed = unicodedata.normalize("NFKD", label.strip().lower())
         return "".join(char for char in decomposed if not unicodedata.combining(char))
@@ -248,7 +248,7 @@ class EntityExtractor(EntityExtractionServiceInterface):
 
         A label vocabulary is model metadata, never patient data, so it is safe
         to log - and a silent mismatch is how a whole category stops being
-        recognised, masking included.
+        recognised.
         """
         unmapped = self.unmapped_model_labels()
         if unmapped:

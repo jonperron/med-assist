@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -10,7 +10,6 @@ from app.interfaces.service_interfaces import (
     FileProcessingServiceInterface,
 )
 from app.schemas.extraction import EntityDetail
-from app.services.pseudonymizer import Pseudonymizer
 from app.services.text_extractor import TextExtractor
 
 
@@ -37,17 +36,13 @@ class FileHandler(FileProcessingServiceInterface):
         text_repository: TextRepositoryInterface,
         entity_extractor: EntityExtractionServiceInterface,
         privacy_config: PrivacyConfiguration,
-        pseudonymizer: Optional[Pseudonymizer] = None,
     ) -> None:
         self.extractor = TextExtractor()
         self.text_repository = text_repository
         self.entity_extractor = entity_extractor
         self.privacy_config = privacy_config
-        self.pseudonymizer = pseudonymizer or Pseudonymizer()
 
-    async def process_file(
-        self, file_id: UUID, file: UploadFile, pseudonymize: Optional[bool] = None
-    ) -> bool:
+    async def process_file(self, file_id: UUID, file: UploadFile) -> bool:
         """
         Process an uploaded file and persist its entities.
 
@@ -56,7 +51,6 @@ class FileHandler(FileProcessingServiceInterface):
 
         :param file_id: The unique identifier of the uploaded file.
         :param file: The uploaded file.
-        :param pseudonymize: Ask for masking even when the deployment default is off.
         :return: True if processing was successful, False otherwise.
         """
         text = await self.extractor.extract_text(file)
@@ -64,10 +58,6 @@ class FileHandler(FileProcessingServiceInterface):
             return False
 
         entities = await self.entity_extractor.extract_entities(text)
-
-        # A request may ask for masking, never turn a deployment's policy off.
-        if self.privacy_config.pseudonymize or bool(pseudonymize):
-            text, entities = self.pseudonymizer.mask(text, entities)
 
         if self.privacy_config.store_document_text:
             await self.text_repository.save_text(file_id, text)
