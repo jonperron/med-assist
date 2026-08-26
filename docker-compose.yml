@@ -55,7 +55,6 @@ services:
       - RETENTION_TTL_SECONDS=${RETENTION_TTL_SECONDS:-3600}
       - STORAGE_ENCRYPTION_KEY=${STORAGE_ENCRYPTION_KEY:-}
       - STORE_DOCUMENT_TEXT=${STORE_DOCUMENT_TEXT:-false}
-      - PSEUDONYMIZE_ENTITIES=${PSEUDONYMIZE_ENTITIES:-true}
       # Development mode mounts the mock endpoints; production is the default.
       - APP_ENV=${APP_ENV:-production}
     # Ready means the weights are in memory, not merely that the port is open.

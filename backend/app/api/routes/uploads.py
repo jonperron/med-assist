@@ -7,7 +7,6 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
-    Form,
     HTTPException,
     Path,
     UploadFile,
@@ -16,7 +15,7 @@ from fastapi import (
 
 from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
 from app.schemas.upload import MultipleUploadResponse, UploadResponse
-from app.use_cases.validate_file import validate_upload_file
+from app.use_cases.validate_file import validate_batch, validate_upload_file
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.services.file_handler import FileHandler
 from app.core.dependencies import get_file_handler, get_text_repository
@@ -25,10 +24,6 @@ from app.core.validation import parse_file_id
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Each file is capped at 10 MB by validate_upload_file; this bounds how many of
-# them a single request can queue behind the model.
-MAX_BATCH_FILES = 20
 
 
 @asynccontextmanager
@@ -59,7 +54,6 @@ async def failures_stay_generic(file_id: UUID) -> AsyncIterator[None]:
 async def store_document(
     file: UploadFile,
     file_handler: FileHandler,
-    pseudonymize: bool | None,
 ) -> UUID:
     """
     Validate one document, analyse it and persist what the deployment allows.
@@ -69,7 +63,6 @@ async def store_document(
 
     :param file: The uploaded file.
     :param file_handler: The service extracting and storing the document.
-    :param pseudonymize: Ask for masking even when the deployment default is off.
     :return: The id the document was stored under.
     :raises HTTPException: 400/413 for a rejected file, 500 when storing fails.
     """
@@ -78,7 +71,7 @@ async def store_document(
     file_id = uuid4()
     async with failures_stay_generic(file_id):
         try:
-            stored = await file_handler.process_file(file_id, file, pseudonymize)
+            stored = await file_handler.process_file(file_id, file)
         except ValueError as exc:
             # A document of a supported type that cannot be parsed is the
             # caller's problem, not a server fault - and /api/analyze already
@@ -116,13 +109,6 @@ async def store_document(
 )
 async def upload_document(
     file: UploadFile = File(..., description="The file to upload (PDF, DOCX, TXT)."),
-    pseudonymize: bool | None = Form(
-        default=None,
-        description=(
-            "Mask entities detected as patient information. Defaults to the "
-            "deployment's PSEUDONYMIZE_ENTITIES setting."
-        ),
-    ),
     file_handler: FileHandler = Depends(get_file_handler),
     text_repository: TextRepositoryInterface = Depends(get_text_repository),
 ) -> UploadResponse:
@@ -131,7 +117,6 @@ async def upload_document(
 
     Args:
         file: The uploaded file (PDF, DOCX, TXT)
-        pseudonymize: Whether to mask detected patient identifiers
 
     Returns:
         UploadResponse: Contains file ID, filename, and upload confirmation
@@ -139,7 +124,7 @@ async def upload_document(
     Raises:
         HTTPException: 400 for invalid file type, 500 for server errors
     """
-    file_id = await store_document(file, file_handler, pseudonymize)
+    file_id = await store_document(file, file_handler)
 
     async with failures_stay_generic(file_id):
         return UploadResponse(
@@ -175,13 +160,6 @@ async def upload_documents(
             "PDF, DOCX, TXT. Maximum size: 10MB per file."
         ),
     ),
-    pseudonymize: bool | None = Form(
-        default=None,
-        description=(
-            "Mask entities detected as patient information. Defaults to the "
-            "deployment's PSEUDONYMIZE_ENTITIES setting."
-        ),
-    ),
     file_handler: FileHandler = Depends(get_file_handler),
 ) -> MultipleUploadResponse:
     """
@@ -193,7 +171,6 @@ async def upload_documents(
 
     Args:
         files: The uploaded files (PDF, DOCX, TXT)
-        pseudonymize: Whether to mask detected patient identifiers
 
     Returns:
         MultipleUploadResponse: Contains batch id with associated file ids
@@ -201,25 +178,9 @@ async def upload_documents(
     Raises:
         HTTPException: 400 for invalid file type, 500 for server errors
     """
-    if len(files) > MAX_BATCH_FILES:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail={
-                "message": "Too many files in one batch",
-                "max_files": MAX_BATCH_FILES,
-            },
-        )
+    await validate_batch(files)
 
-    # Validate the whole batch before storing any of it. A refusal on the
-    # fourth file used to leave the first three in Redis under ids the client
-    # never receives in the error response, so nobody could delete them before
-    # the retention window closed.
-    for file in files:
-        await validate_upload_file(file)
-
-    file_ids = [
-        str(await store_document(file, file_handler, pseudonymize)) for file in files
-    ]
+    file_ids = [str(await store_document(file, file_handler)) for file in files]
 
     return MultipleUploadResponse(
         batch_id=str(uuid4()),

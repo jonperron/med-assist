@@ -39,7 +39,5 @@ class FileProcessingServiceInterface(ABC):
     """Interface for file processing operations."""
 
     @abstractmethod
-    async def process_file(
-        self, file_id: UUID, file: UploadFile, pseudonymize: Optional[bool] = None
-    ) -> bool:
+    async def process_file(self, file_id: UUID, file: UploadFile) -> bool:
         """Process uploaded file and persist what the deployment allows."""

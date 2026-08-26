@@ -46,16 +46,6 @@ class PrivacyConfiguration(BaseSettings):
             "default: only the categorised entities are persisted."
         ),
     )
-    pseudonymize: bool = Field(
-        default=True,
-        alias="PSEUDONYMIZE_ENTITIES",
-        description=(
-            "Mask detected patient identifiers before they are returned or "
-            "stored. On by default; a request may ask for masking but cannot "
-            "turn it off. Setting this to false is a deliberate decision to "
-            "handle identifiable patient data."
-        ),
-    )
 
 
 class NERModelConfiguration(BaseSettings):

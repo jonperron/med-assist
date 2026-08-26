@@ -12,7 +12,6 @@ from app.repositories.text_repository import (
 )
 from app.services.entity_extractor import EntityExtractor
 from app.services.file_handler import FileHandler
-from app.services.pseudonymizer import Pseudonymizer
 from app.services.text_extractor import TextExtractor
 
 
@@ -65,17 +64,10 @@ def get_text_extractor() -> TextExtractor:
 
 
 @lru_cache()
-def get_pseudonymizer() -> Pseudonymizer:
-    """Get pseudonymizer instance."""
-    return Pseudonymizer()
-
-
-@lru_cache()
 def get_file_handler() -> FileHandler:
     """Get file handler instance with text repository."""
     return FileHandler(
         text_repository=get_text_repository(),
         entity_extractor=get_entity_extractor(),
         privacy_config=get_privacy_config(),
-        pseudonymizer=get_pseudonymizer(),
     )

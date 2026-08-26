@@ -2,7 +2,9 @@
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jonperron/med-assist/backend-ci.yml?branch=main)](https://github.com/your-org/med-assist/actions)
 
-**Med-Assist** is an open-source tool that helps medical professionals extract key information—such as diseases, symptoms, and treatments—from clinical documents.
+**Med-Assist** summarises clinical documents for the people who have to read them. Point it at one document or at a stack of them for the same patient, and it answers a short, readable summary — pathologies, symptoms, examinations, treatments, localisations — built from what a medical NER model found in the text.
+
+No language model is involved and nothing leaves the machine: the summary is assembled from the spans the model marked, so it cannot state anything the documents did not.
 
 ---
 
@@ -28,12 +30,12 @@ It is not intended for use in clinical decision-making and should not replace pr
   All data is stored in a local Redis instance that is reachable only from the internal Docker network, requires a password, and never writes to disk. Every value is encrypted with `STORAGE_ENCRYPTION_KEY` before it is written.
 
 - **Automatic deletion**
-  Every stored document expires after `RETENTION_TTL_SECONDS` (one hour by default), and the remaining time is shown in the interface. `DELETE /api/documents/{file_id}` removes a document immediately.
+  Every stored document expires after `RETENTION_TTL_SECONDS` (one hour by default). `DELETE /api/documents/{file_id}` removes a document immediately.
 
-- **Pseudonymisation by default**
-  Names, social-security and record numbers, phone numbers, email addresses, dates, addresses, age and gender are replaced with one-way placeholders before anything is displayed or stored. No re-identification mapping is kept. A request can ask for masking but cannot turn it off.
+- **No language model, no egress**
+  Summaries are assembled from NER output by fixed rules, not generated. Document text is never sent anywhere, and `POST /api/analyze` does not even echo it back to the caller.
 
-  Pseudonymised health data is still personal data under GDPR (Recital 26): this is one Art. 32 measure, not compliance in itself, and the API is still unauthenticated. [`backend/README.md`](./backend/README.md) states the exact scope and the known gaps.
+  This is a local-processing guarantee, not a compliance claim. The extracted entities are health data and remain personal data under GDPR, the API is still unauthenticated, and clinical text is adversarial: read a summary before you rely on it. [`backend/README.md`](./backend/README.md) states the scope and the known gaps.
 
 ---
 
@@ -94,3 +96,15 @@ This project builds upon the following resources:
   **CAS: corpus of clinical cases in French.**
   *Journal of Biomedical Semantics, 11*, 7.
   [https://doi.org/10.1186/s13326-020-00225-x](https://doi.org/10.1186/s13326-020-00225-x)
+
+- Cardon, R., Grabar, N., Grouin, C., & Hamon, T. (2020).
+  **Presentation de la campagne d'evaluation DEFT 2020 : similarite textuelle en
+  domaine ouvert et extraction d'information precise dans des cas cliniques.**
+  *Actes de DEFT 2020*, Nancy, France.
+  The fine-grained annotation the served model is trained on.
+
+- Grouin, C., Grabar, N., & Illouz, G. (2021).
+  **Classification de cas cliniques et evaluation automatique de reponses
+  d'etudiants : presentation de la campagne DEFT 2021.**
+  *Actes de DEFT 2021*, Lille, France.
+  The train/test split the model is evaluated on.

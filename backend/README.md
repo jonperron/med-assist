@@ -7,9 +7,9 @@ This is the backend for the Med-Assist application, built with FastAPI and uv.
 * Document upload (PDF, DOC, DOCX, TXT)
 * Text extraction from medical documents
 * Named Entity Recognition (NER) for medical terms
+* Clinical summaries built from the extracted entities, one or many documents at a time
 * Stateless analysis in a single request, storing nothing
 * Encrypted, entity-only Redis storage for documents kept for later
-* Optional pseudonymisation of detected patient identifiers
 * RESTful API with automatic OpenAPI documentation
 
 ## Getting Started
@@ -36,7 +36,6 @@ The application uses Redis for storing extracted text and processing results. Co
 * `RETENTION_TTL_SECONDS`: Lifetime of every stored value, in seconds (default: `3600`). Every key written by the application carries this expiry, so stored documents are deleted automatically.
 * `STORAGE_ENCRYPTION_KEY`: Fernet key used to encrypt every value before it is written. When unset, an ephemeral key is generated at startup: values stay encrypted, but stored documents become unreadable after a restart. Generate one with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 * `STORE_DOCUMENT_TEXT`: Keep the extracted text next to the entities (default: `false`).
-* `PSEUDONYMIZE_ENTITIES`: Mask detected patient identifiers (default: `true`). A request may ask for masking but cannot turn it off; setting this to `false` is a deliberate decision to handle identifiable patient data.
 
 **Example:**
 
@@ -62,9 +61,8 @@ The default is to store nothing at all:
 * When the text is not stored, entity `start`/`end` offsets are dropped: an offset
   means nothing without the text it indexes.
 * Every value is encrypted before it reaches Redis.
-* Entity text is stored after masking, so a stored document carries placeholders rather
-  than the identifiers that were found. Setting `PSEUDONYMIZE_ENTITIES=false` stores them
-  verbatim instead.
+* Entities are stored as the model found them. A categorised span is still patient
+  data: `patient_info` in particular holds the age and sex the model marked.
 * Uploaded files above 1 MB are spooled to `TMPDIR` by the HTTP server before any route
   code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
   the container's writable layer; a bare `uvicorn` run does not, and will write them to
@@ -80,55 +78,37 @@ Stored documents are never kept indefinitely:
 * `GET /api/get_extracted_text/{file_id}` and `POST /api/upload_document/` return `expires_in_seconds` so a client can show the remaining time.
 * `DELETE /api/documents/{file_id}` removes a document — text and entities — before its window closes. It answers `204` on success and `404` when nothing was stored.
 
-### Pseudonymisation
+### Summaries
 
-**On by default** (`PSEUDONYMIZE_ENTITIES=true`). Every occurrence of a detected
-identifier is replaced with a stable placeholder — `[NOM_1]`, `[DATE_1]`, `[AGE_1]` — in
-the text and in the returned entities, and the offsets of the surviving entities are
-remapped onto the masked text. An entity from another category that overlaps a masked
-span reports the placeholder too: the characters are gone from the text, so repeating
-them would defeat the mask.
+`POST /api/analyze` takes one or more documents and answers a `summary`: the
+readable product the rest of the pipeline exists for.
 
-Two detectors feed the pass:
+Several documents in one request are taken to be **about the same patient**, which
+is what makes merging them meaningful. A finding named in three of them is reported
+once, and findings are ordered by how many documents support them.
 
-1. The model's `patient_info` category (`app/services/entity_extractor/label_mappings/fr.json`).
-   With the shipped French mapping that is `age`, `genre`, `homme` and `femme`.
-2. `app/services/identifier_detector.py`, a pattern detector for the direct identifiers
-   the model has **no label for**: names behind a civility or a field label
-   (`M. Dupont`, `Patient : Jean Martin`), social-security numbers, record numbers
-   (`IPP`, `NIP`, `NDA`), phone numbers, email addresses, dates, and postal codes
-   followed by a town.
+The summary is assembled, not generated. Every word in it is either a fixed heading
+or a span the model marked in the submitted documents, so it cannot state anything
+the documents did not — and no text leaves the process for a language model.
 
-Once an identifier is found anywhere, every later occurrence of the same surface form is
-masked with it — so a surname introduced as `M. Martin` is also masked where it appears
-alone. Detected identifiers are reported in the `patient_info` category (as placeholders,
-never as their original text), so a reader can audit what was masked.
+What shapes it, in `app/services/summarizer.py`:
 
-`POST /api/analyze` and `POST /api/upload_document/` accept a `pseudonymize` form field.
-A request can only turn masking **on**: it cannot switch off a deployment that sets
-`PSEUDONYMIZE_ENTITIES=true`, since the caller is not the party that sets the policy.
+* Five sections, in reading order: pathologies, signs and symptoms, examinations,
+  treatments, localisations. `temporal`, `measurements` and `other` are deliberately
+  left out — a bare list of durations or loose values carries no clinical meaning
+  once separated from its sentence. They stay in the `documents` payload.
+* An opening demographic line built from the model's `age` and `genre` labels. The
+  first mention of each wins, so a relative's age quoted further down does not
+  overwrite the patient's.
+* Deduplication that folds case, accents, inner spacing and edge punctuation, keeping
+  the longest surface form seen — the model truncates outer mentions, so the longest
+  is the most complete one (see `DECISION.md`).
+* A confidence floor of `MIN_CONFIDENCE`. This is the only use the model's score has,
+  and it is never displayed: a percentage next to a clinical finding invites a reader
+  to weigh it, which is not a judgement a token classifier's softmax supports.
 
-#### What this does and does not mean for GDPR
-
-Pseudonymisation is defined in Art. 4(5) and is an explicit Art. 32 security measure,
-and this implementation keeps no re-identification mapping at all — the placeholders are
-one-way, so there is no "additional information" to hold separately.
-
-It does not make the data non-personal. Recital 26 is explicit that pseudonymised data
-remains personal data, so the whole regulation still applies: lawful basis, records of
-processing, a data protection impact assessment for health data, data subject rights,
-and access control. Note in particular that **the API is still unauthenticated** — see
-Phase 4 of the roadmap. Treat this feature as one control among the several compliance
-requires, not as compliance.
-
-Two limits worth stating plainly:
-
-* Masking covers what the model labels and what the patterns match. A name written with
-  no civility and no field label — a bare `Dupont` never introduced as `M. Dupont` — is
-  not detected. Free-text clinical notes are adversarial in this respect.
-* `pseudonymized: true` reports that the pass ran over every detected identifier, not
-  that no identifier remains. An identifier that is missed is an identifier that
-  survives, so a document that leaves the premises still deserves a human read.
+`POST /api/analyze` does not echo the document text back. The summary is the product,
+and returning the text would widen what leaves the server for no gain.
 
 ### Logging
 
@@ -152,6 +132,30 @@ The application uses Hugging Face transformers for Named Entity Recognition. Con
 export NER_MODEL_NAME="dbmdz/bert-large-cased-finetuned-conll03-english"
 export NER_INFERENCE_THREADS=2
 ```
+
+### Where the model comes from
+
+The served model is not a Hub artifact picked off the shelf: it is
+`Dr-BERT/DrBERT-7GB` fine-tuned for token classification on the DEFT 2021
+corpus of French clinical cases. The training project builds it and writes the
+weights, the fast tokenizer and a `metrics.json` into `backend/models/`, which
+`docker-compose.yml` mounts as `NER_MODEL_NAME`.
+
+That project lives in its own repository — the training corpus is clinical data
+and cannot be distributed here, and training wants the CUDA build of `torch`
+while this service pins the CPU build. Its README covers how to obtain the
+corpus and reproduce the model.
+
+The model emits fifteen entity types: the thirteen fine-grained DEFT 2020 types
+(`anatomie`, `sosy`, `examen`, `traitement`, `substance`, `dose`, `mode`,
+`frequence`, `duree`, `moment`, `date`, `pathologie`, `valeur`) plus `age` and
+`genre`. Every one of them is categorised by
+`app/services/entity_extractor/label_mappings/fr.json`; a label the mapping does
+not know is reported at startup and lands in `other`.
+
+`age` and `genre` matter beyond their category. They belong to `patient_info`,
+which is what the summary's opening line is built from — so the model supplies
+the patient's age and sex itself rather than leaving them to a pattern match.
 
 ### Inference runs on the CPU
 

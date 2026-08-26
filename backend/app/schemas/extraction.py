@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
 
+from app.schemas.summary import ClinicalSummary
+
 
 class EntityDetail(BaseModel):
     """Detailed information about an extracted entity."""
@@ -77,25 +79,21 @@ class ExtractionResponse(BaseModel):
 class AnalysisResponse(BaseModel):
     """Result of a stateless analysis. Nothing behind this response is stored."""
 
-    text: str = Field(
+    summary: ClinicalSummary = Field(
         description=(
-            "Text extracted from the submitted document, pseudonymised when "
-            "requested. Returned to the caller and kept nowhere else."
+            "The submitted documents merged into one readable patient summary. "
+            "This is what the endpoint is for; the rest is detail behind it."
         )
     )
-    extracted_entities: ExtractedEntities = Field(
-        description="Medical entities found in the text with detailed information"
+    documents: List[ExtractedEntities] = Field(
+        description=(
+            "The entities found in each submitted document, in submission "
+            "order, for a caller that needs more than the summary."
+        )
     )
     mapping_info: Optional[Dict[str, str]] = Field(
         default=None,
         description="Information about the label mapping used (language, dataset)",
-    )
-    pseudonymized: bool = Field(
-        description=(
-            "Whether the masking pass ran. It reports that every identifier the "
-            "model detected was replaced, not that no identifier remains: an "
-            "identifier the model misses is an identifier that survives."
-        )
     )
     retained: bool = Field(
         default=False,

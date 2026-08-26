@@ -9,7 +9,6 @@ from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.interfaces.service_interfaces import EntityExtractionServiceInterface
 from app.schemas.extraction import EntityDetail
 from app.services.file_handler import FileHandler
-from app.services.pseudonymizer import Pseudonymizer
 
 
 @pytest.fixture
@@ -47,20 +46,11 @@ def mock_entity_extractor(extracted_entities):
     return mock
 
 
-def build_handler(
-    text_repository,
-    entity_extractor,
-    store_document_text=False,
-    pseudonymize=False,
-):
+def build_handler(text_repository, entity_extractor, store_document_text=False):
     return FileHandler(
         text_repository=text_repository,
         entity_extractor=entity_extractor,
-        privacy_config=PrivacyConfiguration(
-            STORE_DOCUMENT_TEXT=store_document_text,
-            PSEUDONYMIZE_ENTITIES=pseudonymize,
-        ),
-        pseudonymizer=Pseudonymizer(),
+        privacy_config=PrivacyConfiguration(STORE_DOCUMENT_TEXT=store_document_text),
     )
 
 
@@ -133,46 +123,6 @@ async def test_process_file_keeps_text_and_offsets_when_configured(
     mock_text_repository.save_text.assert_called_once_with(file_id, "Le homme a fièvre")
     _, stored_entities = mock_text_repository.save_entities.call_args.args
     assert stored_entities["symptoms"][0].start == 12
-
-
-@pytest.mark.asyncio
-@patch("app.services.file_handler.TextExtractor")
-async def test_process_file_pseudonymizes_when_configured(
-    MockTextExtractor, mock_text_repository, mock_entity_extractor, mock_upload_file
-):
-    MockTextExtractor.return_value.extract_text = AsyncMock(
-        return_value="Le homme a fièvre"
-    )
-    handler = build_handler(
-        mock_text_repository,
-        mock_entity_extractor,
-        store_document_text=True,
-        pseudonymize=True,
-    )
-
-    await handler.process_file(uuid4(), mock_upload_file)
-
-    _, stored_text = mock_text_repository.save_text.call_args.args
-    assert "homme" not in stored_text
-    assert "[GENRE_1]" in stored_text
-
-
-@pytest.mark.asyncio
-@patch("app.services.file_handler.TextExtractor")
-async def test_process_file_request_overrides_the_configured_default(
-    MockTextExtractor, mock_text_repository, mock_entity_extractor, mock_upload_file
-):
-    MockTextExtractor.return_value.extract_text = AsyncMock(
-        return_value="Le homme a fièvre"
-    )
-    handler = build_handler(
-        mock_text_repository, mock_entity_extractor, store_document_text=True
-    )
-
-    await handler.process_file(uuid4(), mock_upload_file, pseudonymize=True)
-
-    _, stored_text = mock_text_repository.save_text.call_args.args
-    assert "homme" not in stored_text
 
 
 @pytest.mark.asyncio

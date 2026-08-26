@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.uploads import MAX_BATCH_FILES, router
+from app.api.routes.uploads import router
+from app.use_cases.validate_file import MAX_BATCH_FILES
 from app.core.dependencies import get_file_handler, get_text_repository
 from app.interfaces.repositories_interfaces import TextRepositoryInterface
 from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorDetail

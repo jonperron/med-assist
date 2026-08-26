@@ -10,8 +10,7 @@ attributes assigned on `self`. Dunders (`__init__`, `__all__`) are Python's own
 protocol and are left alone, as is a bare `_` for a value being discarded.
 
 Parsing is done with `ast` rather than a regex, so an underscore inside a
-string or a comment - the pattern tables in identifier_detector.py are full of
-them - is never mistaken for a name.
+string or a comment is never mistaken for a name.
 """
 
 import ast

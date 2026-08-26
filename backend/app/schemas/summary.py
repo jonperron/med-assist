@@ -1,0 +1,51 @@
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
+
+class SummarySection(BaseModel):
+    """One clinical axis of the summary, as a heading and its findings."""
+
+    key: str = Field(description="Stable category key, e.g. 'pathologies'")
+    heading: str = Field(description="Human-readable heading for the section")
+    sentence: str = Field(
+        description="The section's findings as one sentence, ready to read"
+    )
+    findings: List[str] = Field(
+        description=(
+            "The same findings as a list, most-supported first, for a caller "
+            "that would rather lay them out itself"
+        )
+    )
+
+
+class ClinicalSummary(BaseModel):
+    """
+    A readable summary of one or more documents about the same patient.
+
+    Everything here is assembled from what the NER model emitted. No wording is
+    generated: each finding is a span the model marked, deduplicated across the
+    submitted documents and placed under a fixed heading.
+    """
+
+    patient: Optional[str] = Field(
+        default=None,
+        description=(
+            "The demographic line, e.g. 'Patient, 67 ans, homme.' Absent when "
+            "the documents carry no demographic mention."
+        ),
+    )
+    sections: List[SummarySection] = Field(
+        default=[],
+        description="Clinical sections, in reading order. Empty ones are omitted.",
+    )
+    document_count: int = Field(
+        description="How many documents were read to build this summary"
+    )
+    empty: bool = Field(
+        default=False,
+        description=(
+            "True when nothing clinical was found. The caller should say so "
+            "rather than render an empty page."
+        ),
+    )
