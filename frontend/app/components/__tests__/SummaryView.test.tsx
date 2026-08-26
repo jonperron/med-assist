@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import SummaryView from '../SummaryView'
+import { SummaryView } from '../SummaryView'
 import type { ClinicalSummary } from '../../types/extraction'
 import type { SelectedDocument } from '../../lib/documentSelection'
 
@@ -113,6 +113,21 @@ describe('SummaryView', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       /Aucun élément clinique.*ces documents/
     )
+  })
+
+  it('says nothing was found when the only finding was a patient line', () => {
+    // The backend sets `empty` false whenever a patient line exists, so this
+    // arrives as a non-empty summary carrying no sections at all.
+    renderSummary({ empty: false, sections: [], document_count: 2 })
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Aucun élément clinique/)
+  })
+
+  it('names the source documents in the printed copy', () => {
+    const { container } = renderSummary()
+    const chip = screen.getByText('Lettre adressage')
+
+    expect(container.querySelector('[data-print="hide"]')).not.toContainElement(chip)
   })
 
   it('starts over on request', () => {

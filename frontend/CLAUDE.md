@@ -26,7 +26,7 @@ build, so a broken test reaches `main` unless it is caught here. Run all three.
 - Many small files over few large files
 - High cohesion, low coupling
 - 200-400 lines typical, 800 max per file
-- One component per file, named after the file (`app/components/FileUpload.tsx`)
+- One component per file, named after the file (`app/components/FileDropzone.tsx`)
 - Tests colocated in `__tests__/` beside the code they cover
 - No circular import
 

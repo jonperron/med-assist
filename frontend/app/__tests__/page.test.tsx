@@ -28,11 +28,11 @@ const analysisResponse = {
   },
 }
 
-function selectFiles(count = 1, type = 'text/plain') {
+function selectFiles(count = 1, type = 'text/plain', extension = 'txt') {
   const input = document.querySelector('input[type="file"]') as HTMLInputElement
   const files = Array.from(
     { length: count },
-    (_, index) => new File(['content'], `report${index}.txt`, { type })
+    (_, index) => new File(['content'], `report${index}.${extension}`, { type })
   )
   fireEvent.change(input, { target: { files } })
 }
@@ -87,11 +87,19 @@ describe('HomePage', () => {
 
   it('refuses an unsupported document without asking the backend', () => {
     render(<HomePage />)
-    selectFiles(1, 'image/png')
+    selectFiles(1, 'image/png', 'png')
 
     expect(mockedAxios.post).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(/PDF, DOCX ou TXT/)
     expect(screen.queryByRole('button', { name: /^Résumer / })).not.toBeInTheDocument()
+  })
+
+  it('distinguishes a format the browser could not name from a wrong one', () => {
+    render(<HomePage />)
+    selectFiles(1, 'application/octet-stream', 'docx')
+
+    expect(mockedAxios.post).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/navigateur/)
   })
 
   it('drops a document from the batch before submitting', async () => {
@@ -175,6 +183,75 @@ describe('HomePage', () => {
 
     await waitFor(() => expect(mockedAxios.post).toHaveBeenCalledTimes(2))
     expect((mockedAxios.post.mock.calls[1][1] as FormData).getAll('files')).toHaveLength(2)
+  })
+
+  it('drops the failure card when the batch it described is emptied', async () => {
+    mockedAxios.post.mockRejectedValue({
+      isAxiosError: true,
+      response: { data: { detail: { message: 'Internal server error' } } },
+    })
+
+    render(<HomePage />)
+    selectFiles(2)
+    submit()
+    await screen.findByRole('alert')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tout retirer' }))
+
+    // A retry against an empty batch would be a control that does nothing.
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('drops the failure card when the batch is changed', async () => {
+    mockedAxios.post.mockRejectedValue({
+      isAxiosError: true,
+      response: { data: { detail: { message: 'Internal server error' } } },
+    })
+
+    render(<HomePage />)
+    selectFiles(2)
+    submit()
+    await screen.findByRole('alert')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer report0.txt' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('reports a 200 that does not carry a summary', async () => {
+    mockedAxios.post.mockResolvedValue({ status: 200, data: { detail: 'not ours' } })
+
+    render(<HomePage />)
+    selectFiles()
+    submit()
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText(/Résumé de/)).not.toBeInTheDocument()
+  })
+
+  it('reports a summary whose sections are not a list', async () => {
+    mockedAxios.post.mockResolvedValue({
+      status: 200,
+      data: { summary: { document_count: 1, empty: false, sections: null } },
+    })
+
+    render(<HomePage />)
+    selectFiles()
+    submit()
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+
+  it('refuses an oversized document without asking the backend', () => {
+    render(<HomePage />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const heavy = new File(['x'], 'gros.txt', { type: 'text/plain' })
+    Object.defineProperty(heavy, 'size', { value: 11 * 1024 * 1024 })
+    fireEvent.change(input, { target: { files: [heavy] } })
+
+    expect(mockedAxios.post).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/volumineux/)
   })
 
   it('clears a previous summary when starting over', async () => {

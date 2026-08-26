@@ -1,4 +1,5 @@
 import type { SelectedDocument } from '../lib/documentSelection'
+import { displayFilename } from '../lib/documentName'
 import { Icon } from './Icon'
 
 interface Props {
@@ -40,7 +41,9 @@ export function ReadingProgress({ documents }: Props) {
               strokeWidth={1.8}
               className="animate-spin shrink-0 text-accent"
             />
-            <span className="grow text-[14.5px] break-all text-ink">{file.name}</span>
+            <span className="grow text-[14.5px] break-all text-ink">
+              {displayFilename(file.name)}
+            </span>
           </li>
         ))}
       </ul>

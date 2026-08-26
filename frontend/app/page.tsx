@@ -10,7 +10,7 @@ import { DocumentList } from './components/DocumentList'
 import { FileDropzone } from './components/FileDropzone'
 import { PrivacyBadge } from './components/PrivacyBadge'
 import { ReadingProgress } from './components/ReadingProgress'
-import SummaryView from './components/SummaryView'
+import { SummaryView } from './components/SummaryView'
 import { errorMessage } from './lib/apiError'
 import { describeRejection, type SelectedDocument } from './lib/documentSelection'
 import type { AnalysisResponse, ClinicalSummary } from './types/extraction'
@@ -49,12 +49,27 @@ export default function HomePage() {
       return
     }
 
+    // Minted here, not inside the updater: `asSelected` advances a
+    // module-level counter, and React may call an updater more than once.
+    const added = asSelected(files)
+
     setSelectionError(null)
-    setDocuments(current => [...current, ...asSelected(files)])
+    setAnalysisError(null)
+    setDocuments(current => [...current, ...added])
   }
 
   const removeDocument = (id: string) => {
+    // The failure card describes a request made against a particular batch.
+    // Once the batch changes it no longer describes anything, and its retry
+    // would re-send something the clinician did not ask for.
+    setAnalysisError(null)
     setDocuments(current => current.filter(document => document.id !== id))
+  }
+
+  const removeAllDocuments = () => {
+    setAnalysisError(null)
+    setSelectionError(null)
+    setDocuments([])
   }
 
   const startOver = () => {
@@ -82,7 +97,16 @@ export default function HomePage() {
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )
 
-      setSummary(response.data.summary)
+      // A 200 is not proof the body is ours: a stale base URL can reach a
+      // proxy or a login page. Storing a missing summary would end the
+      // spinner and return the clinician to the picker saying nothing.
+      const received = response.data?.summary
+      if (!received || !Array.isArray(received.sections)) {
+        setAnalysisError(ANALYSIS_FAILED)
+        return
+      }
+
+      setSummary(received)
     } catch (err: unknown) {
       setAnalysisError(errorMessage(err, ANALYSIS_FAILED))
     } finally {
@@ -129,10 +153,10 @@ export default function HomePage() {
             <DocumentList
               documents={documents}
               onRemove={removeDocument}
-              onRemoveAll={() => setDocuments([])}
+              onRemoveAll={removeAllDocuments}
             />
 
-            {analysisError && (
+            {analysisError && documents.length > 0 && (
               <AnalysisFailure
                 message={analysisError}
                 onRetry={() => analyse(documents)}

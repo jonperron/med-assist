@@ -24,8 +24,14 @@ function summaryTitle(count: number): string {
   return count === 1 ? "Résumé d'un document" : `Résumé de ${count} documents`
 }
 
-export default function SummaryView({ summary, documents, onStartOver }: Props) {
+export function SummaryView({ summary, documents, onStartOver }: Props) {
   const { cards, sites } = layoutSummary(summary.sections)
+
+  // Derived from the content, with `empty` as a hint rather than the decision.
+  // The backend sets `empty` only when there is no patient line either, so a
+  // batch whose sole finding was an age arrives as `empty: false` with no
+  // sections - and branching on the flag alone renders an empty grid.
+  const nothingToShow = summary.empty || cards.length === 0
 
   return (
     <div className="flex min-h-screen flex-col bg-paper">
@@ -66,11 +72,12 @@ export default function SummaryView({ summary, documents, onStartOver }: Props) 
           </div>
         </div>
 
-        <div data-print="hide">
-          <SourceChips documents={documents} />
-        </div>
+        {/* Kept in the printed copy on purpose: on a page going into a
+            patient file, which documents the summary was built from is the
+            first thing a reader needs to check it against. */}
+        <SourceChips documents={documents} />
 
-        {summary.empty ? (
+        {nothingToShow ? (
           <EmptySummary
             documentCount={summary.document_count}
             onStartOver={onStartOver}

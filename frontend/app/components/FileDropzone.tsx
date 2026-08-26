@@ -5,10 +5,9 @@ import { Icon } from './Icon'
 
 interface Props {
   onAdd: (files: File[]) => void
-  disabled?: boolean
 }
 
-export function FileDropzone({ onAdd, disabled = false }: Props) {
+export function FileDropzone({ onAdd }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -22,7 +21,6 @@ export function FileDropzone({ onAdd, disabled = false }: Props) {
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
     setDragging(false)
-    if (disabled) return
 
     const files = Array.from(event.dataTransfer.files ?? [])
     if (files.length > 0) onAdd(files)
@@ -32,7 +30,7 @@ export function FileDropzone({ onAdd, disabled = false }: Props) {
     <div
       onDragOver={event => {
         event.preventDefault()
-        if (!disabled) setDragging(true)
+        setDragging(true)
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
@@ -52,16 +50,14 @@ export function FileDropzone({ onAdd, disabled = false }: Props) {
         type="file"
         multiple
         accept=".pdf,.docx,.txt"
-        disabled={disabled}
         onChange={handleChange}
         className="sr-only"
       />
 
       <button
         type="button"
-        disabled={disabled}
         onClick={() => inputRef.current?.click()}
-        className="h-11 cursor-pointer rounded-lg border border-edge bg-surface px-[22px] text-sm font-semibold text-ink hover:bg-paper disabled:cursor-default disabled:opacity-50"
+        className="h-11 cursor-pointer rounded-lg border border-edge bg-surface px-[22px] text-sm font-semibold text-ink hover:bg-paper"
       >
         Choisir des fichiers
       </button>

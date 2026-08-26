@@ -43,16 +43,6 @@ describe('FileDropzone', () => {
     expect(onAdd).toHaveBeenCalledWith([PDF])
   })
 
-  it('ignores a drop while an analysis is running', () => {
-    const onAdd = vi.fn()
-    const { container } = render(<FileDropzone onAdd={onAdd} disabled />)
-
-    fireEvent.drop(container.firstChild as HTMLElement, {
-      dataTransfer: { files: [PDF] },
-    })
-    expect(onAdd).not.toHaveBeenCalled()
-  })
-
   it('labels the input for a screen reader', () => {
     render(<FileDropzone onAdd={vi.fn()} />)
     expect(screen.getByLabelText(/Documents à résumer/)).toBe(fileInput())

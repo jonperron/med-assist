@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readableDocumentName } from '../documentName'
+import { displayFilename, readableDocumentName } from '../documentName'
 
 describe('readableDocumentName', () => {
   it('drops the extension and reads the name as words', () => {
@@ -24,5 +24,32 @@ describe('readableDocumentName', () => {
 
   it('leaves a name that is already readable alone', () => {
     expect(readableDocumentName('Compte rendu.pdf')).toBe('Compte rendu')
+  })
+})
+
+describe('displayFilename', () => {
+  it('leaves an ordinary name alone', () => {
+    expect(displayFilename('lettre-adressage.pdf')).toBe('lettre-adressage.pdf')
+  })
+
+  it('strips bidirectional overrides that disguise what a file is', () => {
+    expect(displayFilename('lettre\u202Efdp.pdf')).toBe('lettrefdp.pdf')
+  })
+
+  it('strips zero-width and control characters', () => {
+    expect(displayFilename('note\u200B\u0007.txt')).toBe('note.txt')
+  })
+
+  it('clamps a name too long to sit in a row', () => {
+    const long = 'a'.repeat(400) + '.pdf'
+    const shown = displayFilename(long)
+    expect(shown.length).toBeLessThanOrEqual(120)
+    expect(shown.endsWith('\u2026')).toBe(true)
+  })
+})
+
+describe('readableDocumentName sanitising', () => {
+  it('strips invisible characters before reading the name', () => {
+    expect(readableDocumentName('compte\u202E-rendu.pdf')).toBe('Compte rendu')
   })
 })

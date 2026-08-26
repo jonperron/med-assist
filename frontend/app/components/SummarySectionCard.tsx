@@ -28,9 +28,12 @@ export function SummarySectionCard({ section, sites = null }: Props) {
       </h2>
 
       <ul>
-        {section.findings.map(finding => (
+        {/* Keyed by position, not by the finding itself. The list is static
+            within a render, and keying on content would tie this component to
+            a backend dedup invariant that nothing here can enforce. */}
+        {section.findings.map((finding, index) => (
           <li
-            key={finding}
+            key={`${section.key}-${index}`}
             className="border-t border-rule-soft py-[11px] text-base text-ink"
           >
             {finding}

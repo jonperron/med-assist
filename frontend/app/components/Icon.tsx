@@ -3,7 +3,11 @@ import type { JSX } from 'react'
 // The whole icon set, drawn on one 24x24 grid at one stroke weight so a row of
 // them reads as a single family. Colour comes from `currentColor`, so an icon
 // takes the text colour of whatever it sits in and never needs its own token.
-const PATHS: Record<string, JSX.Element> = {
+// Annotated with `satisfies`, not `:`. A `Record<string, ...>` annotation
+// would widen the key type before `keyof` reads it, and `IconName` would
+// collapse to `string`: a typo at a call site would then compile and render
+// an empty <svg>, which no test catches because icons are aria-hidden.
+const PATHS = {
   stethoscope: (
     <>
       <path d="M6 3v5a5 5 0 0 0 10 0V3" />
@@ -55,7 +59,7 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M7 14h10v6H7z" />
     </>
   ),
-}
+} satisfies Record<string, JSX.Element>
 
 export type IconName = keyof typeof PATHS
 

@@ -1,6 +1,7 @@
 'use client'
 
 import type { SelectedDocument } from '../lib/documentSelection'
+import { displayFilename } from '../lib/documentName'
 import { Icon } from './Icon'
 
 interface Props {
@@ -32,7 +33,9 @@ export function DocumentList({ documents, onRemove, onRemoveAll }: Props) {
       </div>
 
       <ul>
-        {documents.map(({ id, file }) => (
+        {documents.map(({ id, file }) => {
+          const name = displayFilename(file.name)
+          return (
           <li
             key={id}
             className="flex items-center gap-3.5 border-b border-rule-soft py-3.5"
@@ -43,17 +46,18 @@ export function DocumentList({ documents, onRemove, onRemoveAll }: Props) {
               strokeWidth={1.5}
               className="shrink-0 text-ink-muted"
             />
-            <span className="grow text-[15px] break-all text-ink">{file.name}</span>
+            <span className="grow text-[15px] break-all text-ink">{name}</span>
             <button
               type="button"
               onClick={() => onRemove(id)}
-              aria-label={`Retirer ${file.name}`}
+              aria-label={`Retirer ${name}`}
               className="flex size-11 shrink-0 cursor-pointer items-center justify-center text-source hover:text-ink"
             >
               <Icon name="close" size={16} strokeWidth={1.8} />
             </button>
           </li>
-        ))}
+          )
+        })}
       </ul>
     </div>
   )

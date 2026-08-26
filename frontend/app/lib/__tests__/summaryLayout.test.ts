@@ -51,3 +51,27 @@ describe('layoutSummary', () => {
     expect(layoutSummary([])).toEqual({ cards: [], sites: null })
   })
 })
+
+describe('layoutSummary ordering guarantees', () => {
+  it('keeps two unknown sections in the order they arrived', () => {
+    const { cards } = layoutSummary([
+      section('measurements'),
+      section('temporal'),
+      section('pathologies'),
+    ])
+
+    expect(keysOf(cards)).toEqual(['pathologies', 'measurements', 'temporal'])
+  })
+
+  it('folds anatomy and appends an unknown key in the same pass', () => {
+    const { cards, sites } = layoutSummary([
+      section('anatomy'),
+      section('other'),
+      section('symptoms'),
+      section('pathologies'),
+    ])
+
+    expect(keysOf(cards)).toEqual(['pathologies', 'symptoms', 'other'])
+    expect(sites?.key).toBe('anatomy')
+  })
+})
