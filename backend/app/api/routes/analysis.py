@@ -73,8 +73,11 @@ async def analyze(
             text_extractor=text_extractor,
             entity_extractor=entity_extractor,
         )
-        # Built inside the guard: a schema mismatch raises a pydantic error that
-        # quotes the offending value, which would be document content.
+        # Built inside the guard: a malformed EntityDetail raises a pydantic
+        # error that quotes the offending value, which would be document
+        # content. A category the model emits that the schema lacks is not an
+        # error - ExtractedEntities ignores unknown keys, so it is dropped
+        # silently by design.
         return AnalysisResponse(
             summary=summary,
             documents=[ExtractedEntities(**entities) for entities in documents],

@@ -8,7 +8,9 @@ MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 # Each file is capped at MAX_FILE_SIZE_BYTES; this bounds how many of them a
 # single request can queue behind a model that admits one document at a time.
-MAX_BATCH_FILES = 20
+# The size ceiling bounds bytes, not inference time, and twenty small text
+# files are the expensive case - so a small deployment can lower this.
+MAX_BATCH_FILES = int(os.getenv("MAX_BATCH_FILES", "20"))
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

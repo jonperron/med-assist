@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,6 +20,7 @@ from app.core.dependencies import get_entity_extractor
 from app.core.middleware import forbid_caching, reject_oversized_requests
 
 logger = logging.getLogger(__name__)
+
 
 DEVELOPMENT = "development"
 PRODUCTION = "production"
@@ -77,6 +79,26 @@ async def unexpected_failures_stay_generic(
     )
 
 
+async def malformed_requests_stay_generic(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    """
+    Answer a malformed request with the same fixed body every refusal uses.
+
+    FastAPI's own handler for a validation error reports the value it rejected
+    under an `input` key. On the analysis route the body *is* the documents, so
+    a client that sends the text as a form field instead of a file part has
+    that text reflected back - the one response on this service that could
+    carry clinical content, and the only one outside the fixed envelope the
+    frontend parses. Neither the value nor the field path is echoed.
+    """
+    logger.error("Malformed request to %s", request.url.path)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": {"message": "The request body could not be read."}},
+    )
+
+
 def create_app(app_env: str | None = None) -> FastAPI:
     """
     Build the application.
@@ -94,6 +116,9 @@ def create_app(app_env: str | None = None) -> FastAPI:
     )
 
     application.add_exception_handler(Exception, unexpected_failures_stay_generic)
+    application.add_exception_handler(
+        RequestValidationError, malformed_requests_stay_generic
+    )
 
     application.add_middleware(
         CORSMiddleware,

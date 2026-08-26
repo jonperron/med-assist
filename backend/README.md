@@ -36,6 +36,7 @@ The application uses Redis for storing extracted text and processing results. Co
 * `RETENTION_TTL_SECONDS`: Lifetime of every stored value, in seconds (default: `3600`). Every key written by the application carries this expiry, so stored documents are deleted automatically.
 * `STORAGE_ENCRYPTION_KEY`: Fernet key used to encrypt every value before it is written. When unset, an ephemeral key is generated at startup: values stay encrypted, but stored documents become unreadable after a restart. Generate one with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 * `STORE_DOCUMENT_TEXT`: Keep the extracted text next to the entities (default: `false`).
+* `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
 
 **Example:**
 
@@ -49,8 +50,9 @@ export STORAGE_ENCRYPTION_KEY="<fernet key>"
 
 The default is to store nothing at all:
 
-* `POST /api/analyze` extracts text, runs NER and returns the entities in the same
-  response. It never touches Redis, issues no file id, and leaves nothing to delete.
+* `POST /api/analyze` extracts text, runs NER and returns the merged summary - plus
+  the per-document entities behind it - in the same response. It never touches Redis,
+  issues no file id, and leaves nothing to delete.
 * `POST /api/upload_document/` is for documents that must be reopened later. It stores
   the categorised entities under `doc:{file_id}:entities` and, only when
   `STORE_DOCUMENT_TEXT=true`, the text under `doc:{file_id}:text`.

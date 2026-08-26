@@ -44,6 +44,22 @@ def test_a_document_with_no_findings_is_flagged_empty():
     assert summary.document_count == 1
 
 
+@pytest.mark.parametrize(
+    ("finding", "expected"),
+    [
+        ("cirrhose", "Cirrhose."),
+        ("pH bas", "pH bas."),
+        ("mmHg", "mmHg."),
+        ("pCO2 abaissé", "pCO2 abaissé."),
+    ],
+)
+def test_a_case_bearing_clinical_token_is_not_flattened(finding, expected):
+    # Upper-casing the first letter of pH or mmHg makes it a different token.
+    summary = summarize([document(pathologies=[entity(finding)])])
+
+    assert sections_of(summary)["pathologies"].sentence == expected
+
+
 def test_findings_become_a_readable_sentence():
     summary = summarize([document(pathologies=[entity("cirrhose")])])
 
@@ -87,17 +103,15 @@ class TestDeduplication:
 
         assert len(sections_of(summary)["pathologies"].findings) == 1
 
-    def test_the_longest_surface_form_survives(self):
-        # The model truncates outer mentions, so the longest form seen is the
-        # most complete one - see DECISION.md on nested mentions.
+    def test_the_first_surface_form_seen_is_the_one_reported(self):
         summary = summarize(
             [
-                document(pathologies=[entity("carcinome")]),
-                document(pathologies=[entity("carcinome ")]),
+                document(pathologies=[entity("Cirrhose")]),
+                document(pathologies=[entity("cirrhose")]),
             ]
         )
 
-        assert sections_of(summary)["pathologies"].findings == ["carcinome"]
+        assert sections_of(summary)["pathologies"].findings == ["Cirrhose"]
 
 
 class TestOrdering:
@@ -223,12 +237,43 @@ class TestDemographics:
 
         assert summary.patient == "Patient, 67 ans."
 
-    def test_a_demographic_mention_of_another_kind_is_kept(self):
+    def test_a_later_sex_does_not_overwrite_the_patient_s_own(self):
         summary = summarize(
-            [document(patient_info=[entity("nourrisson", label="homme")])]
+            [
+                document(patient_info=[entity("homme", label="genre")]),
+                document(patient_info=[entity("femme", label="genre")]),
+            ]
         )
 
-        assert summary.patient == "Patient, nourrisson."
+        assert summary.patient == "Patient, homme."
+
+    @pytest.mark.parametrize("label", ["homme", "femme"])
+    def test_a_mesh_disease_axis_never_becomes_a_patient_attribute(self, label):
+        # fr.json files the MeSH axes `homme` and `femme` under patient_info,
+        # but those are male and female urogenital diseases. Reading them as
+        # demographics would print a disease as the summary's opening line.
+        summary = summarize(
+            [document(patient_info=[entity("prostatite", label=label)])]
+        )
+
+        assert summary.patient is None
+
+    def test_an_age_written_as_digits_alone_is_still_the_age(self):
+        # The has-a-letter rule rejects loose numbers in a clinical section.
+        # Applied here it would cost the summary its opening line, with no
+        # section to fall back to.
+        summary = summarize([document(patient_info=[entity("67", label="age")])])
+
+        assert summary.patient == "Patient, 67."
+
+    @pytest.mark.parametrize("label", ["âge", "AGE", "Âge"])
+    def test_an_accented_or_upper_case_label_still_reaches_the_age_slot(self, label):
+        # The extractor strips accents before categorising, so a span labelled
+        # `âge` lands in patient_info; a raw == "age" here would miss it and
+        # the age would vanish.
+        summary = summarize([document(patient_info=[entity("67 ans", label=label)])])
+
+        assert summary.patient == "Patient, 67 ans."
 
     def test_no_demographic_mention_means_no_opening_line(self):
         summary = summarize([document(pathologies=[entity("cirrhose")])])

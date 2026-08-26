@@ -38,7 +38,7 @@ export default function HomePage() {
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )
 
-      if (response.status === 200) setSummary(response.data.summary)
+      setSummary(response.data.summary)
     } catch (err: unknown) {
       setError(errorMessage(err, "Échec de l'analyse des documents."))
     } finally {
@@ -48,7 +48,7 @@ export default function HomePage() {
 
   return (
     <main className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4">🩺 Med-Assist</h1>
+      <h1 className="text-3xl font-bold mb-4">Med-Assist</h1>
 
       <FileUpload onUpload={handleUpload} disabled={pending} />
 

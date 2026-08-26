@@ -11,6 +11,7 @@ from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
     TextExtractionServiceInterface,
 )
+from app.schemas.errors import ErrorDetail
 from app.schemas.extraction import EntityDetail
 from app.use_cases.validate_file import MAX_BATCH_FILES
 
@@ -188,3 +189,45 @@ def test_analyze_hides_internal_failures(client, mock_entity_extractor, caplog):
     # Neither the document content nor the filename reaches the log.
     assert "homme" not in caplog.text
     assert "note.txt" not in caplog.text
+
+
+class TestMalformedRequests:
+    """
+    A malformed request must not be answered with the value it was rejected for.
+
+    On this route the body is the documents, so FastAPI's own validation
+    handler - which reports the rejected value under an `input` key - would
+    reflect clinical text back to the sender, outside the fixed envelope every
+    other refusal on this service uses.
+    """
+
+    @pytest.fixture
+    def app_client(self, mock_text_extractor, mock_entity_extractor):
+        from app.main import malformed_requests_stay_generic
+        from fastapi.exceptions import RequestValidationError
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        app.add_exception_handler(
+            RequestValidationError, malformed_requests_stay_generic
+        )
+        app.dependency_overrides[get_text_extractor] = lambda: mock_text_extractor
+        app.dependency_overrides[get_entity_extractor] = lambda: mock_entity_extractor
+        return TestClient(app)
+
+    def test_a_text_part_sent_as_a_document_is_not_echoed(self, app_client):
+        response = app_client.post(
+            "/api/analyze", data={"files": "PATIENT Jean DUPONT 12/03/1958"}
+        )
+
+        assert response.status_code == 422
+        assert "DUPONT" not in response.text
+        assert "input" not in response.json()["detail"]
+
+    def test_a_malformed_request_uses_the_same_envelope_as_every_refusal(
+        self, app_client
+    ):
+        body = app_client.post("/api/analyze", data={"files": "x"}).json()
+
+        # {"detail": {"message": ...}} is what the frontend parses.
+        ErrorDetail(**body["detail"])
