@@ -39,6 +39,10 @@ export interface paths {
          *     later. The document text is not echoed back: the summary is the product,
          *     and returning the text would widen what leaves the server for no gain.
          *
+         *     A batch holding one document that cannot be read still answers 200, with
+         *     that document marked unread and the summary built from the rest. Only a
+         *     batch where nothing could be read is refused.
+         *
          *     Args:
          *         files: The uploaded documents (PDF, DOCX, TXT)
          *
@@ -46,8 +50,9 @@ export interface paths {
          *         AnalysisResponse: The merged summary and the entities behind it
          *
          *     Raises:
-         *         HTTPException: 400 for an invalid or unreadable file, 413 for a file or
-         *             batch that is too large, 500 for server errors
+         *         HTTPException: 400 for an invalid file or a batch nothing could be read
+         *             from, 413 for a file or batch that is too large, 500 for server
+         *             errors
          */
         post: operations["analyze_api_analyze_post"];
         delete?: never;
@@ -239,9 +244,9 @@ export interface components {
         AnalysisResponse: {
             /**
              * Documents
-             * @description The entities found in each submitted document, in submission order, for a caller that needs more than the summary.
+             * @description Every submitted document, in submission order: the entities found in it for a caller that needs more than the summary, and whether it could be read at all. A document with `read` false is not behind the summary - the batch is refused outright only when none of them could be read.
              */
-            documents: components["schemas"]["ExtractedEntities"][];
+            documents: components["schemas"]["AnalyzedDocument"][];
             /**
              * Mapping Info
              * @description Information about the label mapping used (language, dataset)
@@ -257,6 +262,79 @@ export interface components {
             retained: boolean;
             /** @description The submitted documents merged into one readable patient summary. This is what the endpoint is for; the rest is detail behind it. */
             summary: components["schemas"]["ClinicalSummary"];
+        };
+        /**
+         * AnalyzedDocument
+         * @description One submitted document: its entities, and whether it was read at all.
+         *
+         *     Callers that already read `documents[i]` as entities keep working - the
+         *     entity categories are unchanged, and an unread document simply has none.
+         *     The document is identified by its position in the list, which is the
+         *     caller's own submission order, so no filename has to cross the boundary for
+         *     the caller to say which of its files was skipped.
+         */
+        AnalyzedDocument: {
+            /**
+             * Anatomy
+             * @description Anatomical structures
+             * @default []
+             */
+            anatomy: components["schemas"]["EntityDetail"][];
+            /**
+             * Examinations
+             * @description Medical examinations
+             * @default []
+             */
+            examinations: components["schemas"]["EntityDetail"][];
+            /**
+             * Measurements
+             * @description Measurements and values
+             * @default []
+             */
+            measurements: components["schemas"]["EntityDetail"][];
+            /**
+             * Other
+             * @description Other medical entities
+             * @default []
+             */
+            other: components["schemas"]["EntityDetail"][];
+            /**
+             * Pathologies
+             * @description Diseases and conditions
+             * @default []
+             */
+            pathologies: components["schemas"]["EntityDetail"][];
+            /**
+             * Patient Info
+             * @description Patient demographic information
+             * @default []
+             */
+            patient_info: components["schemas"]["EntityDetail"][];
+            /**
+             * Read
+             * @description False when no text could be read from this document. It is then not behind the summary, and its entity categories are empty.
+             */
+            read: boolean;
+            /**
+             * Symptoms
+             * @description Signs and symptoms
+             * @default []
+             */
+            symptoms: components["schemas"]["EntityDetail"][];
+            /**
+             * Temporal
+             * @description Temporal information
+             * @default []
+             */
+            temporal: components["schemas"]["EntityDetail"][];
+            /**
+             * Treatments
+             * @description Treatments and medications
+             * @default []
+             */
+            treatments: components["schemas"]["EntityDetail"][];
+            /** @description Why the document could not be read. Null when it was read. */
+            unreadable_reason: components["schemas"]["UnreadableReason"] | null;
         };
         /** Body_analyze_api_analyze_post */
         Body_analyze_api_analyze_post: {
@@ -293,7 +371,7 @@ export interface components {
         ClinicalSummary: {
             /**
              * Document Count
-             * @description How many documents were read to build this summary
+             * @description How many documents were read to build this summary. Lower than the number submitted when a document could not be read: see `AnalysisResponse.documents[].read`.
              */
             document_count: number;
             /**
@@ -493,6 +571,22 @@ export interface components {
              */
             text?: string | null;
         };
+        /**
+         * Finding
+         * @description One deduplicated finding, and which documents it came from.
+         */
+        Finding: {
+            /**
+             * Documents
+             * @description Indices into the submitted batch, ascending, of every document this finding was found in. They index the request's own file order - and `AnalysisResponse.documents` - so a caller can name the source from what it submitted, without this path ever having to echo a filename.
+             */
+            documents: number[];
+            /**
+             * Text
+             * @description The span the model marked, as it is reported
+             */
+            text: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -535,7 +629,7 @@ export interface components {
              * Findings
              * @description The same findings as a list, most-supported first, for a caller that would rather lay them out itself
              */
-            findings: string[];
+            findings: components["schemas"]["Finding"][];
             /**
              * Heading
              * @description Human-readable heading for the section
@@ -552,6 +646,17 @@ export interface components {
              */
             sentence: string;
         };
+        /**
+         * UnreadableReason
+         * @description Why a submitted document is not behind the summary.
+         *
+         *     Closed on purpose, and content-free: a caller renders the position it
+         *     submitted, never a filename or a parser message. More members may be added
+         *     as more ways to fail are told apart; today every failure a document can
+         *     cause on this path is "nothing could be read from it".
+         * @enum {string}
+         */
+        UnreadableReason: "no_text";
         /** UploadResponse */
         UploadResponse: {
             /**
