@@ -87,7 +87,11 @@ readable product the rest of the pipeline exists for.
 
 Several documents in one request are taken to be **about the same patient**, which
 is what makes merging them meaningful. A finding named in three of them is reported
-once, and findings are ordered by how many documents support them.
+once, and findings are ordered by how many documents support them. Each finding
+carries the indices of the documents it was found in, so a caller can name the source
+beside it — the index is into the request's own file order, and this path never needs
+a filename to travel. (`POST /api/upload_document/` does echo the submitted filename
+back to whoever sent it; the analysis path issues no id and echoes nothing.)
 
 The summary is assembled, not generated. Every word in it is either a fixed heading
 or a span the model marked in the submitted documents, so it cannot state anything
@@ -99,6 +103,15 @@ What shapes it, in `app/services/summarizer.py`:
   treatments, localisations. `temporal`, `measurements` and `other` are deliberately
   left out — a bare list of durations or loose values carries no clinical meaning
   once separated from its sentence. They stay in the `documents` payload.
+* A measurement does reach the summary when it can be attached to the examination it
+  sits beside: "Troponine I" and "1,10 ng/mL" become one finding under Examens. The
+  attachment is positional — the value must start within `MEASUREMENT_GAP` characters
+  of the end of the test's span, and only the nearest test before it can claim it —
+  because past that distance, which number belongs to which test is a guess, and that
+  guess is what keeps loose values out in the first place. A value nothing claims
+  stays out. `poids` and `taille` are never paired: they sit in the same category but
+  are patient attributes rather than results, and belong no more in an exported
+  summary than the demographic line already there.
 * An opening demographic line built from the model's `age` and `genre` labels. The
   first mention of each wins, so a relative's age quoted further down does not
   overwrite the patient's.
@@ -111,6 +124,19 @@ What shapes it, in `app/services/summarizer.py`:
 
 `POST /api/analyze` does not echo the document text back. The summary is the product,
 and returning the text would widen what leaves the server for no gain.
+
+### Partial summaries
+
+A document of a supported type that yields no text — a scan, or a file the parser
+cannot open — no longer costs the batch its summary. The request answers `200`, the
+other documents are summarised, and `documents[i].read` is `false` for the one that
+failed, with `unreadable_reason` naming why. `summary.document_count` then counts what
+was read, not what was sent.
+
+The whole batch is refused with `400` only when nothing at all could be read, since
+there is no summary to degrade to. Either way the refusal and the partial answer name
+the failed document by its **position**, never by its filename: `documents` is in
+submission order, and the caller already holds the names it posted.
 
 ### Logging
 

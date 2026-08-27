@@ -8,10 +8,15 @@ cannot say anything the documents did not.
 
 import re
 import unicodedata
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from app.schemas.extraction import EntityDetail
-from app.schemas.summary import ClinicalSummary, SummarySection
+from app.schemas.summary import ClinicalSummary, Finding, SummarySection
+
+# One document's categorised entities, or None when the document could not be
+# read. The position is kept either way: a finding names the documents it came
+# from by index, and those indices are the caller's own submission order.
+Document = Optional[Dict[str, List[EntityDetail]]]
 
 # The only use the score has. It is a noise floor, not a number anyone sees:
 # below this the model is guessing, and a guess in a clinical summary costs
@@ -34,7 +39,9 @@ SEX_LABEL = "genre"
 # `temporal`, `measurements` and `other` are deliberately absent: a bare list of
 # durations, of loose values, or of unclassified spans carries no clinical
 # meaning once it is separated from the sentence it came from. They stay in the
-# entity payload for callers that want them.
+# entity payload for callers that want them. A measurement does reach the
+# summary when `pair_measurements` can attach it to the examination it sits
+# beside, which is the context its exclusion was about.
 SECTION_ORDER: Tuple[Tuple[str, str], ...] = (
     ("pathologies", "Pathologies"),
     ("symptoms", "Signes et symptômes"),
@@ -42,6 +49,36 @@ SECTION_ORDER: Tuple[Tuple[str, str], ...] = (
     ("treatments", "Traitements"),
     ("anatomy", "Localisations"),
 )
+
+# The two categories `pair_measurements` joins. A value only reaches the summary
+# through this pairing, so both are named rather than inlined.
+EXAMINATION_CATEGORY = "examinations"
+MEASUREMENT_CATEGORY = "measurements"
+
+# Measurement labels that are patient attributes rather than the outcome of an
+# investigation, and so are never paired: a weight that happens to sit near an
+# examination name is a wrong pairing, and putting either into the summary would
+# add a quasi-identifier to the one page a clinician exports.
+#
+# Stated as what to exclude rather than as the one label to include, because the
+# two fail in opposite directions across mappings. `fr.json` files `valeur`,
+# `poids` and `taille` here; `es.json` files `valor` and `medida`, which are both
+# results. An allow-list naming the French label would silently pair nothing at
+# all under the Spanish mapping - every value gone from every summary, with
+# nothing in the response to say so. Excluding the attributes leaves a mapping
+# that names none of them fully working.
+#
+# Compared through `comparison_key`, like the demographic labels, since the
+# extractor strips accents before categorising.
+ATTRIBUTE_LABELS = frozenset({"poids", "taille"})
+
+# How far after an examination span its value may start, in characters. A value
+# that belongs to a test sits right against its name - "Troponine I : 1,10
+# ng/mL", "TA 148/92 mmHg" - with only punctuation and a space or two between.
+# Past that the next clause has begun, and the pairing would be a guess about
+# which number belongs to which test. That guess is the reason loose
+# measurements are kept out of the summary; making it here would only move it.
+MEASUREMENT_GAP = 12
 
 WHITESPACE = re.compile(r"\s+")
 
@@ -61,6 +98,11 @@ def comparison_key(text: str) -> str:
     collapsed = WHITESPACE.sub(" ", stripped)
     decomposed = unicodedata.normalize("NFKD", collapsed)
     return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def tidy(text: str) -> str:
+    """Trim a span to the form it is reported in: no edge punctuation, one space."""
+    return WHITESPACE.sub(" ", text.strip(EDGE_PUNCTUATION))
 
 
 def is_worth_reporting(entity: EntityDetail, require_letter: bool = True) -> bool:
@@ -85,7 +127,7 @@ def is_worth_reporting(entity: EntityDetail, require_letter: bool = True) -> boo
     return True
 
 
-class Finding:
+class FindingSupport:
     """One deduplicated finding and the support it has across the documents."""
 
     def __init__(self, display: str, document_index: int) -> None:
@@ -105,30 +147,135 @@ class Finding:
         """Most documents first, then most mentions, then stable alphabetical."""
         return (-len(self.documents), -self.mentions, comparison_key(self.display))
 
+    def as_finding(self) -> Finding:
+        """The reportable form: the span, and where it was found."""
+        return Finding(text=self.display, documents=sorted(self.documents))
 
-def collect_findings(
-    documents: Sequence[Dict[str, List[EntityDetail]]], category: str
-) -> List[str]:
+
+def collect_findings(documents: Sequence[Document], category: str) -> List[Finding]:
     """Deduplicate one category across every document, most-supported first."""
-    findings: Dict[str, Finding] = {}
+    findings: Dict[str, FindingSupport] = {}
 
     for document_index, entities in enumerate(documents):
+        if entities is None:
+            continue
+
         for entity in entities.get(category, []):
             if not is_worth_reporting(entity):
                 continue
 
-            display = WHITESPACE.sub(" ", entity.text.strip(EDGE_PUNCTUATION))
+            display = tidy(entity.text)
             key = comparison_key(display)
             if not key:
                 continue
 
             existing = findings.get(key)
             if existing is None:
-                findings[key] = Finding(display, document_index)
+                findings[key] = FindingSupport(display, document_index)
             else:
                 existing.add(document_index)
 
-    return [finding.display for finding in sorted(findings.values(), key=Finding.rank)]
+    ranked = sorted(findings.values(), key=FindingSupport.rank)
+    return [support.as_finding() for support in ranked]
+
+
+def pair_measurements(
+    entities: Dict[str, List[EntityDetail]],
+) -> Dict[str, List[EntityDetail]]:
+    """
+    Rewrite each examination that has a value beside it to carry both.
+
+    "Troponine I" and "1,10 ng/mL" are two spans in two categories, and either
+    one alone is worth less to a clinician than the pair: a test with no result,
+    or a number with no test. Joining them is the only way a measurement reaches
+    the summary - an unclaimed value stays out, for the reason `SECTION_ORDER`
+    gives.
+
+    The pairing is positional, not semantic. A value is attached only when it
+    starts within `MEASUREMENT_GAP` characters after the end of an examination
+    span, and only the test nearest before it can claim it, so one value is
+    never reported against two tests. A span with no offsets - the shape stored
+    entities have once the text is gone - is never paired, since there is
+    nothing to measure the distance in.
+
+    It also inherits the extractor's per-document deduplication, which keeps the
+    first occurrence of a repeated span and its offsets. A test named once in
+    prose and again beside its result is therefore held at the first position,
+    and the value goes unclaimed rather than being attached to the wrong test.
+
+    :param entities: One document's categorised entities.
+    :return: The same mapping, with paired examinations carrying their value.
+        The input is not modified.
+    """
+    examinations = entities.get(EXAMINATION_CATEGORY, [])
+    measurements = entities.get(MEASUREMENT_CATEGORY, [])
+    if not examinations or not measurements:
+        return entities
+
+    # Values are read in text order so that "nearest" can stop looking early.
+    # `require_letter` is off: "148/92" is a blood pressure, not noise.
+    available = sorted(
+        (
+            measurement
+            for measurement in measurements
+            if measurement.start is not None
+            and comparison_key(measurement.label) not in ATTRIBUTE_LABELS
+            and is_worth_reporting(measurement, require_letter=False)
+        ),
+        key=lambda measurement: measurement.start or 0,
+    )
+    if not available:
+        return entities
+
+    pairable = [
+        index
+        for index, examination in enumerate(examinations)
+        if examination.end is not None and is_worth_reporting(examination)
+    ]
+    claimed: Set[int] = set()
+    values: Dict[int, str] = {}
+
+    # Latest-ending test first, so that in "Troponine, BNP : 900 pg/mL" the value
+    # goes to BNP. Served the other way round, Troponine is inside the gap too
+    # and claims it first, and the summary then states a result against a test
+    # that did not produce it - a confident, wrong sentence, which is worse than
+    # the dropped value the whole gap rule exists to avoid.
+    #
+    # This is the better default, not a rule that settles the construction. A
+    # document enumerating its tests before the value - "TA et FC : 148/92 mmHg"
+    # - reads the same way and means the opposite, and no ordering answers both.
+    # `Test : valeur` is the dominant layout, and nearest-preceding matches it.
+    for index in sorted(
+        pairable, key=lambda position: examinations[position].end or 0, reverse=True
+    ):
+        end = examinations[index].end or 0
+        for position, measurement in enumerate(available):
+            gap = (measurement.start or 0) - end
+            if gap < 0:
+                continue
+            if gap > MEASUREMENT_GAP:
+                break
+            if position in claimed:
+                continue
+            claimed.add(position)
+            values[index] = tidy(measurement.text)
+            break
+
+    if not values:
+        return entities
+
+    paired = dict(entities)
+    paired[EXAMINATION_CATEGORY] = [
+        (
+            examination.model_copy(
+                update={"text": f"{tidy(examination.text)} {values[index]}"}
+            )
+            if index in values
+            else examination
+        )
+        for index, examination in enumerate(examinations)
+    ]
+    return paired
 
 
 def as_sentence(findings: List[str]) -> str:
@@ -148,9 +295,7 @@ def as_sentence(findings: List[str]) -> str:
     return joined[:1].upper() + joined[1:] + "."
 
 
-def demographic_line(
-    documents: Sequence[Dict[str, List[EntityDetail]]],
-) -> Optional[str]:
+def demographic_line(documents: Sequence[Document]) -> Optional[str]:
     """
     Build the opening line from the age and sex the model marked.
 
@@ -166,11 +311,14 @@ def demographic_line(
     sex: Optional[str] = None
 
     for entities in documents:
+        if entities is None:
+            continue
+
         for entity in entities.get(PATIENT_INFO_CATEGORY, []):
             if not is_worth_reporting(entity, require_letter=False):
                 continue
 
-            value = WHITESPACE.sub(" ", entity.text.strip(EDGE_PUNCTUATION))
+            value = tidy(entity.text)
             label = comparison_key(entity.label)
 
             # First mention wins for both: a document that later quotes a
@@ -187,16 +335,24 @@ def demographic_line(
     return "Patient, " + ", ".join(parts) + "."
 
 
-def summarize(documents: List[Dict[str, List[EntityDetail]]]) -> ClinicalSummary:
+def summarize(documents: Sequence[Document]) -> ClinicalSummary:
     """
     Assemble the summary of one or more documents about the same patient.
 
-    :param documents: Categorised entities, one dictionary per document.
+    :param documents: Categorised entities, one entry per submitted document in
+        submission order, with `None` where a document could not be read. The
+        unread entry is kept rather than dropped so that the indices a finding
+        reports stay the caller's own file order.
     :return: The summary, flagged empty when nothing clinical was found.
     """
+    prepared = [
+        pair_measurements(entities) if entities is not None else None
+        for entities in documents
+    ]
+
     sections = []
     for key, heading in SECTION_ORDER:
-        findings = collect_findings(documents, key)
+        findings = collect_findings(prepared, key)
         if not findings:
             continue
 
@@ -204,16 +360,16 @@ def summarize(documents: List[Dict[str, List[EntityDetail]]]) -> ClinicalSummary
             SummarySection(
                 key=key,
                 heading=heading,
-                sentence=as_sentence(findings),
+                sentence=as_sentence([finding.text for finding in findings]),
                 findings=findings,
             )
         )
 
-    patient = demographic_line(documents)
+    patient = demographic_line(prepared)
 
     return ClinicalSummary(
         patient=patient,
         sections=sections,
-        document_count=len(documents),
+        document_count=sum(1 for entities in documents if entities is not None),
         empty=not sections and patient is None,
     )

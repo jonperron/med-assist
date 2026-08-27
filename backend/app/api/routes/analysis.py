@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import ValidationError
@@ -14,12 +14,40 @@ from app.interfaces.service_interfaces import (
     TextExtractionServiceInterface,
 )
 from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
-from app.schemas.extraction import AnalysisResponse, ExtractedEntities
-from app.use_cases.analyze_document import summarize_documents
+from app.schemas.extraction import (
+    AnalysisResponse,
+    AnalyzedDocument,
+    EntityDetail,
+    ExtractedEntities,
+    UnreadableReason,
+)
+from app.use_cases.analyze_document import UnreadableDocument, summarize_documents
 from app.use_cases.validate_file import validate_batch
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# The entity categories, taken from the schema so the two cannot drift.
+ENTITY_CATEGORIES = tuple(ExtractedEntities.model_fields)
+
+
+def describe(
+    entities: Optional[Dict[str, List[EntityDetail]]],
+) -> AnalyzedDocument:
+    """Report one submitted document, read or not, at its submitted position."""
+    if entities is None:
+        return AnalyzedDocument(read=False, unreadable_reason=UnreadableReason.NO_TEXT)
+
+    # Only the known categories are spread. The keys come from the label
+    # mapping, and one named `read` would otherwise be splatted over the read
+    # status - a mapping deciding whether a document counts as readable.
+    found = {
+        category: entities[category]
+        for category in ENTITY_CATEGORIES
+        if category in entities
+    }
+    return AnalyzedDocument(**found, read=True, unreadable_reason=None)
 
 
 @router.post(
@@ -55,6 +83,10 @@ async def analyze(
     later. The document text is not echoed back: the summary is the product,
     and returning the text would widen what leaves the server for no gain.
 
+    A batch holding one document that cannot be read still answers 200, with
+    that document marked unread and the summary built from the rest. Only a
+    batch where nothing could be read is refused.
+
     Args:
         files: The uploaded documents (PDF, DOCX, TXT)
 
@@ -62,8 +94,9 @@ async def analyze(
         AnalysisResponse: The merged summary and the entities behind it
 
     Raises:
-        HTTPException: 400 for an invalid or unreadable file, 413 for a file or
-            batch that is too large, 500 for server errors
+        HTTPException: 400 for an invalid file or a batch nothing could be read
+            from, 413 for a file or batch that is too large, 500 for server
+            errors
     """
     await validate_batch(files)
 
@@ -76,30 +109,35 @@ async def analyze(
         # Built inside the guard: a malformed EntityDetail raises a pydantic
         # error that quotes the offending value, which would be document
         # content. A category the model emits that the schema lacks is not an
-        # error - ExtractedEntities ignores unknown keys, so it is dropped
-        # silently by design.
+        # error - `describe` keeps the known ones, so it is dropped silently by
+        # design.
         return AnalysisResponse(
             summary=summary,
-            documents=[ExtractedEntities(**entities) for entities in documents],
+            documents=[describe(entities) for entities in documents],
             mapping_info=entity_extractor.get_mapping_info(),
         )
     except ValidationError as exc:
         # A pydantic error quotes the value it rejected, so it is never
-        # forwarded: ValidationError subclasses ValueError, hence the ordering.
+        # forwarded, and it is caught ahead of the generic handler below to be
+        # logged as the shape problem it is rather than as an unknown failure.
         logger.error("Analysis produced an unexpected entity shape")
         raise HTTPException(
             status_code=500,
             detail={"message": "Internal server error"},
         ) from exc
-    except ValueError as exc:
-        # Raised for an unreadable document. The message is fixed upstream and
-        # carries no document content - in particular it does not say which of
-        # the submitted files failed, since that would be a filename.
+    except UnreadableDocument as exc:
+        # Nothing in the batch could be read, so there is no partial summary to
+        # answer with. The message is fixed and carries no document content -
+        # in particular it does not say which of the submitted files failed,
+        # since that would be a filename. Which position failed is reported in
+        # the 200 body instead, where there is a summary to qualify.
         raise HTTPException(
             status_code=400,
             detail={"message": UNREADABLE_DOCUMENT},
         ) from exc
     except Exception as exc:
+        # Every other failure, a plain ValueError included, is the server's
+        # problem rather than the caller's document, and answers the same way.
         logger.error("Analysis failed (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=500,

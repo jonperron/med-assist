@@ -6,9 +6,11 @@ from app.core.validation import parse_file_id
 from app.use_cases.validate_file import MAX_BATCH_FILES
 from app.schemas.extraction import (
     AnalysisResponse,
+    AnalyzedDocument,
     EntityDetail,
     ExtractedEntities,
     ExtractionResponse,
+    UnreadableReason,
 )
 from app.services.file_handler import drop_offsets
 from app.services.summarizer import summarize
@@ -19,7 +21,7 @@ mock_router = APIRouter()
 # it is built from the same models with the offsets the text really has.
 MOCK_TEXT = (
     "Le patient de 67 ans présente une fièvre et a été traité "
-    "avec du paracétamol pour la grippe."
+    "avec du paracétamol pour la grippe. Troponine I : 1,10 ng/mL."
 )
 
 MOCK_ENTITIES: Dict[str, List[EntityDetail]] = {
@@ -36,6 +38,15 @@ MOCK_ENTITIES: Dict[str, List[EntityDetail]] = {
     ],
     "pathologies": [
         EntityDetail(text="grippe", label="pathologie", score=0.94, start=85, end=91)
+    ],
+    # An examination and the value that follows it, at the offsets the text
+    # really has: the summarizer pairs them into one finding, and a mock that
+    # left them apart would hide that from the client developing against it.
+    "examinations": [
+        EntityDetail(text="Troponine I", label="examen", score=0.93, start=93, end=104)
+    ],
+    "measurements": [
+        EntityDetail(text="1,10 ng/mL", label="valeur", score=0.91, start=107, end=117)
     ],
 }
 
@@ -102,18 +113,41 @@ async def mock_summary(
         le=MAX_BATCH_FILES,
         description="How many documents to pretend were submitted and merged.",
     ),
+    unreadable: int = Query(
+        default=0,
+        ge=0,
+        le=MAX_BATCH_FILES,
+        description=(
+            "How many of them to answer as unreadable, counting from the last. "
+            "Capped at one below `documents`: a batch nothing could be read "
+            "from is a 400 on the real route, not a summary."
+        ),
+    ),
 ) -> AnalysisResponse:
     """
     Mock endpoint for frontend development against the summary.
 
     No model runs, but the summary is built by the real `summarize`, so the
     shape and the merging rules are the ones the API actually applies - a mock
-    that assembled the payload by hand would drift from them silently.
+    that assembled the payload by hand would drift from them silently. That
+    includes the partial answer: an unreadable document keeps its position and
+    contributes nothing, exactly as it does on the real route.
     """
-    entities = [MOCK_ENTITIES for _ in range(documents)]
+    skipped = min(unreadable, documents - 1)
+    read = documents - skipped
+    entities = [MOCK_ENTITIES] * read + [None] * skipped
 
     return AnalysisResponse(
         summary=summarize(entities),
-        documents=[ExtractedEntities(**document) for document in entities],
+        documents=[
+            (
+                AnalyzedDocument(**document, read=True, unreadable_reason=None)
+                if document is not None
+                else AnalyzedDocument(
+                    read=False, unreadable_reason=UnreadableReason.NO_TEXT
+                )
+            )
+            for document in entities
+        ],
         mapping_info={"language": "fr", "dataset": "french_clinical"},
     )
