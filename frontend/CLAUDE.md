@@ -26,7 +26,7 @@ build, so a broken test reaches `main` unless it is caught here. Run all three.
 - Many small files over few large files
 - High cohesion, low coupling
 - 200-400 lines typical, 800 max per file
-- One component per file, named after the file (`app/components/FileUpload.tsx`)
+- One component per file, named after the file (`app/components/FileDropzone.tsx`)
 - Tests colocated in `__tests__/` beside the code they cover
 - No circular import
 
@@ -60,3 +60,13 @@ build, so a broken test reaches `main` unless it is caught here. Run all three.
   breaks on the common case, not the rare one.
 - Nothing clinical goes into `localStorage`, `sessionStorage`, a cookie, a URL,
   or any analytics or logging sink. Page state only.
+- Strip untrusted text at the render boundary with `lib/safeText`. A finding,
+  the patient line and a filename are all spans somebody else wrote, and an
+  invisible formatting character in one displays it in an order the document
+  does not say.
+- Run the dev server against synthetic documents only, never a real one.
+  `app/error.tsx` keeps a render throw off the production screen, but Next
+  reports a handled error to the development overlay and React logs it to the
+  console in both modes - and on these screens the value in that trace is
+  patient-derived. That one is an operational rule, not something the code can
+  enforce.

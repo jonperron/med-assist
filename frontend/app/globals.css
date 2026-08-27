@@ -1,28 +1,107 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/*
+ * Med-Assist, "clinical calm": warm paper, slate ink, one teal accent, ochre
+ * for the caution bar and a muted brick for failures. Four sizes of text and
+ * one weight of rule do the whole interface.
+ *
+ * The palette is committed to light only. A clinician reads this next to the
+ * paper documents it summarises, and a second palette would be a second design
+ * to keep honest for no clinical gain.
+ */
+@theme {
+  --color-paper: #fbfaf7;
+  --color-surface: #ffffff;
+
+  --color-ink: #1a2028;
+  --color-ink-soft: #4a5560;
+  --color-ink-muted: #7c8893;
+  --color-source: #9aa5af;
+
+  --color-rule: #e5e2db;
+  --color-rule-soft: #efede7;
+  --color-edge: #cfccc4;
+
+  --color-accent: #0f6e68;
+  --color-accent-strong: #0b5751;
+  --color-accent-tint: #edf4f3;
+  --color-accent-edge: #d7e4e2;
+
+  --color-caution: #86671f;
+  --color-caution-ink: #6b531a;
+  --color-caution-tint: #f6f1e4;
+  --color-caution-edge: #e8dfc6;
+
+  --color-failure: #a03a32;
+  --color-failure-tint: #f8edeb;
+  --color-failure-edge: #edd6d2;
+
+  --font-sans: var(--font-public-sans), "Helvetica Neue", Helvetica, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+}
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Tells the UA which palette scrollbars and form widgets should use. */
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #dceae8;
+}
+
+/*
+ * Print is how a summary reaches a patient file, so it is a first-class view:
+ * the chrome goes, the two columns stay, and nothing is allowed to break
+ * across a page in the middle of a finding.
+ */
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  [data-print="section"] {
+    break-inside: avoid;
+    border-color: #cfccc4;
+  }
+}
+
+/*
+ * The reading bar is deliberately indeterminate. The analysis is one request
+ * that answers once, so the backend has no per-document progress to report and
+ * a filling bar would be an invented number.
+ */
+@keyframes reading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.reading-sweep {
+  animation: reading-sweep 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-sweep {
+    animation: none;
+    transform: translateX(0);
+    width: 100%;
+  }
+
+  .animate-spin {
+    animation: none;
+  }
 }
