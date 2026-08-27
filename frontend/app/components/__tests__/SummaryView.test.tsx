@@ -51,8 +51,11 @@ function documents(names: string[] = ['lettre-adressage.pdf']): SelectedDocument
   }))
 }
 
-function analyzed(dates: (string | null)[]): AnalyzedDocument[] {
-  return dates.map(document_date => ({
+function analyzed(
+  dates: (string | null)[],
+  read: boolean[] = dates.map(() => true)
+): AnalyzedDocument[] {
+  return dates.map((document_date, index) => ({
     patient_info: [],
     anatomy: [],
     symptoms: [],
@@ -62,19 +65,20 @@ function analyzed(dates: (string | null)[]): AnalyzedDocument[] {
     temporal: [],
     measurements: [],
     other: [],
-    read: true,
-    unreadable_reason: null,
+    read: read[index] ?? true,
+    unreadable_reason: read[index] === false ? ('no_text' as const) : null,
     document_date,
   }))
 }
 
 function response(
   overrides: Partial<ClinicalSummary> = {},
-  dates: (string | null)[] = [null, null]
+  dates: (string | null)[] = [null, null],
+  read?: boolean[]
 ): AnalysisResponse {
   return {
     summary: summary(overrides),
-    documents: analyzed(dates),
+    documents: analyzed(dates, read),
     retained: false,
   }
 }
@@ -86,13 +90,14 @@ function sourceChips() {
 function renderSummary(
   overrides: Partial<ClinicalSummary> = {},
   onStartOver = vi.fn(),
-  dates: (string | null)[] = [null, null]
+  dates: (string | null)[] = [null, null],
+  read?: boolean[]
 ) {
   return {
     onStartOver,
     ...render(
       <SummaryView
-        analysis={response(overrides, dates)}
+        analysis={response(overrides, dates, read)}
         documents={documents(['lettre-adressage.pdf', 'compte-rendu-ecg.pdf'])}
         onStartOver={onStartOver}
       />
@@ -176,6 +181,27 @@ describe('SummaryView', () => {
     expect(chips.getByText('4 mars 2025')).toBeInTheDocument()
     // The undated one is left undated rather than borrowing its neighbour.
     expect(chips.getAllByRole('listitem')[1]).not.toHaveTextContent(/2025/)
+  })
+
+  it('says which document the batch could not read', () => {
+    renderSummary({ document_count: 1 }, vi.fn(), [null, null], [true, false])
+
+    const notice = screen.getByRole('status')
+    expect(notice).toHaveTextContent("Un document n'a pas pu être lu")
+    expect(notice).toHaveTextContent('Compte rendu ecg')
+  })
+
+  it('marks the unread document in the source chips instead of hiding it', () => {
+    renderSummary({ document_count: 1 }, vi.fn(), [null, null], [true, false])
+
+    const chips = sourceChips().getAllByRole('listitem')
+    expect(chips).toHaveLength(2)
+    expect(chips[1]).toHaveTextContent('non lu')
+  })
+
+  it('says nothing about unread documents when the whole batch was read', () => {
+    const { container } = renderSummary()
+    expect(container.textContent).not.toMatch(/n'a pas pu être lu|non lu/)
   })
 
   it('shows no score, percentage, model or timing anywhere', () => {

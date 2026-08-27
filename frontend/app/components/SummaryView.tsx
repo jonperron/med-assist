@@ -4,6 +4,7 @@ import type { AnalysisResponse } from '../types/extraction'
 import type { SelectedDocument } from '../lib/documentSelection'
 import { formatDateRange } from '../lib/documentDate'
 import { layoutSummary, SITES_HOST_KEY } from '../lib/summaryLayout'
+import { unreadDocuments } from '../lib/unreadDocuments'
 import { AppHeader } from './AppHeader'
 import { CautionNote } from './CautionNote'
 import { EmptySummary } from './EmptySummary'
@@ -11,6 +12,7 @@ import { Icon } from './Icon'
 import { PrivacyBadge } from './PrivacyBadge'
 import { SourceChips } from './SourceChips'
 import { SummarySectionCard } from './SummarySectionCard'
+import { UnreadNotice } from './UnreadNotice'
 
 interface Props {
   /** The whole answer: the summary, and each document as the API read it. */
@@ -30,6 +32,7 @@ export function SummaryView({ analysis, documents, onStartOver }: Props) {
   const { summary } = analysis
   const { cards, sites } = layoutSummary(summary.sections)
   const span = formatDateRange(summary.date_range)
+  const unread = unreadDocuments(analysis.documents, documents)
 
   // Derived from the content, with `empty` as a hint rather than the decision.
   // The backend sets `empty` only when there is no patient line either, so a
@@ -79,6 +82,10 @@ export function SummaryView({ analysis, documents, onStartOver }: Props) {
             <PrivacyBadge />
           </div>
         </div>
+
+        {/* Above the chips, not below: what the summary is missing has to be
+            read before the summary, not after it. */}
+        <UnreadNotice names={unread} />
 
         {/* Kept in the printed copy on purpose: on a page going into a
             patient file, which documents the summary was built from is the

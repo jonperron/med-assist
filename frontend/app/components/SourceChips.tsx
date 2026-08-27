@@ -2,6 +2,7 @@ import type { AnalyzedDocument } from '../types/extraction'
 import type { SelectedDocument } from '../lib/documentSelection'
 import { formatDocumentDate } from '../lib/documentDate'
 import { readableDocumentName } from '../lib/documentName'
+import { wasRead } from '../lib/unreadDocuments'
 import { Icon } from './Icon'
 
 interface Props {
@@ -25,6 +26,10 @@ const SOURCES_LABEL = 'Lu dans'
  *
  * A document with no date is left undated rather than guessed at. Null is the
  * common answer there and is not a fault.
+ *
+ * A document the batch could not read is still listed, marked as unread. It
+ * was submitted, and leaving it out of the chips would make the summary look
+ * as though it covered a document it does not.
  */
 export function SourceChips({ documents, analyzed }: Props) {
   if (documents.length === 0) return null
@@ -37,22 +42,31 @@ export function SourceChips({ documents, analyzed }: Props) {
       <ul aria-label={SOURCES_LABEL} className="flex flex-wrap gap-2.5">
         {documents.map(({ id, file }, index) => {
           const date = formatDocumentDate(analyzed[index]?.document_date)
+          const read = wasRead(analyzed, index)
           return (
             <li
               key={id}
-              className="flex items-center gap-2.5 rounded-lg border border-rule bg-surface px-3.5 py-2.5"
+              className={`flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 ${
+                read ? 'border-rule bg-surface' : 'border-caution-edge bg-caution-tint'
+              }`}
             >
               <Icon
-                name="document"
+                name={read ? 'document' : 'documentBlank'}
                 size={15}
                 strokeWidth={1.5}
-                className="shrink-0 text-source"
+                className={`shrink-0 ${read ? 'text-source' : 'text-caution'}`}
               />
-              <span className="text-[13.5px] font-semibold text-ink">
+              <span
+                className={`text-[13.5px] font-semibold ${
+                  read ? 'text-ink' : 'text-caution-ink'
+                }`}
+              >
                 {readableDocumentName(file.name)}
               </span>
-              {date && (
-                <span className="text-[12.5px] text-ink-muted">{date}</span>
+              {read ? (
+                date && <span className="text-[12.5px] text-ink-muted">{date}</span>
+              ) : (
+                <span className="text-[12.5px] text-caution-ink">non lu</span>
               )}
             </li>
           )
