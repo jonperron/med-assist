@@ -1,6 +1,83 @@
 {
   "components": {
     "schemas": {
+      "AnalysisCompleted": {
+        "additionalProperties": false,
+        "description": "The batch is finished, and this carries the answer.",
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/AnalysisResponse",
+            "description": "Exactly the body `POST /api/analyze` would have returned for the same batch. The two endpoints answer the same question; only the moments before the answer differ."
+          },
+          "stage": {
+            "const": "result",
+            "default": "result",
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result",
+          "stage"
+        ],
+        "title": "AnalysisCompleted",
+        "type": "object"
+      },
+      "AnalysisEvent": {
+        "description": "One event of a streamed analysis: whichever of the four this one is.\n\nA model rather than a bare union alias so the contract has a name of its\nown in the OpenAPI document, and so the generated TypeScript is a union a\nclient narrows rather than a bag of optional fields. `stage` is the tag: a\ncaller cannot read a `result` off an event that does not carry one.\n\nIt serialises to the event it wraps, so nothing about the wrapper reaches\nthe wire.",
+        "discriminator": {
+          "mapping": {
+            "batch": "#/components/schemas/BatchStarted",
+            "document": "#/components/schemas/DocumentProgress",
+            "error": "#/components/schemas/AnalysisFailed",
+            "result": "#/components/schemas/AnalysisCompleted"
+          },
+          "propertyName": "stage"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/BatchStarted"
+          },
+          {
+            "$ref": "#/components/schemas/DocumentProgress"
+          },
+          {
+            "$ref": "#/components/schemas/AnalysisCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/AnalysisFailed"
+          }
+        ],
+        "title": "AnalysisEvent"
+      },
+      "AnalysisFailed": {
+        "additionalProperties": false,
+        "description": "The batch ended without a summary.",
+        "properties": {
+          "message": {
+            "description": "Content-free description of the failure, worded as the equivalent refusal from `POST /api/analyze`, and meant for display. Branch on `reason` rather than on this - the wording may change or be translated, and the reason will not.",
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/FailureReason",
+            "description": "What kind of failure this is, for a caller deciding what to do next. `unreadable_batch` is the caller's document and corresponds to the 400 `POST /api/analyze` answers; `server_error` is the service's own failure and corresponds to its 500."
+          },
+          "stage": {
+            "const": "error",
+            "default": "error",
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "message",
+          "stage"
+        ],
+        "title": "AnalysisFailed",
+        "type": "object"
+      },
       "AnalysisResponse": {
         "description": "Result of a stateless analysis. Nothing behind this response is stored.",
         "properties": {
@@ -167,6 +244,29 @@
         "title": "AnalyzedDocument",
         "type": "object"
       },
+      "BatchStarted": {
+        "additionalProperties": false,
+        "description": "The batch was accepted and reading has begun.",
+        "properties": {
+          "stage": {
+            "const": "batch",
+            "default": "batch",
+            "title": "Stage",
+            "type": "string"
+          },
+          "total": {
+            "description": "How many documents were accepted for this batch. The caller already knows what it posted; this confirms the whole batch passed validation, and is what the later `document` indices count towards.",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "stage"
+        ],
+        "title": "BatchStarted",
+        "type": "object"
+      },
       "Body_analyze_api_analyze_post": {
         "properties": {
           "files": {
@@ -183,6 +283,24 @@
           "files"
         ],
         "title": "Body_analyze_api_analyze_post",
+        "type": "object"
+      },
+      "Body_analyze_stream_api_analyze_stream_post": {
+        "properties": {
+          "files": {
+            "description": "The documents to summarise (PDF, DOCX, TXT). Several documents are taken to be about the same patient and merged into one summary.",
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_analyze_stream_api_analyze_stream_post",
         "type": "object"
       },
       "Body_upload_document_api_upload_document__post": {
@@ -293,6 +411,47 @@
           "end"
         ],
         "title": "DateRange",
+        "type": "object"
+      },
+      "DocumentProgress": {
+        "additionalProperties": false,
+        "description": "One submitted document has been read, or found unreadable.",
+        "properties": {
+          "index": {
+            "description": "Position of this document in the submitted batch, counting from zero. Documents are read in submission order, so this also indexes `AnalysisResponse.documents` in the final result.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "read": {
+            "description": "False when no text could be read from this document. It is then not behind the summary, and the batch carries on without it.",
+            "title": "Read",
+            "type": "boolean"
+          },
+          "stage": {
+            "const": "document",
+            "default": "document",
+            "title": "Stage",
+            "type": "string"
+          },
+          "unreadable_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnreadableReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the document could not be read. Null when it was read."
+          }
+        },
+        "required": [
+          "index",
+          "read",
+          "unreadable_reason",
+          "stage"
+        ],
+        "title": "DocumentProgress",
         "type": "object"
       },
       "EntityDetail": {
@@ -611,6 +770,15 @@
         ],
         "title": "ExtractionResponse",
         "type": "object"
+      },
+      "FailureReason": {
+        "description": "What kind of failure ended the batch, for a caller that has to act on it.\n\nClosed, and content-free like `UnreadableReason` beside it. It stands in for\nthe status code the stream cannot send once it has answered 200: on\n`POST /api/analyze` the same two failures are a 400 and a 500, which is the\ndifference between \"your document did not work, try another scan\" and \"the\nservice failed, try again later\". Those are different things to tell a\nclinician, and a client should not have to tell them apart by matching on\nEnglish that may be translated.",
+        "enum": [
+          "unreadable_batch",
+          "server_error"
+        ],
+        "title": "FailureReason",
+        "type": "string"
       },
       "Finding": {
         "description": "One deduplicated finding, and which documents it came from.",
@@ -963,6 +1131,110 @@
           }
         },
         "summary": "Analyze",
+        "tags": [
+          "Stateless Analysis"
+        ]
+      }
+    },
+    "/api/analyze/stream": {
+      "post": {
+        "description": "Summarise documents as `POST /api/analyze` does, reporting progress as it goes.\n\nSame batch, same work, same answer: the final `result` event carries exactly\nthe body the other endpoint returns. What this adds is the half minute\nbefore it. A `batch` event fixes how many documents were accepted, one\n`document` event lands as each is read, and the caller can show which of\nthem is in flight instead of one spinner over the lot.\n\nThe events are Server-Sent Events over the POST that carries the documents,\nso a browser reads them with `fetch` rather than `EventSource`, which only\nissues GETs. Each event's `data` is one JSON object tagged by `stage`.\n\nNothing is stored, here or on the other endpoint. Progress events are\ncontent-free: a document is named by its submitted position, and nothing the\nmodel marked travels before the final result.\n\nA failure after the first event cannot be a status code - the response is\ncommitted the moment the stream opens - so it arrives as an `error` event\nwith the wording the equivalent refusal would have carried, and the stream\nends. Validation and readiness are settled before the stream opens, so a\nrejected file, an oversized batch and an unloaded model are still 400, 413\nand 503 with no events at all.\n\nArgs:\n    files: The uploaded documents (PDF, DOCX, TXT)\n\nReturns:\n    The batch, one event per document read, and either a result or an error.\n\nRaises:\n    HTTPException: 400 for an invalid file, 413 for a file or batch that is\n        too large, 503 while the model is not loaded",
+        "operationId": "analyze_stream_api_analyze_stream_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_stream_api_analyze_stream_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "itemSchema": {
+                  "properties": {
+                    "data": {
+                      "contentMediaType": "application/json",
+                      "contentSchema": {
+                        "$ref": "#/components/schemas/AnalysisEvent"
+                      },
+                      "type": "string"
+                    },
+                    "event": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "retry": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "One event of the stream, its `data` an AnalysisEvent"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid document"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file is too large, or the batch holds too many files"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal server error, raised before the stream opened. A failure after that is a `result`-less `error` event instead."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The model is not loaded yet"
+          }
+        },
+        "summary": "Analyze Stream",
         "tags": [
           "Stateless Analysis"
         ]

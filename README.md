@@ -21,7 +21,7 @@ It is not intended for use in clinical decision-making and should not replace pr
   Med-Assist runs entirely on your infrastructure—no external APIs or cloud dependencies.
 
 - **Nothing stored by default**
-  `POST /api/analyze` reads a document, extracts its entities and answers in a single request. Nothing reaches storage, so there is no file id to come back for and nothing to delete.
+  `POST /api/analyze` reads a document, extracts its entities and answers in a single request. Nothing reaches storage, so there is no file id to come back for and nothing to delete. `POST /api/analyze/stream` streams the same work document by document so a caller can show progress; it holds nothing between events either.
 
 - **Entities, not prose**
   When a document is uploaded for later, only the categorised entities are kept — a few hundred bytes of clinical vocabulary rather than a complete patient record. Set `STORE_DOCUMENT_TEXT=true` to keep the text as well.

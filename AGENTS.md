@@ -37,7 +37,7 @@ The system must prioritize:
 
 ## 3) Tech Stack
 
-- Backend: Python 3.12+, FastAPI `0.128.0`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
+- Backend: Python 3.12+, FastAPI `0.135.1`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
 - Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `24.x`.
 - Storage: local Redis only, UUID-based keys, limited retention footprint.
 - Infra: Docker Compose with `redis`, `backend`, and `frontend` services.
@@ -63,7 +63,11 @@ Nominal flow:
    reports the submission indices of the documents it came from, never a
    filename.
 6. Return the API response. The default path (`POST /api/analyze`) stores nothing;
-   the upload path stores the categorised entities under UUID keys in local Redis,
+   `POST /api/analyze/stream` is the same work reported document by document as
+   Server-Sent Events, and stores nothing either - its progress events carry a
+   position and a read flag, never document content, and its final event is the
+   body the default path would have returned. The upload path stores the
+   categorised entities under UUID keys in local Redis,
    and the document text only when `STORE_DOCUMENT_TEXT` is set. A multi-file
    upload stores each file that way and writes nothing under its batch id.
 
