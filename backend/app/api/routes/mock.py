@@ -1,4 +1,5 @@
-from typing import Dict, List
+from datetime import date, timedelta
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Path, Query
 
@@ -49,6 +50,15 @@ MOCK_ENTITIES: Dict[str, List[EntityDetail]] = {
         EntityDetail(text="1,10 ng/mL", label="valeur", score=0.91, start=107, end=117)
     ],
 }
+
+
+# The dates the mock documents carry. They are stated rather than read out of
+# MOCK_TEXT, which is one text shared by every mock document: dating them all
+# from it would answer a batch with one date repeated, and the client would
+# never see the range it has to render. A week apart, and old enough that they
+# never drift into the future as the mock keeps being served.
+MOCK_FIRST_DATE = date(2024, 3, 4)
+MOCK_DATE_STEP = timedelta(days=7)
 
 
 @mock_router.get(
@@ -136,18 +146,30 @@ async def mock_summary(
     skipped = min(unreadable, documents - 1)
     read = documents - skipped
     entities = [MOCK_ENTITIES] * read + [None] * skipped
+    # An unread document carries no date, exactly as on the real route: there
+    # is no text to have read one from.
+    dates: List[Optional[date]] = [
+        MOCK_FIRST_DATE + index * MOCK_DATE_STEP for index in range(read)
+    ] + [None] * skipped
 
     return AnalysisResponse(
-        summary=summarize(entities),
+        summary=summarize(entities, dates),
         documents=[
             (
-                AnalyzedDocument(**document, read=True, unreadable_reason=None)
+                AnalyzedDocument(
+                    **document,
+                    read=True,
+                    unreadable_reason=None,
+                    document_date=document_date,
+                )
                 if document is not None
                 else AnalyzedDocument(
-                    read=False, unreadable_reason=UnreadableReason.NO_TEXT
+                    read=False,
+                    unreadable_reason=UnreadableReason.NO_TEXT,
+                    document_date=None,
                 )
             )
-            for document in entities
+            for document, document_date in zip(entities, dates)
         ],
         mapping_info={"language": "fr", "dataset": "french_clinical"},
     )

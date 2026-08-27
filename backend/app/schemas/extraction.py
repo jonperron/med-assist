@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import date, datetime
 
 from app.schemas.summary import ClinicalSummary
 
@@ -88,6 +88,15 @@ class AnalyzedDocument(ExtractedEntities):
     )
     unreadable_reason: Optional[UnreadableReason] = Field(
         description="Why the document could not be read. Null when it was read.",
+    )
+    document_date: Optional[date] = Field(
+        description=(
+            "The date this document carries, read from its head. Null when it "
+            "carries none that could be established - a document with no date "
+            "in its letterhead, or an unread one - which is common and not an "
+            "error. It is the document's own date, not the file's timestamp "
+            "and not a date mentioned inside the clinical text."
+        ),
     )
 
 

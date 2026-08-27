@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import ValidationError
@@ -17,11 +17,14 @@ from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorResponse
 from app.schemas.extraction import (
     AnalysisResponse,
     AnalyzedDocument,
-    EntityDetail,
     ExtractedEntities,
     UnreadableReason,
 )
-from app.use_cases.analyze_document import UnreadableDocument, summarize_documents
+from app.use_cases.analyze_document import (
+    ReadDocument,
+    UnreadableDocument,
+    summarize_documents,
+)
 from app.use_cases.validate_file import validate_batch
 
 router = APIRouter()
@@ -32,22 +35,29 @@ logger = logging.getLogger(__name__)
 ENTITY_CATEGORIES = tuple(ExtractedEntities.model_fields)
 
 
-def describe(
-    entities: Optional[Dict[str, List[EntityDetail]]],
-) -> AnalyzedDocument:
+def describe(document: ReadDocument) -> AnalyzedDocument:
     """Report one submitted document, read or not, at its submitted position."""
-    if entities is None:
-        return AnalyzedDocument(read=False, unreadable_reason=UnreadableReason.NO_TEXT)
+    if document.entities is None:
+        return AnalyzedDocument(
+            read=False,
+            unreadable_reason=UnreadableReason.NO_TEXT,
+            document_date=None,
+        )
 
     # Only the known categories are spread. The keys come from the label
     # mapping, and one named `read` would otherwise be splatted over the read
     # status - a mapping deciding whether a document counts as readable.
     found = {
-        category: entities[category]
+        category: document.entities[category]
         for category in ENTITY_CATEGORIES
-        if category in entities
+        if category in document.entities
     }
-    return AnalyzedDocument(**found, read=True, unreadable_reason=None)
+    return AnalyzedDocument(
+        **found,
+        read=True,
+        unreadable_reason=None,
+        document_date=document.document_date,
+    )
 
 
 @router.post(
@@ -113,7 +123,7 @@ async def analyze(
         # design.
         return AnalysisResponse(
             summary=summary,
-            documents=[describe(entities) for entities in documents],
+            documents=[describe(document) for document in documents],
             mapping_info=entity_extractor.get_mapping_info(),
         )
     except ValidationError as exc:

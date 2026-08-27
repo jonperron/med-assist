@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, List, Optional, Tuple
+from datetime import date
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from fastapi import UploadFile
 
@@ -9,9 +10,24 @@ from app.interfaces.service_interfaces import (
 )
 from app.schemas.extraction import EntityDetail
 from app.schemas.summary import ClinicalSummary
+from app.services.document_date import find_document_date
 from app.services.summarizer import summarize
 
 logger = logging.getLogger(__name__)
+
+
+class ReadDocument(NamedTuple):
+    """
+    One submitted document as the batch left it.
+
+    The two halves travel together because they are read from the same text and
+    reported at the same position: the entities the model marked, and the date
+    the document carries. Both are `None` for a document that could not be
+    read, which keeps its place in the batch either way.
+    """
+
+    entities: Optional[Dict[str, List[EntityDetail]]]
+    document_date: Optional[date]
 
 
 class UnreadableDocument(ValueError):
@@ -58,7 +74,7 @@ async def summarize_documents(
     files: List[UploadFile],
     text_extractor: TextExtractionServiceInterface,
     entity_extractor: EntityExtractionServiceInterface,
-) -> Tuple[ClinicalSummary, List[Optional[Dict[str, List[EntityDetail]]]]]:
+) -> Tuple[ClinicalSummary, List[ReadDocument]]:
     """
     Read every submitted document and summarise them as one patient picture.
 
@@ -81,14 +97,17 @@ async def summarize_documents(
     :param files: The uploaded files.
     :param text_extractor: The text extraction service.
     :param entity_extractor: The entity extraction service.
-    :return: The merged summary, and the per-document entities behind it in
-        submission order with `None` for each document that could not be read.
+    :return: The merged summary, and every submitted document in submission
+        order - its entities and its date, both `None` where the document could
+        not be read.
     :raises UnreadableDocument: If no submitted document could be read.
     """
-    documents: List[Optional[Dict[str, List[EntityDetail]]]] = []
+    documents: List[ReadDocument] = []
     for file in files:
         try:
-            _, entities = await analyze_document(file, text_extractor, entity_extractor)
+            text, entities = await analyze_document(
+                file, text_extractor, entity_extractor
+            )
         except UnreadableDocument:
             # The one operational signal that a document was dropped. A batch
             # that silently returns a shorter summary is how an extraction
@@ -96,11 +115,20 @@ async def summarize_documents(
             # upgrade - would otherwise reach a clinician as a cheerful 200.
             # The position is safe to log; the filename and the text are not.
             logger.warning("Document %d of the batch yielded no text", len(documents))
-            documents.append(None)
+            documents.append(ReadDocument(entities=None, document_date=None))
         else:
-            documents.append(entities)
+            # The text is dated here and then dropped, as it always was: the
+            # date is the only thing about the text itself that the caller
+            # asked for, and it leaves nothing behind to return or to store.
+            documents.append(
+                ReadDocument(entities=entities, document_date=find_document_date(text))
+            )
 
-    if not any(entities is not None for entities in documents):
+    if not any(document.entities is not None for document in documents):
         raise UnreadableDocument()
 
-    return summarize(documents), documents
+    summary = summarize(
+        [document.entities for document in documents],
+        [document.document_date for document in documents],
+    )
+    return summary, documents

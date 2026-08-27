@@ -117,7 +117,7 @@ What shapes it, in `app/services/summarizer.py`:
   overwrite the patient's.
 * Deduplication that folds case, accents, inner spacing and edge punctuation, keeping
   the longest surface form seen — the model truncates outer mentions, so the longest
-  is the most complete one (see `DECISION.md`).
+  is the most complete one (see the decision log on the local wiki).
 * A confidence floor of `MIN_CONFIDENCE`. This is the only use the model's score has,
   and it is never displayed: a percentage next to a clinical finding invites a reader
   to weigh it, which is not a judgement a token classifier's softmax supports.
@@ -137,6 +137,44 @@ The whole batch is refused with `400` only when nothing at all could be read, si
 there is no summary to degrade to. Either way the refusal and the partial answer name
 the failed document by its **position**, never by its filename: `documents` is in
 submission order, and the caller already holds the names it posted.
+
+### Document dates
+
+A date is how a clinician places a document: a letter from last week and a letter from
+2019 mean different things, and a stack of documents about one patient is read along the
+time it covers. `documents[i].document_date` carries the date each document itself
+carries, and `summary.date_range` the stretch from the earliest to the latest of them.
+Both are `null` when nothing could be dated, which is a common answer and not an error.
+
+The date is read from the document's text by `app/services/document_date.py` — not from
+the file's timestamp, which dates a 2019 letter to the day it was downloaded, and not
+from the `temporal` entities, which are every date-like span found anywhere in the text.
+Picking the document's own date out of that is a judgement, and a date that is wrong
+moves the document on the timeline the clinician is reading without saying so. Every
+rule below therefore prefers no date to a guess:
+
+* Only the head of the document is read (`HEAD_CHARACTERS`). A letter is dated in its
+  letterhead; a date deep in the body belongs to what the document reports.
+* Only a complete calendar date counts — day, month and a four-digit year, on the
+  calendar. A two-digit year is refused rather than given a century.
+* Numeric dates are read day-first, the convention the documents are written in.
+  `03/13/2024` is refused rather than swapped.
+* The first complete date in the head wins. In "Hospitalisation du 2 mars 2024 au 5
+  mars 2024" that is the start of what the document reports. A range written the elided
+  way — "du 2 au 5 mars 2024" — holds only one complete date, its last, so the document
+  is placed at the end of the stay rather than at the start.
+* A date a birth marker points at — "Née le 12/05/1948", "Date de naissance" — is
+  skipped. It would be wrong by decades, and a date of birth is a patient identifier,
+  not document metadata. The lookback survives the layouts a header arrives in — padded
+  columns, a label and its value on two lines, tabs, "D.D.N." — and stops at the
+  previous date in the text, so a birth date does not suppress the real date behind it.
+  It is a list of markers, though: a birth date introduced by wording it does not know
+  is published as the document's date.
+* A date in the future, or older than `EARLIEST_YEAR`, is skipped.
+
+Nothing about this widens what is stored: `POST /api/analyze` still stores nothing, and
+the date is read from the text and returned while the text itself is dropped as before.
+The date is never rendered into the summary's wording — it is metadata beside it.
 
 ### Logging
 

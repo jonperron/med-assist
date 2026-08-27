@@ -1,6 +1,19 @@
+from datetime import date
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+
+
+class DateRange(BaseModel):
+    """The stretch of time a batch of documents covers."""
+
+    start: date = Field(description="The earliest document date in the batch")
+    end: date = Field(
+        description=(
+            "The latest document date in the batch. Equal to `start` when only "
+            "one document in the batch carries a date."
+        )
+    )
 
 
 class Finding(BaseModel):
@@ -53,6 +66,21 @@ class ClinicalSummary(BaseModel):
     sections: List[SummarySection] = Field(
         default=[],
         description="Clinical sections, in reading order. Empty ones are omitted.",
+    )
+    # Required and nullable rather than defaulted, like
+    # `AnalyzedDocument.document_date` which it is read beside: an optional
+    # field generates an optional type, and a client testing it for falsity
+    # would then read an absent value and a batch nothing could be dated as the
+    # same thing.
+    date_range: Optional[DateRange] = Field(
+        description=(
+            "The stretch of time the dated documents cover, for a caller "
+            "placing the summary in time. Absent when no submitted document "
+            "carries a date this could be sure of - which is common, and not "
+            "an error. Only documents that were read can be dated: see "
+            "`AnalysisResponse.documents[].document_date` for the date behind "
+            "each end of the range."
+        ),
     )
     document_count: int = Field(
         description=(

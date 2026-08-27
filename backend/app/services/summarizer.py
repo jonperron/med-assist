@@ -8,10 +8,12 @@ cannot say anything the documents did not.
 
 import re
 import unicodedata
+from datetime import date
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from app.schemas.extraction import EntityDetail
-from app.schemas.summary import ClinicalSummary, Finding, SummarySection
+from app.schemas.summary import ClinicalSummary, DateRange, Finding, SummarySection
+from app.services.document_date import span_of
 
 # One document's categorised entities, or None when the document could not be
 # read. The position is kept either way: a finding names the documents it came
@@ -335,7 +337,10 @@ def demographic_line(documents: Sequence[Document]) -> Optional[str]:
     return "Patient, " + ", ".join(parts) + "."
 
 
-def summarize(documents: Sequence[Document]) -> ClinicalSummary:
+def summarize(
+    documents: Sequence[Document],
+    dates: Optional[Sequence[Optional[date]]] = None,
+) -> ClinicalSummary:
     """
     Assemble the summary of one or more documents about the same patient.
 
@@ -343,8 +348,19 @@ def summarize(documents: Sequence[Document]) -> ClinicalSummary:
         submission order, with `None` where a document could not be read. The
         unread entry is kept rather than dropped so that the indices a finding
         reports stay the caller's own file order.
+    :param dates: The date each of those documents carries, in the same order,
+        with `None` where it carries none. Only the range across them reaches
+        the summary; each document reports its own date beside its entities.
+        Omitted by a caller that holds entities and no text to date them from,
+        which reads the same way as a batch where nothing was dated.
     :return: The summary, flagged empty when nothing clinical was found.
+    :raises ValueError: If `dates` is given and does not line up with
+        `documents`. The two are positional, and a shifted list would put a
+        plausible range on the summary with nothing to say it is wrong.
     """
+    if dates is not None and len(dates) != len(documents):
+        raise ValueError("A date per document is required")
+
     prepared = [
         pair_measurements(entities) if entities is not None else None
         for entities in documents
@@ -366,10 +382,12 @@ def summarize(documents: Sequence[Document]) -> ClinicalSummary:
         )
 
     patient = demographic_line(prepared)
+    span = span_of(dates or [])
 
     return ClinicalSummary(
         patient=patient,
         sections=sections,
+        date_range=DateRange(start=span[0], end=span[1]) if span else None,
         document_count=sum(1 for entities in documents if entities is not None),
         empty=not sections and patient is None,
     )

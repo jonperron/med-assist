@@ -57,6 +57,19 @@
             "title": "Anatomy",
             "type": "array"
           },
+          "document_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The date this document carries, read from its head. Null when it carries none that could be established - a document with no date in its letterhead, or an unread one - which is common and not an error. It is the document's own date, not the file's timestamp and not a date mentioned inside the clinical text.",
+            "title": "Document Date"
+          },
           "examinations": {
             "default": [],
             "description": "Medical examinations",
@@ -148,7 +161,8 @@
         },
         "required": [
           "read",
-          "unreadable_reason"
+          "unreadable_reason",
+          "document_date"
         ],
         "title": "AnalyzedDocument",
         "type": "object"
@@ -207,6 +221,17 @@
       "ClinicalSummary": {
         "description": "A readable summary of one or more documents about the same patient.\n\nEverything here is assembled from what the NER model emitted. No wording is\ngenerated: each finding is a span the model marked, deduplicated across the\nsubmitted documents and placed under a fixed heading.",
         "properties": {
+          "date_range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stretch of time the dated documents cover, for a caller placing the summary in time. Absent when no submitted document carries a date this could be sure of - which is common, and not an error. Only documents that were read can be dated: see `AnalysisResponse.documents[].document_date` for the date behind each end of the range."
+          },
           "document_count": {
             "description": "How many documents were read to build this summary. Lower than the number submitted when a document could not be read: see `AnalysisResponse.documents[].read`.",
             "title": "Document Count",
@@ -241,9 +266,33 @@
           }
         },
         "required": [
+          "date_range",
           "document_count"
         ],
         "title": "ClinicalSummary",
+        "type": "object"
+      },
+      "DateRange": {
+        "description": "The stretch of time a batch of documents covers.",
+        "properties": {
+          "end": {
+            "description": "The latest document date in the batch. Equal to `start` when only one document in the batch carries a date.",
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "description": "The earliest document date in the batch",
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "DateRange",
         "type": "object"
       },
       "EntityDetail": {
