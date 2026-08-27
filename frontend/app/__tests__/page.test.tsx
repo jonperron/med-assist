@@ -370,6 +370,21 @@ describe('HomePage', () => {
     expect(postedForm(1).getAll('files')).toHaveLength(2)
   })
 
+  it('starts over from a failed analysis rather than only retrying the same batch', async () => {
+    fetchMock.mockResolvedValue(refusal(500, 'Internal server error'))
+
+    render(<HomePage />)
+    selectFiles(2)
+    submit()
+    await screen.findByRole('alert')
+
+    fireEvent.click(screen.getByRole('button', { name: "Choisir d'autres documents" }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/documents prêts/)).not.toBeInTheDocument()
+    expect(document.querySelector('input[type="file"]')).toBeInTheDocument()
+  })
+
   it('drops the failure card when the batch it described is emptied', async () => {
     fetchMock.mockResolvedValue(refusal(500, 'Internal server error'))
 
@@ -472,5 +487,33 @@ describe('HomePage', () => {
 
     await waitFor(() => expect(screen.queryByText('fièvre')).not.toBeInTheDocument())
     expect(screen.queryByText(/documents prêts/)).not.toBeInTheDocument()
+  })
+
+  it('abandons the in-flight request rather than leaving it running when the page is left', async () => {
+    let capturedSignal: AbortSignal | undefined
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder()
+        controller.enqueue(encoder.encode(frame({ stage: 'batch', total: 1 })))
+        // Left open on purpose: nothing here closes it, the way a request
+        // genuinely still in flight would look from the caller's side.
+      },
+    })
+
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      capturedSignal = init.signal as AbortSignal
+      return Promise.resolve({ ok: true, status: 200, body } as unknown as Response)
+    })
+
+    const { unmount } = render(<HomePage />)
+    selectFiles()
+    submit()
+
+    await screen.findByText(/Lecture du document/)
+    expect(capturedSignal?.aborted).toBe(false)
+
+    unmount()
+
+    expect(capturedSignal?.aborted).toBe(true)
   })
 })

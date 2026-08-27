@@ -206,4 +206,49 @@ describe('streamAnalysis', () => {
 
     expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBe(controller.signal)
   })
+
+  it('propagates an abort raised mid-stream rather than reporting it as a failure', async () => {
+    // A body whose reader only errors once the caller's own signal fires, the
+    // way a real fetch stream does. The caller (the page) tells an abort it
+    // asked for apart from a failure by reading this signal itself, so
+    // streamAnalysis must not repackage it as an AnalysisStreamError.
+    let controller: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c
+      },
+    })
+
+    const abortController = new AbortController()
+    abortController.signal.addEventListener('abort', () => {
+      controller.error(new DOMException('The user aborted a request.', 'AbortError'))
+    })
+
+    fetchMock.mockResolvedValue({ ok: true, status: 200, body } as unknown as Response)
+
+    const pending = run({}, abortController.signal)
+    // Swallow the rejection racing the abort so Node does not report it as
+    // unhandled before the assertion below observes it.
+    pending.catch(() => {})
+
+    abortController.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('does not swallow a connection dropped mid-stream', async () => {
+    // Distinct from a stream that simply closes with no result: this one
+    // fails outright, and that must not be reported as a clean end either.
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder()
+        controller.enqueue(encoder.encode(frame({ stage: 'batch', total: 1 })))
+        controller.error(new TypeError('network error'))
+      },
+    })
+
+    fetchMock.mockResolvedValue({ ok: true, status: 200, body } as unknown as Response)
+
+    await expect(run()).rejects.toThrow('network error')
+  })
 })
