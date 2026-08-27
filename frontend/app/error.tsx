@@ -3,14 +3,19 @@
 /**
  * The last resort, when a render throws.
  *
- * Without it a throw lands on Next's built-in boundary, which in development
- * surfaces the offending value in an overlay - and on these screens the
- * offending value is patient-derived. This renders a content-free card
- * instead. It deliberately shows nothing about the error: not the message,
- * not the digest, not a stack.
+ * What it changes is the production screen: instead of Next's built-in error
+ * page, a clinician gets a content-free card that shows nothing about the
+ * error - not the message, not the digest, not a stack - and a way back.
  *
- * Nothing reaches a logging sink here either. The clinician's way out is to
- * start again, which discards the page state the failure came from.
+ * It does not suppress the development overlay, and cannot: Next reports an
+ * error to the overlay even when a boundary handles it, and React logs it to
+ * the console in both modes. On these screens the value in that trace is
+ * patient-derived, so the control that holds in development is operational
+ * rather than mechanical - a dev server is run against synthetic documents,
+ * never a real one. `frontend/CLAUDE.md` carries that rule.
+ *
+ * Nothing reaches a logging sink here. The clinician's way out is to start
+ * again, which discards the page state the failure came from.
  */
 export default function AnalysisBoundary({ reset }: { reset: () => void }) {
   return (

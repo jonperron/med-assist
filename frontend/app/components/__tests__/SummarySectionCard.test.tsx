@@ -131,6 +131,16 @@ describe('SummarySectionCard', () => {
     expect(container.textContent).not.toMatch(/cirrhose/)
   })
 
+  it('strips an override out of a finding the document carried', () => {
+    // A finding is a span lifted out of an uploaded document, which AGENTS.md
+    // section 9 treats as untrusted text whoever wrote it.
+    renderCard({
+      findings: [{ text: 'cirrhose\u202Edecompensee', documents: [0] }],
+    })
+
+    expect(screen.getByText('cirrhosedecompensee')).toBeInTheDocument()
+  })
+
   it('shows no score or offset beside a finding', () => {
     const { container } = renderCard()
     expect(container.textContent).not.toMatch(/%|score|0\.\d/i)

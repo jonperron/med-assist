@@ -3,6 +3,7 @@
 import type { AnalysisResponse } from '../types/extraction'
 import type { SelectedDocument } from '../lib/documentSelection'
 import { formatDateRange } from '../lib/documentDate'
+import { safeText } from '../lib/safeText'
 import { layoutSummary, SITES_HOST_KEY } from '../lib/summaryLayout'
 import { unreadDocuments } from '../lib/unreadDocuments'
 import { AppHeader } from './AppHeader'
@@ -72,8 +73,12 @@ export function SummaryView({ analysis, documents, onStartOver }: Props) {
                 they are about to read. Absent when nothing could be dated,
                 which is common and is not a fault. */}
             {span && <span className="text-[14.5px] text-ink-soft">{span}</span>}
+            {/* The demographic line is built from spans the model marked, so
+                it is document text like the findings are. */}
             {summary.patient && (
-              <span className="text-[14.5px] text-ink-muted">{summary.patient}</span>
+              <span className="text-[14.5px] text-ink-muted">
+                {safeText(summary.patient)}
+              </span>
             )}
           </div>
           {/* Where a retention clock would sit if there were anything to

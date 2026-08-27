@@ -1,6 +1,7 @@
 import type { SummarySection } from '../types/extraction'
 import type { SelectedDocument } from '../lib/documentSelection'
 import { sourceLabel } from '../lib/findingSource'
+import { safeText } from '../lib/safeText'
 
 interface Props {
   section: SummarySection
@@ -32,7 +33,7 @@ export function SummarySectionCard({ section, documents, sites = null }: Props) 
         id={`section-${section.key}`}
         className="mb-3 font-serif text-[23px] font-normal text-ink"
       >
-        {section.heading}
+        {safeText(section.heading)}
       </h2>
 
       <ul>
@@ -52,7 +53,10 @@ export function SummarySectionCard({ section, documents, sites = null }: Props) 
               key={`${section.key}-${index}`}
               className="flex items-baseline justify-between gap-4 border-t border-rule-soft py-[11px]"
             >
-              <span className="text-base text-ink">{finding.text}</span>
+              {/* Stripped at the boundary: a finding is a span lifted out of
+                  a document, and an override inside it would read in an order
+                  the document does not say. */}
+              <span className="text-base text-ink">{safeText(finding.text)}</span>
               {source && (
                 <span className="shrink-0 text-right text-[12.5px] text-ink-muted">
                   {source}
@@ -65,10 +69,10 @@ export function SummarySectionCard({ section, documents, sites = null }: Props) 
 
       {sites && sites.findings.length > 0 && (
         <p className="mt-2 border-t border-rule-soft pt-3.5 text-[13.5px] leading-[1.6] text-ink-muted">
-          {sites.heading} :{' '}
+          {safeText(sites.heading)} :{' '}
           {sites.findings
             .filter(finding => typeof finding?.text === 'string')
-            .map(finding => finding.text)
+            .map(finding => safeText(finding.text))
             .join(', ')}
         </p>
       )}

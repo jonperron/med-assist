@@ -4,28 +4,17 @@
  * The clinician chose these files, so the name is the only handle they have on
  * which document a source chip refers to. It is shown, never sent anywhere and
  * never stored: it stays in page state for the life of the summary.
+ *
+ * A filename is untrusted text like any other, so it goes through the same
+ * stripping as everything else on screen - a name that displays as something
+ * other than what it is would mean a source chip naming a document that was
+ * not the one read.
  */
-
-// Bidirectional overrides and other invisible formatting characters let a
-// filename display as something other than what it is, which on a summary
-// would mean a source chip naming a document that was not the one read. They
-// are stripped everywhere a name is shown, raw or prettified.
-const INVISIBLE = /[\p{Cf}\p{Cc}]/gu
+import { stripInvisible } from './safeText'
 
 // Long enough for any real document name, short enough that one cannot push
 // the rest of a row off screen.
 const MAX_DISPLAY_LENGTH = 120
-
-/**
- * Drop the characters that let a string display as something other than what
- * it is, without imposing any length policy.
- *
- * Filenames and upstream refusal messages both need this and want different
- * ceilings, so the stripping is separate from the truncation below.
- */
-export function stripInvisible(value: string): string {
-  return value.replace(INVISIBLE, '').trim()
-}
 
 /** Make a filename safe to display, without changing how it reads. */
 export function displayFilename(filename: string): string {

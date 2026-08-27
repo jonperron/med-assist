@@ -204,6 +204,12 @@ describe('SummaryView', () => {
     expect(container.textContent).not.toMatch(/n'a pas pu être lu|non lu/)
   })
 
+  it('strips an override out of the patient line', () => {
+    // It is built from spans the model marked, so it is document text too.
+    renderSummary({ patient: 'Patient, 67\u202Eans, homme.' })
+    expect(screen.getByText('Patient, 67ans, homme.')).toBeInTheDocument()
+  })
+
   it('shows no score, percentage, model or timing anywhere', () => {
     const { container } = renderSummary()
     expect(container.textContent).not.toMatch(/%/)

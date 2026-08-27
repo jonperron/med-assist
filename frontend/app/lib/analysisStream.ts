@@ -4,7 +4,7 @@ import type {
   FailureReason,
 } from '../types/extraction'
 import { MAX_FILES } from './documentSelection'
-import { stripInvisible } from './documentName'
+import { stripInvisible } from './safeText'
 import { EventStreamParser, ParsedFrameTooLarge } from './serverSentEvents'
 
 /**
