@@ -233,6 +233,84 @@ class TestMalformedRequests:
         ErrorDetail(**body["detail"])
 
 
+class TestDocumentDates:
+    """
+    A date is what a clinician places a document by, so the answer carries one.
+
+    The date is read from the document's own head, per document, and the batch
+    reports the stretch its dated documents cover. A document with no date in
+    its head says so rather than borrowing one.
+    """
+
+    def test_a_document_reports_the_date_it_carries(self, client, mock_text_extractor):
+        mock_text_extractor.extract_text = AsyncMock(
+            return_value="Le 4 mars 2024\n" + TEXT
+        )
+
+        body = client.post("/api/analyze", files=[txt()]).json()
+
+        assert body["documents"][0]["document_date"] == "2024-03-04"
+        assert body["summary"]["date_range"] == {
+            "start": "2024-03-04",
+            "end": "2024-03-04",
+        }
+
+    def test_an_undated_document_says_so_rather_than_guessing(self, client):
+        body = client.post("/api/analyze", files=[txt()]).json()
+
+        # The fixture text carries no date at all.
+        assert body["documents"][0]["document_date"] is None
+        assert body["summary"]["date_range"] is None
+
+    def test_the_range_runs_across_the_batch(self, client, mock_text_extractor):
+        mock_text_extractor.extract_text = AsyncMock(
+            side_effect=[
+                "Le 2 avril 2024\n" + TEXT,
+                TEXT,
+                "Le 4 mars 2024\n" + TEXT,
+            ]
+        )
+
+        body = client.post(
+            "/api/analyze", files=[txt("a.txt"), txt("b.txt"), txt("c.txt")]
+        ).json()
+
+        assert [document["document_date"] for document in body["documents"]] == [
+            "2024-04-02",
+            None,
+            "2024-03-04",
+        ]
+        assert body["summary"]["date_range"] == {
+            "start": "2024-03-04",
+            "end": "2024-04-02",
+        }
+
+    def test_an_unread_document_carries_no_date(self, client, mock_text_extractor):
+        mock_text_extractor.extract_text = AsyncMock(
+            side_effect=["", "Le 4 mars 2024\n" + TEXT]
+        )
+
+        documents = client.post(
+            "/api/analyze", files=[txt("a.txt"), txt("b.txt")]
+        ).json()["documents"]
+
+        assert documents[0]["document_date"] is None
+        assert documents[1]["document_date"] == "2024-03-04"
+
+    def test_a_date_of_birth_in_the_head_is_not_reported_as_the_document_date(
+        self, client, mock_text_extractor
+    ):
+        # It would be wrong by decades, and it is a patient identifier.
+        mock_text_extractor.extract_text = AsyncMock(
+            return_value="Née le 12/05/1948\n" + TEXT
+        )
+
+        body = client.post("/api/analyze", files=[txt()]).json()
+
+        assert body["documents"][0]["document_date"] is None
+        assert "1948" not in repr(body)
+
+
 class TestPartialBatches:
     """
     One document that cannot be read no longer costs the batch its summary.

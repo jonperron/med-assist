@@ -18,6 +18,7 @@ function summary(overrides: Partial<ClinicalSummary> = {}): ClinicalSummary {
       },
     ],
     document_count: 3,
+    date_range: null,
     empty: false,
     ...overrides,
   }

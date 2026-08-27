@@ -281,6 +281,11 @@ export interface components {
              */
             anatomy: components["schemas"]["EntityDetail"][];
             /**
+             * Document Date
+             * @description The date this document carries, read from its head. Null when it carries none that could be established - a document with no date in its letterhead, or an unread one - which is common and not an error. It is the document's own date, not the file's timestamp and not a date mentioned inside the clinical text.
+             */
+            document_date: string | null;
+            /**
              * Examinations
              * @description Medical examinations
              * @default []
@@ -369,6 +374,8 @@ export interface components {
          *     submitted documents and placed under a fixed heading.
          */
         ClinicalSummary: {
+            /** @description The stretch of time the dated documents cover, for a caller placing the summary in time. Absent when no submitted document carries a date this could be sure of - which is common, and not an error. Only documents that were read can be dated: see `AnalysisResponse.documents[].document_date` for the date behind each end of the range. */
+            date_range: components["schemas"]["DateRange"] | null;
             /**
              * Document Count
              * @description How many documents were read to build this summary. Lower than the number submitted when a document could not be read: see `AnalysisResponse.documents[].read`.
@@ -391,6 +398,24 @@ export interface components {
              * @default []
              */
             sections: components["schemas"]["SummarySection"][];
+        };
+        /**
+         * DateRange
+         * @description The stretch of time a batch of documents covers.
+         */
+        DateRange: {
+            /**
+             * End
+             * Format: date
+             * @description The latest document date in the batch. Equal to `start` when only one document in the batch carries a date.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date
+             * @description The earliest document date in the batch
+             */
+            start: string;
         };
         /**
          * EntityDetail

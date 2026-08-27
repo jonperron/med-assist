@@ -5,9 +5,12 @@ Every assertion is about what a clinician ends up reading: what is merged, what
 is dropped, what order it arrives in, and what never appears at all.
 """
 
+from datetime import date
+
 import pytest
 
 from app.schemas.extraction import EntityDetail
+from app.schemas.summary import DateRange
 from app.services.summarizer import (
     MEASUREMENT_GAP,
     MIN_CONFIDENCE,
@@ -789,3 +792,66 @@ class TestOnlyResultsArePaired:
         )
 
         assert findings_in(summary, "examinations") == ["Consultation"]
+
+
+class TestTheTimeTheBatchCovers:
+    """
+    The summary carries the stretch its documents cover, and nothing more.
+
+    The dates are decided before the summarizer sees them - it is handed one
+    per document and only reports the two ends - so what is pinned here is that
+    the ends are right and that an undated batch says so.
+    """
+
+    def test_a_summary_of_undated_documents_carries_no_range(self):
+        summary = summarize([document(pathologies=[entity("cirrhose")])])
+
+        assert summary.date_range is None
+
+    def test_a_batch_where_nothing_could_be_dated_carries_no_range(self):
+        summary = summarize([document(pathologies=[entity("cirrhose")])], [None])
+
+        assert summary.date_range is None
+
+    def test_one_dated_document_reports_its_own_day_at_both_ends(self):
+        summary = summarize(
+            [document(pathologies=[entity("cirrhose")])], [date(2024, 3, 4)]
+        )
+
+        assert summary.date_range == DateRange(
+            start=date(2024, 3, 4), end=date(2024, 3, 4)
+        )
+
+    def test_the_range_runs_from_the_earliest_to_the_latest(self):
+        summary = summarize(
+            [
+                document(pathologies=[entity("cirrhose")]),
+                None,
+                document(pathologies=[entity("diabète")]),
+            ],
+            [date(2024, 4, 2), None, date(2024, 3, 4)],
+        )
+
+        assert summary.date_range == DateRange(
+            start=date(2024, 3, 4), end=date(2024, 4, 2)
+        )
+
+    def test_a_dates_list_that_does_not_line_up_is_refused(self):
+        # The two sequences are positional. A shifted list would put a
+        # plausible range on the summary with nothing to say it is wrong.
+        with pytest.raises(ValueError):
+            summarize(
+                [document(pathologies=[entity("cirrhose")]), None],
+                [date(2024, 3, 4)],
+            )
+
+    def test_a_date_never_becomes_a_finding(self):
+        summary = summarize(
+            [document(pathologies=[entity("cirrhose")])], [date(2024, 3, 4)]
+        )
+
+        # The range is metadata about the documents, not something the summary
+        # says: no section, no sentence, no wording gained a date.
+        assert findings_in(summary, "pathologies") == ["cirrhose"]
+        assert "2024" not in repr(summary.sections)
+        assert "2024" not in repr(summary.patient)
