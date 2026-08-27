@@ -1,8 +1,9 @@
+import type { UnreadDocument } from '../lib/unreadDocuments'
 import { Icon } from './Icon'
 
 interface Props {
   /** The documents the batch could not read, in submission order. */
-  names: string[]
+  documents: UnreadDocument[]
 }
 
 function headline(count: number): string {
@@ -22,8 +23,14 @@ function headline(count: number): string {
  * Kept in the printed copy on purpose - on a page going into a patient file,
  * what was left out matters as much as what was read.
  */
-export function UnreadNotice({ names }: Props) {
-  if (names.length === 0) return null
+export function UnreadNotice({ documents }: Props) {
+  if (documents.length === 0) return null
+
+  const names = documents.map(document => document.name)
+  // The remedy is specific to `no_text`, which is the only reason the API can
+  // send today. A reason this build does not know gets the neutral wording
+  // rather than advice that may not apply to it.
+  const allNoText = documents.every(document => document.reason === 'no_text')
 
   return (
     <div
@@ -41,9 +48,10 @@ export function UnreadNotice({ names }: Props) {
           {headline(names.length)}
         </span>
         <span className="text-[13.5px] leading-[1.55] text-pretty text-caution-ink">
-          {names.join(', ')} — le résumé ci-dessous ne les contient pas. Vérifiez
-          qu&apos;il s&apos;agit bien d&apos;un PDF, d&apos;un DOCX ou d&apos;un TXT
-          contenant du texte, et non d&apos;une image scannée.
+          {names.join(', ')} — le résumé ci-dessous ne les contient pas.
+          {allNoText
+            ? " Vérifiez qu'il s'agit bien d'un PDF, d'un DOCX ou d'un TXT contenant du texte, et non d'une image scannée."
+            : ' Relisez-les directement.'}
         </span>
       </div>
     </div>

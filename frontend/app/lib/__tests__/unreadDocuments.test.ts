@@ -34,23 +34,42 @@ describe('unreadDocuments', () => {
     expect(unreadDocuments(analyzed([true, true]), SELECTED)).toEqual([])
   })
 
-  it('names the document that was skipped', () => {
+  it('names the document that was skipped, with the reason the API gave', () => {
     expect(unreadDocuments(analyzed([true, false]), SELECTED)).toEqual([
-      'Scan illisible',
+      { name: 'Scan illisible', reason: 'no_text' },
     ])
   })
 
   it('names every skipped document, in submission order', () => {
     expect(unreadDocuments(analyzed([false, false]), SELECTED)).toEqual([
-      'Lettre adressage',
-      'Scan illisible',
+      { name: 'Lettre adressage', reason: 'no_text' },
+      { name: 'Scan illisible', reason: 'no_text' },
     ])
   })
 
   it('numbers a position the selection cannot resolve rather than dropping it', () => {
     expect(unreadDocuments(analyzed([true, true, false]), SELECTED)).toEqual([
-      'Document 3',
+      { name: 'Document 3', reason: 'no_text' },
     ])
+  })
+
+  it('drops a reason this build has never heard of rather than passing it on', () => {
+    // `UnreadableReason` is documented as a set that will grow, and the notice
+    // gives advice specific to the one member this build knows.
+    const grown = analyzed([false])
+    const withNewReason = [
+      { ...grown[0], unreadable_reason: 'encrypted' as unknown as 'no_text' },
+    ]
+
+    expect(unreadDocuments(withNewReason, SELECTED)).toEqual([
+      { name: 'Lettre adressage', reason: null },
+    ])
+  })
+
+  it('reports nothing rather than throwing when documents is not a list', () => {
+    expect(
+      unreadDocuments(null as unknown as ReturnType<typeof analyzed>, SELECTED)
+    ).toEqual([])
   })
 
   it('handles a response carrying no documents at all', () => {

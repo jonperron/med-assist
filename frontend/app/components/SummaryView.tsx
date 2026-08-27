@@ -85,7 +85,7 @@ export function SummaryView({ analysis, documents, onStartOver }: Props) {
 
         {/* Above the chips, not below: what the summary is missing has to be
             read before the summary, not after it. */}
-        <UnreadNotice names={unread} />
+        <UnreadNotice documents={unread} />
 
         {/* Kept in the printed copy on purpose: on a page going into a
             patient file, which documents the summary was built from is the

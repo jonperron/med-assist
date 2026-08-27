@@ -198,6 +198,118 @@ describe('streamAnalysis', () => {
     await expect(run()).resolves.toEqual(RESULT)
   })
 
+  it('holds an error event message to the same ceiling as a refusal', async () => {
+    // The card renders this as Med-Assist's own wording, so a wall of
+    // upstream text would read as something this app said.
+    fetchMock.mockResolvedValue(
+      streaming(
+        frame({
+          stage: 'error',
+          reason: 'server_error',
+          message: 'x'.repeat(301),
+        })
+      )
+    )
+
+    await expect(run()).rejects.toMatchObject({ message: FALLBACK })
+  })
+
+  it('strips invisible characters out of an error event message', async () => {
+    fetchMock.mockResolvedValue(
+      streaming(
+        frame({
+          stage: 'error',
+          reason: 'server_error',
+          message: 'Erreur\u202einterne',
+        })
+      )
+    )
+
+    await expect(run()).rejects.toMatchObject({ message: 'Erreurinterne' })
+  })
+
+  it('calls a reason it has never heard of a server error', async () => {
+    // It must not read as the clinician's documents being at fault, and it
+    // must not reach the headline lookup unrecognised.
+    fetchMock.mockResolvedValue(
+      streaming(
+        frame({ stage: 'error', reason: 'cosmic_rays', message: 'Something failed' })
+      )
+    )
+
+    await expect(run()).rejects.toMatchObject({ reason: 'server_error' })
+  })
+
+  it('ignores a batch total no batch could have', async () => {
+    fetchMock.mockResolvedValue(
+      streaming(
+        [
+          frame({ stage: 'batch', total: 1e9 }),
+          frame({ stage: 'batch', total: -1 }),
+          frame({ stage: 'batch', total: 'lots' }),
+          frame({ stage: 'result', result: RESULT }),
+        ].join('')
+      )
+    )
+
+    const onBatch = vi.fn()
+    await run({ onBatch })
+
+    expect(onBatch).not.toHaveBeenCalled()
+  })
+
+  it('accepts a batch total the interface could have selected', async () => {
+    fetchMock.mockResolvedValue(
+      streaming(
+        frame({ stage: 'batch', total: 3 }) + frame({ stage: 'result', result: RESULT })
+      )
+    )
+
+    const onBatch = vi.fn()
+    await run({ onBatch })
+
+    expect(onBatch).toHaveBeenCalledExactlyOnceWith(3)
+  })
+
+  it('does not blame the documents for a route that is not there', async () => {
+    // A deployment older than the streaming endpoint answers 404. Telling the
+    // clinician no summary could be established would send them back to their
+    // scanner over a routing problem.
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ detail: 'Not Found' }),
+    } as unknown as Response)
+
+    await expect(run()).rejects.toMatchObject({ reason: 'transport' })
+  })
+
+  it("calls a 400 and a 413 the clinician's batch", async () => {
+    for (const status of [400, 413]) {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status,
+        json: async () => ({ detail: { message: 'Refusé.' } }),
+      } as unknown as Response)
+
+      await expect(run()).rejects.toMatchObject({ reason: 'unreadable_batch' })
+    }
+  })
+
+  it('refuses a result whose documents are not a list', async () => {
+    // Every screen behind a finished analysis indexes into it.
+    fetchMock.mockResolvedValue(
+      streaming(
+        frame({
+          stage: 'result',
+          result: { summary: { sections: [] }, documents: null },
+        })
+      )
+    )
+
+    await expect(run()).rejects.toMatchObject({ reason: 'transport' })
+  })
+
   it('passes the abort signal through to fetch', async () => {
     fetchMock.mockResolvedValue(streaming(frame({ stage: 'result', result: RESULT })))
     const controller = new AbortController()

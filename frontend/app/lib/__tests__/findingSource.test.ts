@@ -46,6 +46,20 @@ describe('sourceLabel', () => {
     expect(sourceLabel({ text: 'cirrhose', documents: [-1, 1.5] }, SELECTED)).toBeNull()
   })
 
+  it('returns nothing rather than throwing on a finding from before #66', () => {
+    // `findings` used to be `string[]`. Calling `.filter` on a missing field
+    // would throw inside a client component and take the page down.
+    const old = { text: 'cirrhose' } as unknown as Parameters<typeof sourceLabel>[0]
+    expect(sourceLabel(old, SELECTED)).toBeNull()
+  })
+
+  it('returns nothing when documents is not a list', () => {
+    const wrong = { text: 'cirrhose', documents: 3 } as unknown as Parameters<
+      typeof sourceLabel
+    >[0]
+    expect(sourceLabel(wrong, SELECTED)).toBeNull()
+  })
+
   it('strips invisible characters out of the document it names', () => {
     const selected = documents(['lettre‮-adressage.pdf'])
     expect(sourceLabel({ text: 'cirrhose', documents: [0] }, selected)).toBe(

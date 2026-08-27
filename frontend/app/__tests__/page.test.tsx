@@ -500,7 +500,7 @@ describe('HomePage', () => {
       },
     })
 
-    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+    fetchMock.mockImplementation((_: string, init: RequestInit) => {
       capturedSignal = init.signal as AbortSignal
       return Promise.resolve({ ok: true, status: 200, body } as unknown as Response)
     })

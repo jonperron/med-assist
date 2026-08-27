@@ -36,7 +36,11 @@ const MARKS = {
  * here.
  */
 export function ReadingProgress({ documents, states, finished }: Props) {
-  const total = documents.length
+  // Sized from the states, not from the selection. The two are the same batch,
+  // but the counter's numerator comes from the states and taking its
+  // denominator from anywhere else lets the bar stick below full with nothing
+  // on screen to say why.
+  const total = states.length
   const share = total === 0 ? 0 : Math.min(finished / total, 1)
 
   return (
@@ -60,11 +64,12 @@ export function ReadingProgress({ documents, states, finished }: Props) {
       </span>
 
       <ul>
-        {documents.map(({ id, file }, index) => {
-          const mark = MARKS[states[index] ?? 'pending']
+        {states.map((state, index) => {
+          const selected = documents[index]
+          const mark = MARKS[state] ?? MARKS.pending
           return (
             <li
-              key={id}
+              key={selected?.id ?? `position-${index}`}
               className="flex items-center gap-3 border-t border-rule-soft py-2.5"
             >
               <Icon
@@ -75,12 +80,14 @@ export function ReadingProgress({ documents, states, finished }: Props) {
               />
               <span
                 className={`grow text-[14.5px] break-all ${
-                  states[index] === 'pending' ? 'text-ink-muted' : 'text-ink'
+                  state === 'pending' ? 'text-ink-muted' : 'text-ink'
                 }`}
               >
-                {displayFilename(file.name)}
+                {/* The selection is what names a row. A position it does not
+                    cover is numbered rather than left blank. */}
+                {selected ? displayFilename(selected.file.name) : `Document ${index + 1}`}
               </span>
-              {states[index] === 'unread' && (
+              {state === 'unread' && (
                 <span className="shrink-0 text-[12.5px] text-caution-ink">non lu</span>
               )}
             </li>

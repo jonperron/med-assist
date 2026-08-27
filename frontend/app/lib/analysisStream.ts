@@ -3,6 +3,8 @@ import type {
   AnalysisResponse,
   FailureReason,
 } from '../types/extraction'
+import { MAX_FILES } from './documentSelection'
+import { displayFilename } from './documentName'
 import { EventStreamParser } from './serverSentEvents'
 
 /**
@@ -44,9 +46,9 @@ export interface StreamHandlers {
 /** A refusal that arrived before the stream opened, as JSON. */
 const REFUSAL_SHAPE = 'detail'
 
-// Same ceiling as the axios path: a refusal is rendered as Med-Assist's own
-// wording, so an upstream string of any length would read as something this
-// app said.
+// A refusal is rendered as Med-Assist's own wording, so an upstream string of
+// any length would read as something this app said. The backend's messages are
+// all short fixed constants; anything longer is not one of them.
 const MAX_MESSAGE_LENGTH = 300
 
 function usable(value: unknown): value is string {
@@ -55,6 +57,36 @@ function usable(value: unknown): value is string {
     value.trim().length > 0 &&
     value.length <= MAX_MESSAGE_LENGTH
   )
+}
+
+/**
+ * Make an upstream message safe to put in front of a clinician, or refuse it.
+ *
+ * Both paths a message can arrive by - the JSON refusal sent before the stream
+ * opens, and the `error` event sent after - go through here, so the two cannot
+ * drift. Invisible formatting characters are stripped for the same reason
+ * `displayFilename` strips them: they let a string display as something other
+ * than what it is, and this one is rendered as the application speaking.
+ */
+function safeMessage(value: unknown, fallback: string): string {
+  if (!usable(value)) return fallback
+
+  const cleaned = displayFilename(value)
+  return cleaned.length > 0 ? cleaned : fallback
+}
+
+// A batch cannot hold more documents than the interface will select, so a
+// larger count is not a batch this page posted. Bounding it keeps a hostile or
+// misrouted `total` from being handed to an allocation.
+function acceptableTotal(total: unknown): total is number {
+  return Number.isInteger(total) && (total as number) >= 0 && (total as number) <= MAX_FILES
+}
+
+// The closed set the stream can end on. `reason` is read off the wire and then
+// used to pick what the clinician is told, so an unknown value must not reach
+// the lookup that does it.
+function acceptableReason(reason: unknown): reason is 'unreadable_batch' | 'server_error' {
+  return reason === 'unreadable_batch' || reason === 'server_error'
 }
 
 /**
@@ -75,11 +107,28 @@ async function refusalMessage(response: Response, fallback: string): Promise<str
         ? (detail as Record<string, unknown>).message
         : undefined
 
-    return usable(candidate) ? candidate : fallback
+    return safeMessage(candidate, fallback)
   } catch {
     // An HTML error page from a proxy, or a body that ended early.
     return fallback
   }
+}
+
+/**
+ * Which failure a status sent before the stream opened is.
+ *
+ * Only 400 is the clinician's documents: it is the refusal the route documents
+ * for a batch nothing could be read from. 413 is a batch too large, which is
+ * their selection rather than their scans, and it carries its own wording. A
+ * 5xx is the service. Everything else - a 404 from a deployment older than the
+ * streaming route, a proxy's 405, a 429 - is neither, and saying "no summary
+ * could be established" over a routing problem blames a clinician's documents
+ * for something no retry of theirs will fix.
+ */
+function failureOf(status: number): StreamFailure {
+  if (status === 400 || status === 413) return 'unreadable_batch'
+  if (status >= 500) return 'server_error'
+  return 'transport'
 }
 
 /** Narrow a parsed payload to an event this client knows what to do with. */
@@ -110,20 +159,46 @@ function asEvent(payload: string): AnalysisEvent | null {
 
 function handle(
   event: AnalysisEvent,
-  handlers: StreamHandlers
+  handlers: StreamHandlers,
+  fallbackMessage: string
 ): AnalysisResponse | null {
   switch (event.stage) {
     case 'batch':
-      handlers.onBatch?.(event.total)
+      // A total this batch cannot have is not one this page posted. Skipping
+      // the event leaves the count the selection already established.
+      if (acceptableTotal(event.total)) handlers.onBatch?.(event.total)
       return null
     case 'document':
       handlers.onDocument?.(event.index, event.read)
       return null
     case 'error':
-      throw new AnalysisStreamError(event.message, event.reason)
+      throw new AnalysisStreamError(
+        safeMessage(event.message, fallbackMessage),
+        // An unknown reason is the service's own failure as far as this client
+        // can tell. It must not read as the clinician's documents being at
+        // fault, and it must not reach the headline lookup unrecognised.
+        acceptableReason(event.reason) ? event.reason : 'server_error'
+      )
     case 'result':
-      return event.result
+      // Checked here rather than trusted: `asEvent` narrows the tag, not the
+      // payload behind it, and everything downstream indexes `documents`.
+      return isAnalysisResponse(event.result) ? event.result : null
   }
+}
+
+/** The shape every screen behind a finished analysis indexes into. */
+function isAnalysisResponse(result: unknown): result is AnalysisResponse {
+  if (typeof result !== 'object' || result === null) return false
+
+  const body = result as Record<string, unknown>
+  const summary = body.summary
+
+  return (
+    typeof summary === 'object' &&
+    summary !== null &&
+    Array.isArray((summary as Record<string, unknown>).sections) &&
+    Array.isArray(body.documents)
+  )
 }
 
 /**
@@ -150,7 +225,7 @@ export async function streamAnalysis(
   if (!response.ok) {
     throw new AnalysisStreamError(
       await refusalMessage(response, fallbackMessage),
-      response.status >= 500 ? 'server_error' : 'unreadable_batch'
+      failureOf(response.status)
     )
   }
 
@@ -162,22 +237,29 @@ export async function streamAnalysis(
   const decoder = new TextDecoder()
   const parser = new EventStreamParser()
   let result: AnalysisResponse | null = null
+  let finished = false
 
   try {
     for (;;) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        finished = true
+        break
+      }
 
       for (const payload of parser.push(decoder.decode(value, { stream: true }))) {
         const event = asEvent(payload)
         if (!event) continue
 
-        result = handle(event, handlers) ?? result
+        result = handle(event, handlers, fallbackMessage) ?? result
       }
     }
   } finally {
-    // Releases the lock whichever way the loop left, including the throw an
-    // `error` event raises out of `handle`.
+    // An `error` event throws out of `handle`, and a frame past the parser's
+    // cap throws out of `push`. Both leave a body still arriving, so it is
+    // cancelled rather than left to be collected - on a local deployment that
+    // is a connection the backend is still writing to.
+    if (!finished) await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 

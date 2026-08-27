@@ -66,4 +66,19 @@ describe('AnalysisFailure', () => {
     expect(onStartOver).toHaveBeenCalledOnce()
     expect(onRetry).not.toHaveBeenCalled()
   })
+
+  it('falls back to the neutral headline for a reason added later', () => {
+    // An alert whose first line is empty tells a clinician less than the
+    // generic wording does.
+    render(
+      <AnalysisFailure
+        message="Something failed"
+        reason={'cosmic_rays' as never}
+        onRetry={() => {}}
+        onStartOver={() => {}}
+      />
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent("L'analyse s'est interrompue")
+  })
 })

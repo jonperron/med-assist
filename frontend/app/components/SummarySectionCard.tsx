@@ -40,6 +40,12 @@ export function SummarySectionCard({ section, documents, sites = null }: Props) 
             within a render, and keying on content would tie this component to
             a backend dedup invariant that nothing here can enforce. */}
         {section.findings.map((finding, index) => {
+          // A finding that is not the shape this build reads - a string from
+          // before #66, or a body that is not ours - is skipped rather than
+          // rendered. React would refuse an object child and take the page
+          // down with it.
+          if (typeof finding?.text !== 'string') return null
+
           const source = sourceLabel(finding, documents)
           return (
             <li
@@ -59,7 +65,11 @@ export function SummarySectionCard({ section, documents, sites = null }: Props) 
 
       {sites && sites.findings.length > 0 && (
         <p className="mt-2 border-t border-rule-soft pt-3.5 text-[13.5px] leading-[1.6] text-ink-muted">
-          {sites.heading} : {sites.findings.map(finding => finding.text).join(', ')}
+          {sites.heading} :{' '}
+          {sites.findings
+            .filter(finding => typeof finding?.text === 'string')
+            .map(finding => finding.text)
+            .join(', ')}
         </p>
       )}
     </section>
