@@ -241,10 +241,22 @@ A task is complete only when:
 - Every deviation from the rules above, and every choice between two defensible
   options, is written down as a decision entry.
 
-Decisions live on the local wiki at
-<http://localhost:8080/med-assist/decisions>, one page per entry, not in a
-markdown file in this repository. Add a child page there titled
+Decisions live in this repository's wiki, under `openwiki/decisions/`, one page
+per entry, not in a markdown file at the repository root. Add a page there titled
 `<YYYY-MM-DD> - <what was decided>`; state the alternative that was rejected and
-what the choice costs, not only what was chosen. The wiki is local-only, so a
-decision that a reader outside this machine has to know about also belongs in the
-commit body or the affected README.
+what the choice costs, not only what was chosen. The wiki is committed and this
+repository is public, so never quote patient data or a real filename in an entry.
+`openwiki/decisions/conventions.md` has the full format.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository has a generated `openwiki/` evidence index. It is optional just-in-time context, not required startup reading.
+
+- Treat source code and tests as authoritative. A brief's unknowns and review items are verification gaps, not automatic requirements.
+- Prefer the narrowest quiet validation that proves the changed behavior. Preserve complete failure output.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->
