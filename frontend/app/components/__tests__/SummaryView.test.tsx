@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { SummaryView } from '../SummaryView'
 import type { ClinicalSummary } from '../../types/extraction'
 import type { SelectedDocument } from '../../lib/documentSelection'
@@ -13,7 +13,7 @@ function summary(overrides: Partial<ClinicalSummary> = {}): ClinicalSummary {
         heading: 'Pathologies',
         sentence: 'Cirrhose, carcinome hépatocellulaire.',
         findings: [
-          { text: 'cirrhose', documents: [0, 2] },
+          { text: 'cirrhose', documents: [0, 1] },
           { text: 'carcinome hépatocellulaire', documents: [1] },
         ],
       },
@@ -21,13 +21,16 @@ function summary(overrides: Partial<ClinicalSummary> = {}): ClinicalSummary {
         key: 'symptoms',
         heading: 'Signes et symptômes',
         sentence: 'Ictère.',
-        findings: ['ictère'],
+        findings: [{ text: 'ictère', documents: [1] }],
       },
       {
         key: 'anatomy',
         heading: 'Localisations',
         sentence: 'Foie, veine porte.',
-        findings: ['foie', 'veine porte'],
+        findings: [
+          { text: 'foie', documents: [0] },
+          { text: 'veine porte', documents: [0, 1] },
+        ],
       },
     ],
     document_count: 3,
@@ -42,6 +45,10 @@ function documents(names: string[] = ['lettre-adressage.pdf']): SelectedDocument
     id: `document-${index}`,
     file: new File(['content'], name, { type: 'application/pdf' }),
   }))
+}
+
+function sourceChips() {
+  return within(screen.getByRole('list', { name: 'Lu dans' }))
 }
 
 function renderSummary(
@@ -87,8 +94,21 @@ describe('SummaryView', () => {
 
   it('names the documents the summary was read from', () => {
     renderSummary()
-    expect(screen.getByText('Lettre adressage')).toBeInTheDocument()
-    expect(screen.getByText('Compte rendu ecg')).toBeInTheDocument()
+    expect(sourceChips().getByText('Lettre adressage')).toBeInTheDocument()
+    expect(sourceChips().getByText('Compte rendu ecg')).toBeInTheDocument()
+  })
+
+  it('names the document behind a finding only one of them carried', () => {
+    renderSummary()
+    // `carcinome hépatocellulaire` came from documents: [1].
+    const row = screen.getByText('carcinome hépatocellulaire').closest('li')
+    expect(row).toHaveTextContent('Compte rendu ecg')
+  })
+
+  it('counts the documents behind a finding several of them agree on', () => {
+    renderSummary()
+    const row = screen.getByText('cirrhose').closest('li')
+    expect(row).toHaveTextContent('2 documents')
   })
 
   it('lays each section out as a heading and its findings', () => {
@@ -129,7 +149,7 @@ describe('SummaryView', () => {
 
   it('names the source documents in the printed copy', () => {
     const { container } = renderSummary()
-    const chip = screen.getByText('Lettre adressage')
+    const chip = sourceChips().getByText('Lettre adressage')
 
     expect(container.querySelector('[data-print="hide"]')).not.toContainElement(chip)
   })

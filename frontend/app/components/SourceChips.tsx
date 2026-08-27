@@ -6,6 +6,9 @@ interface Props {
   documents: SelectedDocument[]
 }
 
+/** Names the list as well as heading it, so the chips are addressable. */
+const SOURCES_LABEL = 'Lu dans'
+
 /**
  * The documents this summary was built from.
  *
@@ -19,9 +22,9 @@ export function SourceChips({ documents }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <span className="text-[11px] font-semibold tracking-[0.09em] uppercase text-ink-muted">
-        Lu dans
+        {SOURCES_LABEL}
       </span>
-      <ul className="flex flex-wrap gap-2.5">
+      <ul aria-label={SOURCES_LABEL} className="flex flex-wrap gap-2.5">
         {documents.map(({ id, file }) => (
           <li
             key={id}

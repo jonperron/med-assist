@@ -3,7 +3,12 @@ import { layoutSummary } from '../summaryLayout'
 import type { SummarySection } from '../../types/extraction'
 
 function section(key: string, heading = key): SummarySection {
-  return { key, heading, sentence: `${heading}.`, findings: [heading] }
+  return {
+    key,
+    heading,
+    sentence: `${heading}.`,
+    findings: [{ text: heading, documents: [0] }],
+  }
 }
 
 function keysOf(sections: SummarySection[]): string[] {

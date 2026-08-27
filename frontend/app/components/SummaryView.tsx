@@ -88,6 +88,7 @@ export function SummaryView({ summary, documents, onStartOver }: Props) {
               <SummarySectionCard
                 key={section.key}
                 section={section}
+                documents={documents}
                 sites={section.key === SITES_HOST_KEY ? sites : null}
               />
             ))}
