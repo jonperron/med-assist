@@ -157,4 +157,3 @@ class AnalysisEvent(
     It serialises to the event it wraps, so nothing about the wrapper reaches
     the wire.
     """
-

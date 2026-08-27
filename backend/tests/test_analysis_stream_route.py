@@ -260,9 +260,7 @@ class TestPartialBatches:
     ):
         # The order matters: a batch that only tolerates a failure at the end
         # would be a narrower guarantee than "the batch carries on".
-        mock_text_extractor.extract_text = AsyncMock(
-            side_effect=["", TEXT, TEXT]
-        )
+        mock_text_extractor.extract_text = AsyncMock(side_effect=["", TEXT, TEXT])
 
         response = client.post(
             STREAM, files=[txt("scan.txt"), txt("a.txt"), txt("b.txt")]
@@ -275,9 +273,11 @@ class TestPartialBatches:
         ]
         [completed] = stages(response, "result")
         assert completed["result"]["summary"]["document_count"] == 2
-        assert [
-            document["read"] for document in completed["result"]["documents"]
-        ] == [False, True, True]
+        assert [document["read"] for document in completed["result"]["documents"]] == [
+            False,
+            True,
+            True,
+        ]
 
     def test_the_reason_tells_a_caller_fault_from_a_server_fault(
         self, client, mock_text_extractor, mock_entity_extractor
