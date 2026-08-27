@@ -5,9 +5,9 @@
         "description": "Result of a stateless analysis. Nothing behind this response is stored.",
         "properties": {
           "documents": {
-            "description": "The entities found in each submitted document, in submission order, for a caller that needs more than the summary.",
+            "description": "Every submitted document, in submission order: the entities found in it for a caller that needs more than the summary, and whether it could be read at all. A document with `read` false is not behind the summary - the batch is refused outright only when none of them could be read.",
             "items": {
-              "$ref": "#/components/schemas/ExtractedEntities"
+              "$ref": "#/components/schemas/AnalyzedDocument"
             },
             "title": "Documents",
             "type": "array"
@@ -43,6 +43,114 @@
           "documents"
         ],
         "title": "AnalysisResponse",
+        "type": "object"
+      },
+      "AnalyzedDocument": {
+        "description": "One submitted document: its entities, and whether it was read at all.\n\nCallers that already read `documents[i]` as entities keep working - the\nentity categories are unchanged, and an unread document simply has none.\nThe document is identified by its position in the list, which is the\ncaller's own submission order, so no filename has to cross the boundary for\nthe caller to say which of its files was skipped.",
+        "properties": {
+          "anatomy": {
+            "default": [],
+            "description": "Anatomical structures",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Anatomy",
+            "type": "array"
+          },
+          "examinations": {
+            "default": [],
+            "description": "Medical examinations",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Examinations",
+            "type": "array"
+          },
+          "measurements": {
+            "default": [],
+            "description": "Measurements and values",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Measurements",
+            "type": "array"
+          },
+          "other": {
+            "default": [],
+            "description": "Other medical entities",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Other",
+            "type": "array"
+          },
+          "pathologies": {
+            "default": [],
+            "description": "Diseases and conditions",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Pathologies",
+            "type": "array"
+          },
+          "patient_info": {
+            "default": [],
+            "description": "Patient demographic information",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Patient Info",
+            "type": "array"
+          },
+          "read": {
+            "description": "False when no text could be read from this document. It is then not behind the summary, and its entity categories are empty.",
+            "title": "Read",
+            "type": "boolean"
+          },
+          "symptoms": {
+            "default": [],
+            "description": "Signs and symptoms",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Symptoms",
+            "type": "array"
+          },
+          "temporal": {
+            "default": [],
+            "description": "Temporal information",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Temporal",
+            "type": "array"
+          },
+          "treatments": {
+            "default": [],
+            "description": "Treatments and medications",
+            "items": {
+              "$ref": "#/components/schemas/EntityDetail"
+            },
+            "title": "Treatments",
+            "type": "array"
+          },
+          "unreadable_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnreadableReason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the document could not be read. Null when it was read."
+          }
+        },
+        "required": [
+          "read",
+          "unreadable_reason"
+        ],
+        "title": "AnalyzedDocument",
         "type": "object"
       },
       "Body_analyze_api_analyze_post": {
@@ -100,7 +208,7 @@
         "description": "A readable summary of one or more documents about the same patient.\n\nEverything here is assembled from what the NER model emitted. No wording is\ngenerated: each finding is a span the model marked, deduplicated across the\nsubmitted documents and placed under a fixed heading.",
         "properties": {
           "document_count": {
-            "description": "How many documents were read to build this summary",
+            "description": "How many documents were read to build this summary. Lower than the number submitted when a document could not be read: see `AnalysisResponse.documents[].read`.",
             "title": "Document Count",
             "type": "integer"
           },
@@ -455,6 +563,30 @@
         "title": "ExtractionResponse",
         "type": "object"
       },
+      "Finding": {
+        "description": "One deduplicated finding, and which documents it came from.",
+        "properties": {
+          "documents": {
+            "description": "Indices into the submitted batch, ascending, of every document this finding was found in. They index the request's own file order - and `AnalysisResponse.documents` - so a caller can name the source from what it submitted, without this path ever having to echo a filename.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "text": {
+            "description": "The span the model marked, as it is reported",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "documents"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -528,7 +660,7 @@
           "findings": {
             "description": "The same findings as a list, most-supported first, for a caller that would rather lay them out itself",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Finding"
             },
             "title": "Findings",
             "type": "array"
@@ -557,6 +689,14 @@
         ],
         "title": "SummarySection",
         "type": "object"
+      },
+      "UnreadableReason": {
+        "description": "Why a submitted document is not behind the summary.\n\nClosed on purpose, and content-free: a caller renders the position it\nsubmitted, never a filename or a parser message. More members may be added\nas more ways to fail are told apart; today every failure a document can\ncause on this path is \"nothing could be read from it\".",
+        "enum": [
+          "no_text"
+        ],
+        "title": "UnreadableReason",
+        "type": "string"
       },
       "UploadResponse": {
         "properties": {
@@ -699,7 +839,7 @@
     },
     "/api/analyze": {
       "post": {
-        "description": "Summarise one or more medical documents in a single request, storing nothing.\n\nThe documents are read, analysed and answered in memory. No file id is\nissued because there is nothing to come back for, and nothing to delete\nlater. The document text is not echoed back: the summary is the product,\nand returning the text would widen what leaves the server for no gain.\n\nArgs:\n    files: The uploaded documents (PDF, DOCX, TXT)\n\nReturns:\n    AnalysisResponse: The merged summary and the entities behind it\n\nRaises:\n    HTTPException: 400 for an invalid or unreadable file, 413 for a file or\n        batch that is too large, 500 for server errors",
+        "description": "Summarise one or more medical documents in a single request, storing nothing.\n\nThe documents are read, analysed and answered in memory. No file id is\nissued because there is nothing to come back for, and nothing to delete\nlater. The document text is not echoed back: the summary is the product,\nand returning the text would widen what leaves the server for no gain.\n\nA batch holding one document that cannot be read still answers 200, with\nthat document marked unread and the summary built from the rest. Only a\nbatch where nothing could be read is refused.\n\nArgs:\n    files: The uploaded documents (PDF, DOCX, TXT)\n\nReturns:\n    AnalysisResponse: The merged summary and the entities behind it\n\nRaises:\n    HTTPException: 400 for an invalid file or a batch nothing could be read\n        from, 413 for a file or batch that is too large, 500 for server\n        errors",
         "operationId": "analyze_api_analyze_post",
         "requestBody": {
           "content": {

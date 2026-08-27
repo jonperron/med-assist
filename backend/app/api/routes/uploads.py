@@ -74,9 +74,11 @@ async def store_document(
             stored = await file_handler.process_file(file_id, file)
         except ValueError as exc:
             # A document of a supported type that cannot be parsed is the
-            # caller's problem, not a server fault - and /api/analyze already
-            # answers 400 for the same file. The message is fixed upstream and
-            # quotes nothing from the document.
+            # caller's problem, not a server fault. This path answers 400 for
+            # it whatever else was in the batch; /api/analyze skips the file
+            # and summarises the rest, and refuses only when nothing could be
+            # read. The message is fixed upstream and quotes nothing from the
+            # document.
             raise HTTPException(
                 status_code=400,
                 detail={"message": UNREADABLE_DOCUMENT},

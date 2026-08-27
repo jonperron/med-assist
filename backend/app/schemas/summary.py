@@ -3,6 +3,21 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class Finding(BaseModel):
+    """One deduplicated finding, and which documents it came from."""
+
+    text: str = Field(description="The span the model marked, as it is reported")
+    documents: List[int] = Field(
+        description=(
+            "Indices into the submitted batch, ascending, of every document "
+            "this finding was found in. They index the request's own file "
+            "order - and `AnalysisResponse.documents` - so a caller can name "
+            "the source from what it submitted, without this path ever having "
+            "to echo a filename."
+        )
+    )
+
+
 class SummarySection(BaseModel):
     """One clinical axis of the summary, as a heading and its findings."""
 
@@ -11,7 +26,7 @@ class SummarySection(BaseModel):
     sentence: str = Field(
         description="The section's findings as one sentence, ready to read"
     )
-    findings: List[str] = Field(
+    findings: List[Finding] = Field(
         description=(
             "The same findings as a list, most-supported first, for a caller "
             "that would rather lay them out itself"
@@ -40,7 +55,11 @@ class ClinicalSummary(BaseModel):
         description="Clinical sections, in reading order. Empty ones are omitted.",
     )
     document_count: int = Field(
-        description="How many documents were read to build this summary"
+        description=(
+            "How many documents were read to build this summary. Lower than "
+            "the number submitted when a document could not be read: see "
+            "`AnalysisResponse.documents[].read`."
+        )
     )
     empty: bool = Field(
         default=False,

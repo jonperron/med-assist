@@ -70,7 +70,7 @@ def test_analyze_summarises_one_document(client):
     assert summary["document_count"] == 1
     headings = {section["key"]: section for section in summary["sections"]}
     assert headings["pathologies"]["sentence"] == "Grippe."
-    assert headings["symptoms"]["findings"] == ["fièvre"]
+    assert headings["symptoms"]["findings"] == [{"text": "fièvre", "documents": [0]}]
 
 
 def test_sections_are_ordered_for_reading(client):
@@ -91,7 +91,7 @@ def test_analyze_merges_several_documents_into_one_summary(client):
     assert body["summary"]["document_count"] == 2
     # The same finding in both documents is reported once.
     sections = {section["key"]: section for section in body["summary"]["sections"]}
-    assert sections["symptoms"]["findings"] == ["fièvre"]
+    assert sections["symptoms"]["findings"] == [{"text": "fièvre", "documents": [0, 1]}]
     # The per-document detail is still there for a caller that wants it.
     assert len(body["documents"]) == 2
 
@@ -231,3 +231,207 @@ class TestMalformedRequests:
 
         # {"detail": {"message": ...}} is what the frontend parses.
         ErrorDetail(**body["detail"])
+
+
+class TestPartialBatches:
+    """
+    One document that cannot be read no longer costs the batch its summary.
+
+    A summary of three documents out of four, marked as such, is worth more to
+    a clinician than a refusal - as long as the answer says which one is
+    missing. It says it by position, which is the caller's own file order: the
+    filename that would name it directly must not leave the server.
+    """
+
+    def test_a_readable_document_is_still_summarised_beside_an_unreadable_one(
+        self, client, mock_text_extractor
+    ):
+        mock_text_extractor.extract_text = AsyncMock(side_effect=[TEXT, ""])
+
+        response = client.post("/api/analyze", files=[txt("a.txt"), txt("b.txt")])
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["summary"]["empty"] is False
+        assert body["summary"]["document_count"] == 1
+
+    def test_the_unread_document_keeps_its_submitted_position(
+        self, client, mock_text_extractor
+    ):
+        mock_text_extractor.extract_text = AsyncMock(side_effect=["", TEXT])
+
+        documents = client.post(
+            "/api/analyze", files=[txt("a.txt"), txt("b.txt")]
+        ).json()["documents"]
+
+        assert [document["read"] for document in documents] == [False, True]
+        assert documents[0]["unreadable_reason"] == "no_text"
+        assert documents[1]["unreadable_reason"] is None
+        # The findings index the same list, so the caller can resolve both.
+        assert documents[0]["symptoms"] == []
+
+    def test_a_finding_points_at_the_document_that_carried_it(
+        self, client, mock_text_extractor
+    ):
+        mock_text_extractor.extract_text = AsyncMock(side_effect=["", TEXT])
+
+        summary = client.post(
+            "/api/analyze", files=[txt("a.txt"), txt("b.txt")]
+        ).json()["summary"]
+
+        sections = {section["key"]: section for section in summary["sections"]}
+        assert sections["symptoms"]["findings"] == [
+            {"text": "fièvre", "documents": [1]}
+        ]
+
+    def test_a_batch_nothing_could_be_read_from_is_still_refused(
+        self, client, mock_text_extractor
+    ):
+        mock_text_extractor.extract_text = AsyncMock(return_value="")
+
+        response = client.post("/api/analyze", files=[txt("a.txt"), txt("b.txt")])
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["message"] == (
+            "Unable to extract text from the document."
+        )
+
+    def test_a_partial_answer_does_not_name_the_document_that_failed(
+        self, client, mock_text_extractor
+    ):
+        mock_text_extractor.extract_text = AsyncMock(side_effect=[TEXT, ""])
+
+        body = client.post(
+            "/api/analyze",
+            files=[txt("ok.txt"), txt("compte-rendu-Dupont.pdf")],
+        ).json()
+
+        assert "Dupont" not in repr(body)
+        assert "compte-rendu" not in repr(body)
+
+    def test_document_count_and_the_document_list_diverge_when_one_is_unread(
+        self, client, mock_text_extractor
+    ):
+        # `document_count` is how many were read; `documents` reports every
+        # submission, read or not - the two are not the same number once a
+        # document in the middle of the batch fails.
+        mock_text_extractor.extract_text = AsyncMock(side_effect=[TEXT, "", TEXT])
+
+        body = client.post(
+            "/api/analyze", files=[txt("a.txt"), txt("b.txt"), txt("c.txt")]
+        ).json()
+
+        assert body["summary"]["document_count"] == 2
+        assert len(body["documents"]) == 3
+        assert [document["read"] for document in body["documents"]] == [
+            True,
+            False,
+            True,
+        ]
+
+    def test_a_document_the_parser_could_not_open_is_reported_the_same_way(
+        self, client, mock_text_extractor
+    ):
+        # The parser's own message quotes the bytes that failed, so a corrupt
+        # file must reach the caller as a position, not as an exception.
+        mock_text_extractor.extract_text = AsyncMock(
+            side_effect=[TEXT, ValueError("cannot parse 'Jean DUPONT 12/03/1958'")]
+        )
+
+        response = client.post("/api/analyze", files=[txt("a.txt"), txt("b.pdf")])
+
+        assert response.status_code == 200
+        assert response.json()["documents"][1]["read"] is False
+        assert "DUPONT" not in response.text
+
+    def test_a_failure_that_is_not_the_document_is_still_a_server_error(
+        self, client, mock_entity_extractor
+    ):
+        mock_entity_extractor.extract_entities = AsyncMock(
+            side_effect=ValueError("model configuration is wrong")
+        )
+
+        response = client.post("/api/analyze", files=[txt()])
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == {"message": "Internal server error"}
+
+
+class TestTheEntityPayloadIsUntouched:
+    """
+    Pairing shapes the summary, not the per-document entities behind it.
+
+    The summarizer joins an examination to its value on a copy. If that copy
+    ever reached `documents`, a caller reading `examinations[0].text` would get
+    a span that is not in the document, at offsets that no longer index it.
+    """
+
+    @pytest.fixture
+    def paired(self):
+        return {
+            "examinations": [
+                EntityDetail(
+                    text="Troponine I", label="examen", score=0.9, start=0, end=11
+                )
+            ],
+            "measurements": [
+                EntityDetail(
+                    text="1,10 ng/mL", label="valeur", score=0.9, start=14, end=24
+                )
+            ],
+        }
+
+    def test_the_summary_pairs_them_and_the_payload_does_not(
+        self, client, mock_entity_extractor, paired
+    ):
+        mock_entity_extractor.extract_entities = AsyncMock(return_value=paired)
+
+        body = client.post("/api/analyze", files=[txt()]).json()
+
+        sections = {section["key"]: section for section in body["summary"]["sections"]}
+        assert sections["examinations"]["findings"] == [
+            {"text": "Troponine I 1,10 ng/mL", "documents": [0]}
+        ]
+        # The document still reports the span the model actually marked.
+        examination = body["documents"][0]["examinations"][0]
+        assert examination["text"] == "Troponine I"
+        assert (examination["start"], examination["end"]) == (0, 11)
+
+
+def test_an_unexpected_entity_shape_is_a_server_error(
+    client, mock_entity_extractor, caplog
+):
+    # A pydantic error quotes the value it rejected, which here would be
+    # document content, so this branch must never forward what it caught.
+    #
+    # The category has to be one the summarizer never inspects. Under a section
+    # category the malformed entry is reached first, as an AttributeError on a
+    # plain dict, and the generic handler answers instead - the same 500 for a
+    # different reason, which would leave this branch untested while green.
+    mock_entity_extractor.extract_entities = AsyncMock(
+        return_value={"temporal": [{"text": "fièvre", "label": "moment"}]}
+    )
+
+    response = client.post("/api/analyze", files=[txt()])
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == {"message": "Internal server error"}
+    assert "fièvre" not in response.text
+    # Pinned by its log line rather than by the status code, which the generic
+    # handler produces too: this asserts which branch answered.
+    assert "unexpected entity shape" in caplog.text
+    assert "fièvre" not in caplog.text
+
+
+def test_a_skipped_document_is_logged_by_position_only(
+    client, mock_text_extractor, caplog
+):
+    mock_text_extractor.extract_text = AsyncMock(side_effect=[TEXT, ""])
+
+    client.post("/api/analyze", files=[txt("ok.txt"), txt("Dupont-scan.pdf")])
+
+    # There has to be a signal that a document was dropped, and it has to carry
+    # neither the filename nor anything the document said.
+    assert "yielded no text" in caplog.text
+    assert "Dupont" not in caplog.text
+    assert "homme" not in caplog.text

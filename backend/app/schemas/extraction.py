@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
@@ -51,6 +53,44 @@ class ExtractedEntities(BaseModel):
     other: List[EntityDetail] = Field(default=[], description="Other medical entities")
 
 
+class UnreadableReason(str, Enum):
+    """
+    Why a submitted document is not behind the summary.
+
+    Closed on purpose, and content-free: a caller renders the position it
+    submitted, never a filename or a parser message. More members may be added
+    as more ways to fail are told apart; today every failure a document can
+    cause on this path is "nothing could be read from it".
+    """
+
+    NO_TEXT = "no_text"
+
+
+class AnalyzedDocument(ExtractedEntities):
+    """
+    One submitted document: its entities, and whether it was read at all.
+
+    Callers that already read `documents[i]` as entities keep working - the
+    entity categories are unchanged, and an unread document simply has none.
+    The document is identified by its position in the list, which is the
+    caller's own submission order, so no filename has to cross the boundary for
+    the caller to say which of its files was skipped.
+    """
+
+    # Both are required rather than defaulted: an optional field generates an
+    # optional type, and a client testing `read` for falsity would then read an
+    # absent value as a document that failed.
+    read: bool = Field(
+        description=(
+            "False when no text could be read from this document. It is then "
+            "not behind the summary, and its entity categories are empty."
+        ),
+    )
+    unreadable_reason: Optional[UnreadableReason] = Field(
+        description="Why the document could not be read. Null when it was read.",
+    )
+
+
 class ExtractionResponse(BaseModel):
     file_id: str = Field(description="Unique identifier of the processed file")
     text: Optional[str] = Field(
@@ -85,10 +125,13 @@ class AnalysisResponse(BaseModel):
             "This is what the endpoint is for; the rest is detail behind it."
         )
     )
-    documents: List[ExtractedEntities] = Field(
+    documents: List[AnalyzedDocument] = Field(
         description=(
-            "The entities found in each submitted document, in submission "
-            "order, for a caller that needs more than the summary."
+            "Every submitted document, in submission order: the entities found "
+            "in it for a caller that needs more than the summary, and whether "
+            "it could be read at all. A document with `read` false is not "
+            "behind the summary - the batch is refused outright only when none "
+            "of them could be read."
         )
     )
     mapping_info: Optional[Dict[str, str]] = Field(
