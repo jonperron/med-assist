@@ -53,6 +53,9 @@ The default is to store nothing at all:
 * `POST /api/analyze` extracts text, runs NER and returns the merged summary - plus
   the per-document entities behind it - in the same response. It never touches Redis,
   issues no file id, and leaves nothing to delete.
+* `POST /api/analyze/stream` does the same work and stores no more, reporting each
+  document as it is read so a caller can show progress. Nothing is held between
+  events: the batch is one request from start to finish.
 * `POST /api/upload_document/` is for documents that must be reopened later. It stores
   the categorised entities under `doc:{file_id}:entities` and, only when
   `STORE_DOCUMENT_TEXT=true`, the text under `doc:{file_id}:text`.
@@ -137,6 +140,59 @@ The whole batch is refused with `400` only when nothing at all could be read, si
 there is no summary to degrade to. Either way the refusal and the partial answer name
 the failed document by its **position**, never by its filename: `documents` is in
 submission order, and the caller already holds the names it posted.
+
+### Watching a batch being read
+
+A batch of four documents takes about half a minute on a CPU, and one spinner over the
+lot says nothing about whether it is progressing. `POST /api/analyze/stream` takes the
+same body and does the same work, sending Server-Sent Events as it goes:
+
+* `batch` — how many documents were accepted. This is what a "2 of 4" counter divides by.
+* `document` — one per document, in submission order, as each is read: its `index`, and
+  whether it could be `read` at all.
+* `result` — exactly the body `POST /api/analyze` would have returned for the same batch.
+* `error` — the batch ended without a summary. `reason` says which kind of failure it
+  is: `unreadable_batch` is the caller's document, the streamed equivalent of the `400`
+  the other endpoint answers, and `server_error` is the service's own failure, its `500`.
+  Branch on `reason`, not on `message` — the wording is for display and may be
+  translated.
+
+Each event's `data` is one JSON object tagged by `stage`, so a client narrows on the tag
+rather than guessing. The endpoint is a `POST` because it carries the documents, so a
+browser reads it with `fetch` and a `ReadableStream`; `EventSource` only issues `GET`.
+
+Three things a client has to get right:
+
+* **Skip frames that are not `data:`.** When the generator is idle longer than 15
+  seconds, FastAPI inserts a `: ping` comment frame to hold the connection open through
+  a proxy's idle timeout. A single large PDF can exceed that, so this is ordinary, not
+  exotic. A reader that splits on a blank line and parses every frame will throw on the
+  first ping.
+* **Treat a stream that ends without `result` or `error` as a failure.** Once the first
+  event is written the response is committed at `200`, so a fault in the transport layer
+  below the endpoint - or a dropped connection - can only appear as a stream that stops.
+  There is no status code left to send.
+* **Read the event types from `components.schemas.AnalysisEvent`.** The generated client
+  types the response body as `unknown`: `openapi-typescript` reads only `schema` from a
+  media type, and an SSE payload is described by `itemSchema`. The union itself is
+  generated, and is what a client narrows on `stage`.
+
+Two properties are worth stating, because both are easy to lose:
+
+* **Progress carries no clinical content.** A `document` event is a position, a boolean
+  and a reason code. Nothing the model marked, and no filename, travels before the
+  `result` event - which carries exactly what the other endpoint would have sent, and
+  nothing more.
+* **A refusal is still a status code.** Validation and the model-readiness check run as
+  dependencies, before the stream opens, so a rejected file type, an oversized batch and
+  an unloaded model answer `400`, `413` and `503` as JSON with no events at all. Only a
+  failure that cannot be known until documents are being read - a batch nothing could be
+  read from, or a server fault - arrives as an `error` event, because by then the
+  response is already committed at `200`.
+
+Nothing is stored on this path either. There is no job id, nothing to poll and nothing
+to come back for, which is the reason it is a stream rather than a job: a pollable job
+would have to hold a patient's summary on the server between requests.
 
 ### Document dates
 
@@ -269,8 +325,9 @@ queued.
   `{"detail": {"message": ...}}` envelope as every other route.
 * A model that fails to load leaves the service up and permanently unready. The
   exception type is logged; the model path is not.
-* The routes that need the model — `/api/analyze`, both uploads, and
-  `/api/get_extracted_text/{file_id}` — answer `503` while it is unloaded, so a
+* The routes that need the model — `/api/analyze`, `/api/analyze/stream`, both
+  uploads, and `/api/get_extracted_text/{file_id}` — answer `503` while it is
+  unloaded, so a
   failed load costs one refusal per request rather than a fresh multi-second
   load attempt each time (`functools.lru_cache` does not memoise an exception).
   `DELETE /api/documents/{file_id}` is not gated: withdrawing a document must
