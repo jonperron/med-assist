@@ -1,8 +1,7 @@
 // app/page.tsx
 'use client'
 
-import { useState } from 'react'
-import axios from 'axios'
+import { useEffect, useRef, useState } from 'react'
 import { AnalysisFailure } from './components/AnalysisFailure'
 import { AppHeader } from './components/AppHeader'
 import { CautionNote } from './components/CautionNote'
@@ -11,8 +10,13 @@ import { FileDropzone } from './components/FileDropzone'
 import { PrivacyBadge } from './components/PrivacyBadge'
 import { ReadingProgress } from './components/ReadingProgress'
 import { SummaryView } from './components/SummaryView'
-import { errorMessage } from './lib/apiError'
+import {
+  AnalysisStreamError,
+  streamAnalysis,
+  type StreamFailure,
+} from './lib/analysisStream'
 import { describeRejection, type SelectedDocument } from './lib/documentSelection'
+import { documentFinished, startReading, type ReadingState } from './lib/readingState'
 import type { AnalysisResponse } from './types/extraction'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -21,6 +25,11 @@ const ANALYSIS_FAILED = "Échec de l'analyse des documents."
 
 const CAVEAT =
   "Un résumé est un point de départ, pas un diagnostic. Relisez-le sur les documents eux-mêmes avant d'agir."
+
+interface AnalysisFailureState {
+  message: string
+  reason: StreamFailure
+}
 
 let nextDocumentId = 0
 
@@ -32,6 +41,16 @@ function actionLabel(count: number): string {
   return count === 1 ? 'Résumer ce document' : `Résumer ces ${count} documents`
 }
 
+function readFailure(error: unknown): AnalysisFailureState {
+  if (error instanceof AnalysisStreamError) {
+    return { message: error.message, reason: error.reason }
+  }
+
+  // A network error, or anything else fetch threw. The clinician's documents
+  // are not implicated, so it must not read as though they were.
+  return { message: ANALYSIS_FAILED, reason: 'transport' }
+}
+
 export default function HomePage() {
   const [documents, setDocuments] = useState<SelectedDocument[]>([])
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
@@ -39,8 +58,15 @@ export default function HomePage() {
   // clinician's next move at the dropzone; an analysis that failed is a
   // report on the request they already made, and they must not read as one.
   const [selectionError, setSelectionError] = useState<string | null>(null)
-  const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
+  const [analysisError, setAnalysisError] = useState<AnalysisFailureState | null>(null)
+  const [reading, setReading] = useState<ReadingState | null>(null)
+
+  // The request in flight, so leaving the screen or starting another one stops
+  // reading the stream rather than letting it settle over a batch that is no
+  // longer on screen.
+  const inFlight = useRef<AbortController | null>(null)
+
+  useEffect(() => () => inFlight.current?.abort(), [])
 
   const addDocuments = (files: File[]) => {
     const rejection = describeRejection(files, documents.length)
@@ -73,44 +99,59 @@ export default function HomePage() {
   }
 
   const startOver = () => {
+    inFlight.current?.abort()
     setDocuments([])
     setAnalysis(null)
     setSelectionError(null)
     setAnalysisError(null)
+    setReading(null)
   }
 
   const analyse = async (selected: SelectedDocument[]) => {
     if (selected.length === 0) return
 
-    const formData = new FormData()
-    // One field name repeated per file: what FastAPI reads as List[UploadFile].
-    selected.forEach(({ file }) => formData.append('files', file))
+    inFlight.current?.abort()
+    const controller = new AbortController()
+    inFlight.current = controller
+
+    setAnalysisError(null)
+    setAnalysis(null)
+    setReading(startReading(selected.length))
 
     try {
-      setAnalysisError(null)
-      setPending(true)
-      setAnalysis(null)
-
-      const response = await axios.post<AnalysisResponse>(
-        `${API_URL}/api/analyze`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
+      const received = await streamAnalysis(
+        `${API_URL}/api/analyze/stream`,
+        selected.map(({ file }) => file),
+        {
+          // The count the server accepted, which is what the later indices
+          // are positions into.
+          onBatch: total => setReading(startReading(total)),
+          onDocument: (index, read) =>
+            setReading(current =>
+              current ? documentFinished(current, index, read) : current
+            ),
+        },
+        ANALYSIS_FAILED,
+        controller.signal
       )
 
-      // A 200 is not proof the body is ours: a stale base URL can reach a
-      // proxy or a login page. Storing a missing summary would end the
-      // spinner and return the clinician to the picker saying nothing.
-      const received = response.data
+      // A finished stream is not proof the body is ours: a stale base URL can
+      // reach a proxy that streams something else entirely. Storing a missing
+      // summary would end the progress card and return the clinician to the
+      // picker saying nothing.
       if (!received?.summary || !Array.isArray(received.summary.sections)) {
-        setAnalysisError(ANALYSIS_FAILED)
+        setAnalysisError({ message: ANALYSIS_FAILED, reason: 'transport' })
         return
       }
 
       setAnalysis(received)
-    } catch (err: unknown) {
-      setAnalysisError(errorMessage(err, ANALYSIS_FAILED))
+    } catch (error: unknown) {
+      // An aborted request was replaced or abandoned on purpose. Reporting it
+      // would put a failure on screen for something the clinician did.
+      if (controller.signal.aborted) return
+      setAnalysisError(readFailure(error))
     } finally {
-      setPending(false)
+      if (!controller.signal.aborted) setReading(null)
     }
   }
 
@@ -138,8 +179,12 @@ export default function HomePage() {
           </p>
         </div>
 
-        {pending ? (
-          <ReadingProgress documents={documents} />
+        {reading ? (
+          <ReadingProgress
+            documents={documents}
+            states={reading.states}
+            finished={reading.finished}
+          />
         ) : (
           <>
             <FileDropzone onAdd={addDocuments} />
@@ -158,7 +203,8 @@ export default function HomePage() {
 
             {analysisError && documents.length > 0 && (
               <AnalysisFailure
-                message={analysisError}
+                message={analysisError.message}
+                reason={analysisError.reason}
                 onRetry={() => analyse(documents)}
                 onStartOver={startOver}
               />
