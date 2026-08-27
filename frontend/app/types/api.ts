@@ -39,6 +39,10 @@ export interface paths {
          *     later. The document text is not echoed back: the summary is the product,
          *     and returning the text would widen what leaves the server for no gain.
          *
+         *     A batch holding one document that cannot be read still answers 200, with
+         *     that document marked unread and the summary built from the rest. Only a
+         *     batch where nothing could be read is refused.
+         *
          *     Args:
          *         files: The uploaded documents (PDF, DOCX, TXT)
          *
@@ -46,10 +50,62 @@ export interface paths {
          *         AnalysisResponse: The merged summary and the entities behind it
          *
          *     Raises:
-         *         HTTPException: 400 for an invalid or unreadable file, 413 for a file or
-         *             batch that is too large, 500 for server errors
+         *         HTTPException: 400 for an invalid file or a batch nothing could be read
+         *             from, 413 for a file or batch that is too large, 500 for server
+         *             errors
          */
         post: operations["analyze_api_analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analyze/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze Stream
+         * @description Summarise documents as `POST /api/analyze` does, reporting progress as it goes.
+         *
+         *     Same batch, same work, same answer: the final `result` event carries exactly
+         *     the body the other endpoint returns. What this adds is the half minute
+         *     before it. A `batch` event fixes how many documents were accepted, one
+         *     `document` event lands as each is read, and the caller can show which of
+         *     them is in flight instead of one spinner over the lot.
+         *
+         *     The events are Server-Sent Events over the POST that carries the documents,
+         *     so a browser reads them with `fetch` rather than `EventSource`, which only
+         *     issues GETs. Each event's `data` is one JSON object tagged by `stage`.
+         *
+         *     Nothing is stored, here or on the other endpoint. Progress events are
+         *     content-free: a document is named by its submitted position, and nothing the
+         *     model marked travels before the final result.
+         *
+         *     A failure after the first event cannot be a status code - the response is
+         *     committed the moment the stream opens - so it arrives as an `error` event
+         *     with the wording the equivalent refusal would have carried, and the stream
+         *     ends. Validation and readiness are settled before the stream opens, so a
+         *     rejected file, an oversized batch and an unloaded model are still 400, 413
+         *     and 503 with no events at all.
+         *
+         *     Args:
+         *         files: The uploaded documents (PDF, DOCX, TXT)
+         *
+         *     Returns:
+         *         The batch, one event per document read, and either a result or an error.
+         *
+         *     Raises:
+         *         HTTPException: 400 for an invalid file, 413 for a file or batch that is
+         *             too large, 503 while the model is not loaded
+         */
+        post: operations["analyze_stream_api_analyze_stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -233,15 +289,59 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AnalysisCompleted
+         * @description The batch is finished, and this carries the answer.
+         */
+        AnalysisCompleted: {
+            /** @description Exactly the body `POST /api/analyze` would have returned for the same batch. The two endpoints answer the same question; only the moments before the answer differ. */
+            result: components["schemas"]["AnalysisResponse"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            stage: "result";
+        };
+        /**
+         * AnalysisEvent
+         * @description One event of a streamed analysis: whichever of the four this one is.
+         *
+         *     A model rather than a bare union alias so the contract has a name of its
+         *     own in the OpenAPI document, and so the generated TypeScript is a union a
+         *     client narrows rather than a bag of optional fields. `stage` is the tag: a
+         *     caller cannot read a `result` off an event that does not carry one.
+         *
+         *     It serialises to the event it wraps, so nothing about the wrapper reaches
+         *     the wire.
+         */
+        AnalysisEvent: components["schemas"]["BatchStarted"] | components["schemas"]["DocumentProgress"] | components["schemas"]["AnalysisCompleted"] | components["schemas"]["AnalysisFailed"];
+        /**
+         * AnalysisFailed
+         * @description The batch ended without a summary.
+         */
+        AnalysisFailed: {
+            /**
+             * Message
+             * @description Content-free description of the failure, worded as the equivalent refusal from `POST /api/analyze`, and meant for display. Branch on `reason` rather than on this - the wording may change or be translated, and the reason will not.
+             */
+            message: string;
+            /** @description What kind of failure this is, for a caller deciding what to do next. `unreadable_batch` is the caller's document and corresponds to the 400 `POST /api/analyze` answers; `server_error` is the service's own failure and corresponds to its 500. */
+            reason: components["schemas"]["FailureReason"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            stage: "error";
+        };
+        /**
          * AnalysisResponse
          * @description Result of a stateless analysis. Nothing behind this response is stored.
          */
         AnalysisResponse: {
             /**
              * Documents
-             * @description The entities found in each submitted document, in submission order, for a caller that needs more than the summary.
+             * @description Every submitted document, in submission order: the entities found in it for a caller that needs more than the summary, and whether it could be read at all. A document with `read` false is not behind the summary - the batch is refused outright only when none of them could be read.
              */
-            documents: components["schemas"]["ExtractedEntities"][];
+            documents: components["schemas"]["AnalyzedDocument"][];
             /**
              * Mapping Info
              * @description Information about the label mapping used (language, dataset)
@@ -258,8 +358,110 @@ export interface components {
             /** @description The submitted documents merged into one readable patient summary. This is what the endpoint is for; the rest is detail behind it. */
             summary: components["schemas"]["ClinicalSummary"];
         };
+        /**
+         * AnalyzedDocument
+         * @description One submitted document: its entities, and whether it was read at all.
+         *
+         *     Callers that already read `documents[i]` as entities keep working - the
+         *     entity categories are unchanged, and an unread document simply has none.
+         *     The document is identified by its position in the list, which is the
+         *     caller's own submission order, so no filename has to cross the boundary for
+         *     the caller to say which of its files was skipped.
+         */
+        AnalyzedDocument: {
+            /**
+             * Anatomy
+             * @description Anatomical structures
+             * @default []
+             */
+            anatomy: components["schemas"]["EntityDetail"][];
+            /**
+             * Document Date
+             * @description The date this document carries, read from its head. Null when it carries none that could be established - a document with no date in its letterhead, or an unread one - which is common and not an error. It is the document's own date, not the file's timestamp and not a date mentioned inside the clinical text.
+             */
+            document_date: string | null;
+            /**
+             * Examinations
+             * @description Medical examinations
+             * @default []
+             */
+            examinations: components["schemas"]["EntityDetail"][];
+            /**
+             * Measurements
+             * @description Measurements and values
+             * @default []
+             */
+            measurements: components["schemas"]["EntityDetail"][];
+            /**
+             * Other
+             * @description Other medical entities
+             * @default []
+             */
+            other: components["schemas"]["EntityDetail"][];
+            /**
+             * Pathologies
+             * @description Diseases and conditions
+             * @default []
+             */
+            pathologies: components["schemas"]["EntityDetail"][];
+            /**
+             * Patient Info
+             * @description Patient demographic information
+             * @default []
+             */
+            patient_info: components["schemas"]["EntityDetail"][];
+            /**
+             * Read
+             * @description False when no text could be read from this document. It is then not behind the summary, and its entity categories are empty.
+             */
+            read: boolean;
+            /**
+             * Symptoms
+             * @description Signs and symptoms
+             * @default []
+             */
+            symptoms: components["schemas"]["EntityDetail"][];
+            /**
+             * Temporal
+             * @description Temporal information
+             * @default []
+             */
+            temporal: components["schemas"]["EntityDetail"][];
+            /**
+             * Treatments
+             * @description Treatments and medications
+             * @default []
+             */
+            treatments: components["schemas"]["EntityDetail"][];
+            /** @description Why the document could not be read. Null when it was read. */
+            unreadable_reason: components["schemas"]["UnreadableReason"] | null;
+        };
+        /**
+         * BatchStarted
+         * @description The batch was accepted and reading has begun.
+         */
+        BatchStarted: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            stage: "batch";
+            /**
+             * Total
+             * @description How many documents were accepted for this batch. The caller already knows what it posted; this confirms the whole batch passed validation, and is what the later `document` indices count towards.
+             */
+            total: number;
+        };
         /** Body_analyze_api_analyze_post */
         Body_analyze_api_analyze_post: {
+            /**
+             * Files
+             * @description The documents to summarise (PDF, DOCX, TXT). Several documents are taken to be about the same patient and merged into one summary.
+             */
+            files: string[];
+        };
+        /** Body_analyze_stream_api_analyze_stream_post */
+        Body_analyze_stream_api_analyze_stream_post: {
             /**
              * Files
              * @description The documents to summarise (PDF, DOCX, TXT). Several documents are taken to be about the same patient and merged into one summary.
@@ -291,9 +493,11 @@ export interface components {
          *     submitted documents and placed under a fixed heading.
          */
         ClinicalSummary: {
+            /** @description The stretch of time the dated documents cover, for a caller placing the summary in time. Absent when no submitted document carries a date this could be sure of - which is common, and not an error. Only documents that were read can be dated: see `AnalysisResponse.documents[].document_date` for the date behind each end of the range. */
+            date_range: components["schemas"]["DateRange"] | null;
             /**
              * Document Count
-             * @description How many documents were read to build this summary
+             * @description How many documents were read to build this summary. Lower than the number submitted when a document could not be read: see `AnalysisResponse.documents[].read`.
              */
             document_count: number;
             /**
@@ -313,6 +517,47 @@ export interface components {
              * @default []
              */
             sections: components["schemas"]["SummarySection"][];
+        };
+        /**
+         * DateRange
+         * @description The stretch of time a batch of documents covers.
+         */
+        DateRange: {
+            /**
+             * End
+             * Format: date
+             * @description The latest document date in the batch. Equal to `start` when only one document in the batch carries a date.
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date
+             * @description The earliest document date in the batch
+             */
+            start: string;
+        };
+        /**
+         * DocumentProgress
+         * @description One submitted document has been read, or found unreadable.
+         */
+        DocumentProgress: {
+            /**
+             * Index
+             * @description Position of this document in the submitted batch, counting from zero. Documents are read in submission order, so this also indexes `AnalysisResponse.documents` in the final result.
+             */
+            index: number;
+            /**
+             * Read
+             * @description False when no text could be read from this document. It is then not behind the summary, and the batch carries on without it.
+             */
+            read: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            stage: "document";
+            /** @description Why the document could not be read. Null when it was read. */
+            unreadable_reason: components["schemas"]["UnreadableReason"] | null;
         };
         /**
          * EntityDetail
@@ -493,6 +738,36 @@ export interface components {
              */
             text?: string | null;
         };
+        /**
+         * FailureReason
+         * @description What kind of failure ended the batch, for a caller that has to act on it.
+         *
+         *     Closed, and content-free like `UnreadableReason` beside it. It stands in for
+         *     the status code the stream cannot send once it has answered 200: on
+         *     `POST /api/analyze` the same two failures are a 400 and a 500, which is the
+         *     difference between "your document did not work, try another scan" and "the
+         *     service failed, try again later". Those are different things to tell a
+         *     clinician, and a client should not have to tell them apart by matching on
+         *     English that may be translated.
+         * @enum {string}
+         */
+        FailureReason: "unreadable_batch" | "server_error";
+        /**
+         * Finding
+         * @description One deduplicated finding, and which documents it came from.
+         */
+        Finding: {
+            /**
+             * Documents
+             * @description Indices into the submitted batch, ascending, of every document this finding was found in. They index the request's own file order - and `AnalysisResponse.documents` - so a caller can name the source from what it submitted, without this path ever having to echo a filename.
+             */
+            documents: number[];
+            /**
+             * Text
+             * @description The span the model marked, as it is reported
+             */
+            text: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -535,7 +810,7 @@ export interface components {
              * Findings
              * @description The same findings as a list, most-supported first, for a caller that would rather lay them out itself
              */
-            findings: string[];
+            findings: components["schemas"]["Finding"][];
             /**
              * Heading
              * @description Human-readable heading for the section
@@ -552,6 +827,17 @@ export interface components {
              */
             sentence: string;
         };
+        /**
+         * UnreadableReason
+         * @description Why a submitted document is not behind the summary.
+         *
+         *     Closed on purpose, and content-free: a caller renders the position it
+         *     submitted, never a filename or a parser message. More members may be added
+         *     as more ways to fail are told apart; today every failure a document can
+         *     cause on this path is "nothing could be read from it".
+         * @enum {string}
+         */
+        UnreadableReason: "no_text";
         /** UploadResponse */
         UploadResponse: {
             /**
@@ -682,6 +968,75 @@ export interface operations {
                 };
             };
             /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The model is not loaded yet */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    analyze_stream_api_analyze_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_analyze_stream_api_analyze_stream_post"];
+            };
+        };
+        responses: {
+            /** @description One event of the stream, its `data` an AnalysisEvent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Invalid document */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A file is too large, or the batch holds too many files */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Internal server error, raised before the stream opened. A failure after that is a `result`-less `error` event instead. */
             500: {
                 headers: {
                     [name: string]: unknown;

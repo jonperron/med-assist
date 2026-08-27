@@ -37,7 +37,7 @@ The system must prioritize:
 
 ## 3) Tech Stack
 
-- Backend: Python 3.12+, FastAPI `0.128.0`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
+- Backend: Python 3.12+, FastAPI `0.135.1`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
 - Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `24.x`.
 - Storage: local Redis only, UUID-based keys, limited retention footprint.
 - Infra: Docker Compose with `redis`, `backend`, and `frontend` services.
@@ -58,9 +58,16 @@ Nominal flow:
 5. Merge the documents into one clinical summary. Several documents in a request
    are taken to be about the same patient. The summary is assembled from the
    marked spans by fixed rules in `backend/app/services/summarizer.py` - no
-   language model, and no wording that is not a heading or a span.
+   language model, and no wording that is not a heading or a span. A document
+   that yields no text is skipped rather than failing the batch; each finding
+   reports the submission indices of the documents it came from, never a
+   filename.
 6. Return the API response. The default path (`POST /api/analyze`) stores nothing;
-   the upload path stores the categorised entities under UUID keys in local Redis,
+   `POST /api/analyze/stream` is the same work reported document by document as
+   Server-Sent Events, and stores nothing either - its progress events carry a
+   position and a read flag, never document content, and its final event is the
+   body the default path would have returned. The upload path stores the
+   categorised entities under UUID keys in local Redis,
    and the document text only when `STORE_DOCUMENT_TEXT` is set. A multi-file
    upload stores each file that way and writes nothing under its batch id.
 
@@ -231,3 +238,25 @@ A task is complete only when:
 - Lint/type checks pass for touched areas.
 - Security and privacy requirements above are preserved.
 - Documentation is updated when behavior or constraints change.
+- Every deviation from the rules above, and every choice between two defensible
+  options, is written down as a decision entry.
+
+Decisions live in this repository's wiki, under `openwiki/decisions/`, one page
+per entry, not in a markdown file at the repository root. Add a page there titled
+`<YYYY-MM-DD> - <what was decided>`; state the alternative that was rejected and
+what the choice costs, not only what was chosen. The wiki is committed and this
+repository is public, so never quote patient data or a real filename in an entry.
+`openwiki/decisions/conventions.md` has the full format.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository has a generated `openwiki/` evidence index. It is optional just-in-time context, not required startup reading.
+
+- Treat source code and tests as authoritative. A brief's unknowns and review items are verification gaps, not automatic requirements.
+- Prefer the narrowest quiet validation that proves the changed behavior. Preserve complete failure output.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->

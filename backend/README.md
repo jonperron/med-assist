@@ -53,6 +53,9 @@ The default is to store nothing at all:
 * `POST /api/analyze` extracts text, runs NER and returns the merged summary - plus
   the per-document entities behind it - in the same response. It never touches Redis,
   issues no file id, and leaves nothing to delete.
+* `POST /api/analyze/stream` does the same work and stores no more, reporting each
+  document as it is read so a caller can show progress. Nothing is held between
+  events: the batch is one request from start to finish.
 * `POST /api/upload_document/` is for documents that must be reopened later. It stores
   the categorised entities under `doc:{file_id}:entities` and, only when
   `STORE_DOCUMENT_TEXT=true`, the text under `doc:{file_id}:text`.
@@ -87,7 +90,11 @@ readable product the rest of the pipeline exists for.
 
 Several documents in one request are taken to be **about the same patient**, which
 is what makes merging them meaningful. A finding named in three of them is reported
-once, and findings are ordered by how many documents support them.
+once, and findings are ordered by how many documents support them. Each finding
+carries the indices of the documents it was found in, so a caller can name the source
+beside it — the index is into the request's own file order, and this path never needs
+a filename to travel. (`POST /api/upload_document/` does echo the submitted filename
+back to whoever sent it; the analysis path issues no id and echoes nothing.)
 
 The summary is assembled, not generated. Every word in it is either a fixed heading
 or a span the model marked in the submitted documents, so it cannot state anything
@@ -99,18 +106,131 @@ What shapes it, in `app/services/summarizer.py`:
   treatments, localisations. `temporal`, `measurements` and `other` are deliberately
   left out — a bare list of durations or loose values carries no clinical meaning
   once separated from its sentence. They stay in the `documents` payload.
+* A measurement does reach the summary when it can be attached to the examination it
+  sits beside: "Troponine I" and "1,10 ng/mL" become one finding under Examens. The
+  attachment is positional — the value must start within `MEASUREMENT_GAP` characters
+  of the end of the test's span, and only the nearest test before it can claim it —
+  because past that distance, which number belongs to which test is a guess, and that
+  guess is what keeps loose values out in the first place. A value nothing claims
+  stays out. `poids` and `taille` are never paired: they sit in the same category but
+  are patient attributes rather than results, and belong no more in an exported
+  summary than the demographic line already there.
 * An opening demographic line built from the model's `age` and `genre` labels. The
   first mention of each wins, so a relative's age quoted further down does not
   overwrite the patient's.
 * Deduplication that folds case, accents, inner spacing and edge punctuation, keeping
   the longest surface form seen — the model truncates outer mentions, so the longest
-  is the most complete one (see `DECISION.md`).
+  is the most complete one (see the decision log on the local wiki).
 * A confidence floor of `MIN_CONFIDENCE`. This is the only use the model's score has,
   and it is never displayed: a percentage next to a clinical finding invites a reader
   to weigh it, which is not a judgement a token classifier's softmax supports.
 
 `POST /api/analyze` does not echo the document text back. The summary is the product,
 and returning the text would widen what leaves the server for no gain.
+
+### Partial summaries
+
+A document of a supported type that yields no text — a scan, or a file the parser
+cannot open — no longer costs the batch its summary. The request answers `200`, the
+other documents are summarised, and `documents[i].read` is `false` for the one that
+failed, with `unreadable_reason` naming why. `summary.document_count` then counts what
+was read, not what was sent.
+
+The whole batch is refused with `400` only when nothing at all could be read, since
+there is no summary to degrade to. Either way the refusal and the partial answer name
+the failed document by its **position**, never by its filename: `documents` is in
+submission order, and the caller already holds the names it posted.
+
+### Watching a batch being read
+
+A batch of four documents takes about half a minute on a CPU, and one spinner over the
+lot says nothing about whether it is progressing. `POST /api/analyze/stream` takes the
+same body and does the same work, sending Server-Sent Events as it goes:
+
+* `batch` — how many documents were accepted. This is what a "2 of 4" counter divides by.
+* `document` — one per document, in submission order, as each is read: its `index`, and
+  whether it could be `read` at all.
+* `result` — exactly the body `POST /api/analyze` would have returned for the same batch.
+* `error` — the batch ended without a summary. `reason` says which kind of failure it
+  is: `unreadable_batch` is the caller's document, the streamed equivalent of the `400`
+  the other endpoint answers, and `server_error` is the service's own failure, its `500`.
+  Branch on `reason`, not on `message` — the wording is for display and may be
+  translated.
+
+Each event's `data` is one JSON object tagged by `stage`, so a client narrows on the tag
+rather than guessing. The endpoint is a `POST` because it carries the documents, so a
+browser reads it with `fetch` and a `ReadableStream`; `EventSource` only issues `GET`.
+
+Three things a client has to get right:
+
+* **Skip frames that are not `data:`.** When the generator is idle longer than 15
+  seconds, FastAPI inserts a `: ping` comment frame to hold the connection open through
+  a proxy's idle timeout. A single large PDF can exceed that, so this is ordinary, not
+  exotic. A reader that splits on a blank line and parses every frame will throw on the
+  first ping.
+* **Treat a stream that ends without `result` or `error` as a failure.** Once the first
+  event is written the response is committed at `200`, so a fault in the transport layer
+  below the endpoint - or a dropped connection - can only appear as a stream that stops.
+  There is no status code left to send.
+* **Read the event types from `components.schemas.AnalysisEvent`.** The generated client
+  types the response body as `unknown`: `openapi-typescript` reads only `schema` from a
+  media type, and an SSE payload is described by `itemSchema`. The union itself is
+  generated, and is what a client narrows on `stage`.
+
+Two properties are worth stating, because both are easy to lose:
+
+* **Progress carries no clinical content.** A `document` event is a position, a boolean
+  and a reason code. Nothing the model marked, and no filename, travels before the
+  `result` event - which carries exactly what the other endpoint would have sent, and
+  nothing more.
+* **A refusal is still a status code.** Validation and the model-readiness check run as
+  dependencies, before the stream opens, so a rejected file type, an oversized batch and
+  an unloaded model answer `400`, `413` and `503` as JSON with no events at all. Only a
+  failure that cannot be known until documents are being read - a batch nothing could be
+  read from, or a server fault - arrives as an `error` event, because by then the
+  response is already committed at `200`.
+
+Nothing is stored on this path either. There is no job id, nothing to poll and nothing
+to come back for, which is the reason it is a stream rather than a job: a pollable job
+would have to hold a patient's summary on the server between requests.
+
+### Document dates
+
+A date is how a clinician places a document: a letter from last week and a letter from
+2019 mean different things, and a stack of documents about one patient is read along the
+time it covers. `documents[i].document_date` carries the date each document itself
+carries, and `summary.date_range` the stretch from the earliest to the latest of them.
+Both are `null` when nothing could be dated, which is a common answer and not an error.
+
+The date is read from the document's text by `app/services/document_date.py` — not from
+the file's timestamp, which dates a 2019 letter to the day it was downloaded, and not
+from the `temporal` entities, which are every date-like span found anywhere in the text.
+Picking the document's own date out of that is a judgement, and a date that is wrong
+moves the document on the timeline the clinician is reading without saying so. Every
+rule below therefore prefers no date to a guess:
+
+* Only the head of the document is read (`HEAD_CHARACTERS`). A letter is dated in its
+  letterhead; a date deep in the body belongs to what the document reports.
+* Only a complete calendar date counts — day, month and a four-digit year, on the
+  calendar. A two-digit year is refused rather than given a century.
+* Numeric dates are read day-first, the convention the documents are written in.
+  `03/13/2024` is refused rather than swapped.
+* The first complete date in the head wins. In "Hospitalisation du 2 mars 2024 au 5
+  mars 2024" that is the start of what the document reports. A range written the elided
+  way — "du 2 au 5 mars 2024" — holds only one complete date, its last, so the document
+  is placed at the end of the stay rather than at the start.
+* A date a birth marker points at — "Née le 12/05/1948", "Date de naissance" — is
+  skipped. It would be wrong by decades, and a date of birth is a patient identifier,
+  not document metadata. The lookback survives the layouts a header arrives in — padded
+  columns, a label and its value on two lines, tabs, "D.D.N." — and stops at the
+  previous date in the text, so a birth date does not suppress the real date behind it.
+  It is a list of markers, though: a birth date introduced by wording it does not know
+  is published as the document's date.
+* A date in the future, or older than `EARLIEST_YEAR`, is skipped.
+
+Nothing about this widens what is stored: `POST /api/analyze` still stores nothing, and
+the date is read from the text and returned while the text itself is dropped as before.
+The date is never rendered into the summary's wording — it is metadata beside it.
 
 ### Logging
 
@@ -205,8 +325,9 @@ queued.
   `{"detail": {"message": ...}}` envelope as every other route.
 * A model that fails to load leaves the service up and permanently unready. The
   exception type is logged; the model path is not.
-* The routes that need the model — `/api/analyze`, both uploads, and
-  `/api/get_extracted_text/{file_id}` — answer `503` while it is unloaded, so a
+* The routes that need the model — `/api/analyze`, `/api/analyze/stream`, both
+  uploads, and `/api/get_extracted_text/{file_id}` — answer `503` while it is
+  unloaded, so a
   failed load costs one refusal per request rather than a fresh multi-second
   load attempt each time (`functools.lru_cache` does not memoise an exception).
   `DELETE /api/documents/{file_id}` is not gated: withdrawing a document must

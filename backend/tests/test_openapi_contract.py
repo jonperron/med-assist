@@ -80,3 +80,82 @@ def test_the_exported_schema_still_describes_the_app(schema):
         "backend/openapi.json is stale: run `uv run python scripts/export_openapi.py`, "
         "then `npm run generate:types` in frontend/"
     )
+
+
+STREAM = "/api/analyze/stream"
+EVENT_STREAM = "text/event-stream"
+
+
+def test_every_refusal_is_documented_as_json(schema):
+    # The streaming endpoint declares text/event-stream as its media type, and
+    # FastAPI files a `model=` response under it. A refusal there is ordinary
+    # JSON sent before any stream opens, so documenting it as an event would
+    # describe a body the API never sends.
+    for endpoint, status, response in documented_responses(schema):
+        if status.startswith("2"):
+            continue
+        assert list(response.get("content", {})) == [
+            "application/json"
+        ], f"{endpoint} {status} is not documented as JSON"
+
+
+def test_the_streamed_analysis_names_the_events_it_sends(schema):
+    # FastAPI infers this from the endpoint's return annotation and loses it
+    # when the router is mounted under a prefix, so the route states it. If a
+    # FastAPI upgrade ever makes the workaround unnecessary, this still passes;
+    # what it guards is the frontend generating a union rather than a string.
+    item = schema["paths"][STREAM]["post"]["responses"]["200"]["content"][EVENT_STREAM][
+        "itemSchema"
+    ]
+
+    assert item["properties"]["data"]["contentSchema"] == {
+        "$ref": "#/components/schemas/AnalysisEvent"
+    }
+
+
+def test_the_events_are_a_union_a_client_can_narrow(schema):
+    event = schema["components"]["schemas"]["AnalysisEvent"]
+
+    # Without the discriminator a generated client cannot tell which event it
+    # is holding, and every field of every event becomes optional.
+    assert event["discriminator"]["propertyName"] == "stage"
+    assert set(event["discriminator"]["mapping"]) == {
+        "batch",
+        "document",
+        "result",
+        "error",
+    }
+
+
+def test_the_discriminator_is_required_on_every_event(schema):
+    # OpenAPI requires the property a discriminator names to be present in the
+    # payload. Pydantic leaves it out of `required` because each event defaults
+    # its own tag, which would type the one field a client narrows on as
+    # possibly absent.
+    for name in (
+        "BatchStarted",
+        "DocumentProgress",
+        "AnalysisCompleted",
+        "AnalysisFailed",
+    ):
+        assert "stage" in schema["components"]["schemas"][name]["required"], name
+
+
+def test_an_event_cannot_carry_a_field_the_schema_does_not_name(schema):
+    # `response_model` documents the payload but does not filter it: FastAPI
+    # serialises whatever the endpoint yields. These definitions are what keeps
+    # document content out of the progress channel, so they stay closed.
+    for name in ("BatchStarted", "DocumentProgress", "AnalysisFailed"):
+        assert (
+            schema["components"]["schemas"][name]["additionalProperties"] is False
+        ), name
+
+
+def test_the_streamed_result_is_the_body_the_plain_endpoint_returns(schema):
+    completed = schema["components"]["schemas"]["AnalysisCompleted"]
+
+    # The two endpoints answer the same question. A separate result shape would
+    # be two contracts to keep in step, and one of them would drift.
+    assert completed["properties"]["result"]["$ref"] == (
+        "#/components/schemas/AnalysisResponse"
+    )

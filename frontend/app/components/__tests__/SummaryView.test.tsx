@@ -12,7 +12,10 @@ function summary(overrides: Partial<ClinicalSummary> = {}): ClinicalSummary {
         key: 'pathologies',
         heading: 'Pathologies',
         sentence: 'Cirrhose, carcinome hépatocellulaire.',
-        findings: ['cirrhose', 'carcinome hépatocellulaire'],
+        findings: [
+          { text: 'cirrhose', documents: [0, 2] },
+          { text: 'carcinome hépatocellulaire', documents: [1] },
+        ],
       },
       {
         key: 'symptoms',
@@ -28,6 +31,7 @@ function summary(overrides: Partial<ClinicalSummary> = {}): ClinicalSummary {
       },
     ],
     document_count: 3,
+    date_range: null,
     empty: false,
     ...overrides,
   }

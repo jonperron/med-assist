@@ -111,7 +111,75 @@ class TestMockSummary:
         assert len(payload["documents"]) == 3
         # The same finding in three documents is still reported once.
         sections = {s["key"]: s for s in payload["summary"]["sections"]}
-        assert sections["pathologies"]["findings"] == ["grippe"]
+        assert sections["pathologies"]["findings"] == [
+            {"text": "grippe", "documents": [0, 1, 2]}
+        ]
 
     def test_it_refuses_more_documents_than_the_real_endpoint_takes(self, client):
         assert client.get("/mock_summary?documents=21").status_code == 422
+
+    def test_it_can_pretend_one_document_could_not_be_read(self, client):
+        payload = client.get("/mock_summary?documents=3&unreadable=1").json()
+
+        assert [document["read"] for document in payload["documents"]] == [
+            True,
+            True,
+            False,
+        ]
+        assert payload["documents"][2]["unreadable_reason"] == "no_text"
+        assert payload["summary"]["document_count"] == 2
+
+    def test_it_never_pretends_the_whole_batch_failed(self, client):
+        # That answer is a 400 on the real route, so the mock cannot serve it
+        # as a summary without teaching the client a shape that never arrives.
+        payload = client.get("/mock_summary?documents=2&unreadable=5").json()
+
+        assert [document["read"] for document in payload["documents"]] == [True, False]
+        assert payload["summary"]["document_count"] == 1
+
+    def test_asking_for_every_document_unreadable_still_keeps_one(self, client):
+        # `unreadable` equal to `documents` is the same request the endpoint's
+        # own docstring calls out: capped at one below `documents`, since a
+        # batch nothing could be read from is a 400 on the real route, not a
+        # summary the mock could serve.
+        payload = client.get("/mock_summary?documents=3&unreadable=3").json()
+
+        assert [document["read"] for document in payload["documents"]] == [
+            True,
+            False,
+            False,
+        ]
+        assert payload["summary"]["document_count"] == 1
+        assert len(payload["documents"]) == 3
+
+    def test_it_dates_every_document_it_pretends_was_read(self, client):
+        payload = client.get("/mock_summary?documents=3&unreadable=1").json()
+
+        dates = [document["document_date"] for document in payload["documents"]]
+        # A week apart, so the client sees a range rather than one date three
+        # times, and nothing at all for the document it could not read.
+        assert dates == ["2024-03-04", "2024-03-11", None]
+        assert payload["summary"]["date_range"] == {
+            "start": "2024-03-04",
+            "end": "2024-03-11",
+        }
+
+    def test_dates_stay_aligned_with_read_when_unreadable_is_capped(self, client):
+        # `unreadable=documents` is capped to `documents - 1` before either
+        # list is built. The date list and the read/unread list must be capped
+        # the same way, or a date would end up reported against a document the
+        # payload also marks unread.
+        payload = client.get("/mock_summary?documents=3&unreadable=3").json()
+
+        read = [document["read"] for document in payload["documents"]]
+        dates = [document["document_date"] for document in payload["documents"]]
+        assert read == [True, False, False]
+        assert dates == ["2024-03-04", None, None]
+
+    def test_it_pairs_a_value_with_the_examination_it_sits_beside(self, client):
+        summary = client.get("/mock_summary").json()["summary"]
+
+        sections = {section["key"]: section for section in summary["sections"]}
+        assert sections["examinations"]["findings"] == [
+            {"text": "Troponine I 1,10 ng/mL", "documents": [0]}
+        ]

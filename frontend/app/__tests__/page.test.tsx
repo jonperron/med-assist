@@ -17,7 +17,7 @@ const analysisResponse = {
           key: 'symptoms',
           heading: 'Signes et symptômes',
           sentence: 'Fièvre.',
-          findings: ['fièvre'],
+          findings: [{ text: 'fièvre', documents: [0] }],
         },
       ],
       document_count: 1,
