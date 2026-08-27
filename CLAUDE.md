@@ -63,3 +63,11 @@ Claude-only mechanics:
   counterpart. If GitHub tooling ever needs them, add `.github/instructions/`
   files and keep them in sync the same way `agents/` is kept in sync — do not
   point one tool at the other's paths.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+See [AGENTS.md](AGENTS.md) for OpenWiki agent instructions.
+
+<!-- OPENWIKI:END -->
