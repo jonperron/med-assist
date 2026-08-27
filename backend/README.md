@@ -117,7 +117,7 @@ What shapes it, in `app/services/summarizer.py`:
   overwrite the patient's.
 * Deduplication that folds case, accents, inner spacing and edge punctuation, keeping
   the longest surface form seen — the model truncates outer mentions, so the longest
-  is the most complete one (see `DECISION.md`).
+  is the most complete one (see the decision log on the local wiki).
 * A confidence floor of `MIN_CONFIDENCE`. This is the only use the model's score has,
   and it is never displayed: a percentage next to a clinical finding invites a reader
   to weigh it, which is not a judgement a token classifier's softmax supports.

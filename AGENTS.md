@@ -234,3 +234,13 @@ A task is complete only when:
 - Lint/type checks pass for touched areas.
 - Security and privacy requirements above are preserved.
 - Documentation is updated when behavior or constraints change.
+- Every deviation from the rules above, and every choice between two defensible
+  options, is written down as a decision entry.
+
+Decisions live on the local wiki at
+<http://localhost:8080/med-assist/decisions>, one page per entry, not in a
+markdown file in this repository. Add a child page there titled
+`<YYYY-MM-DD> - <what was decided>`; state the alternative that was rejected and
+what the choice costs, not only what was chosen. The wiki is local-only, so a
+decision that a reader outside this machine has to know about also belongs in the
+commit body or the affected README.
