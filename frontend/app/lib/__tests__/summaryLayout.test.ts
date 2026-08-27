@@ -80,3 +80,28 @@ describe('layoutSummary ordering guarantees', () => {
     expect(sites?.key).toBe('anatomy')
   })
 })
+
+describe('layoutSummary on a body that is not ours', () => {
+  it('drops a section that is not an object rather than throwing', () => {
+    const sections = [
+      null,
+      section('pathologies'),
+    ] as unknown as SummarySection[]
+
+    expect(keysOf(layoutSummary(sections).cards)).toEqual(['pathologies'])
+  })
+
+  it('drops a section carrying no findings list', () => {
+    const sections = [
+      { key: 'symptoms', heading: 'Symptômes', sentence: '.' },
+      section('pathologies'),
+    ] as unknown as SummarySection[]
+
+    expect(keysOf(layoutSummary(sections).cards)).toEqual(['pathologies'])
+  })
+
+  it('handles sections that are not a list at all', () => {
+    const sections = null as unknown as SummarySection[]
+    expect(layoutSummary(sections)).toEqual({ cards: [], sites: null })
+  })
+})

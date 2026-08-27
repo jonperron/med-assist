@@ -19,8 +19,12 @@
  * not SSE, or a truncated stream - would otherwise accumulate whole in memory.
  * Generous for these events: the largest of the four carries one summary, and
  * a summary is spans the model marked rather than the documents themselves.
+ *
+ * Counted in UTF-16 code units, which is what `length` reports - so the real
+ * byte ceiling for non-ASCII content is up to twice this. At this magnitude
+ * that is a naming matter rather than a sizing one.
  */
-const MAX_PENDING_FRAME_BYTES = 4 * 1024 * 1024
+const MAX_PENDING_FRAME_CHARS = 4 * 1024 * 1024
 
 export class ParsedFrameTooLarge extends Error {
   constructor() {
@@ -38,6 +42,11 @@ export class EventStreamParser {
   // exhausted memory.
   private searchedTo = 0
 
+  // Set once the buffer passes the cap. The frames this push already completed
+  // are still returned - a chunk carrying a whole `result` followed by junk
+  // must not lose the summary that did arrive - and the next push refuses.
+  private overflowed = false
+
   // A trailing carriage return whose newline has not arrived yet.
   private carriageReturn = ''
 
@@ -47,6 +56,8 @@ export class EventStreamParser {
    * @throws ParsedFrameTooLarge when one unterminated frame grows past the cap.
    */
   push(chunk: string): string[] {
+    if (this.overflowed) throw new ParsedFrameTooLarge()
+
     // A chunk can end mid-CRLF. Normalising it on its own would turn that one
     // line break into two, splitting a multi-line `data` field across two
     // frames and leaving both halves unparsable. The carriage return is held
@@ -69,7 +80,6 @@ export class EventStreamParser {
     while (boundary !== -1) {
       const frame = this.buffer.slice(0, boundary)
       this.buffer = this.buffer.slice(boundary + 2)
-      this.searchedTo = 0
 
       const payload = dataOf(frame)
       if (payload !== null) payloads.push(payload)
@@ -79,12 +89,12 @@ export class EventStreamParser {
 
     this.searchedTo = this.buffer.length
 
-    if (this.buffer.length > MAX_PENDING_FRAME_BYTES) {
+    if (this.buffer.length > MAX_PENDING_FRAME_CHARS) {
       // Dropped rather than grown: whatever is arriving is not this stream.
       this.buffer = ''
       this.searchedTo = 0
       this.carriageReturn = ''
-      throw new ParsedFrameTooLarge()
+      this.overflowed = true
     }
 
     return payloads

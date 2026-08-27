@@ -284,16 +284,100 @@ describe('streamAnalysis', () => {
     await expect(run()).rejects.toMatchObject({ reason: 'transport' })
   })
 
-  it("calls a 400 and a 413 the clinician's batch", async () => {
-    for (const status of [400, 413]) {
-      fetchMock.mockResolvedValue({
-        ok: false,
-        status,
-        json: async () => ({ detail: { message: 'Refusé.' } }),
-      } as unknown as Response)
+  it("calls a 400 the clinician's scans", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: { message: 'Refusé.' } }),
+    } as unknown as Response)
 
-      await expect(run()).rejects.toMatchObject({ reason: 'unreadable_batch' })
-    }
+    await expect(run()).rejects.toMatchObject({ reason: 'unreadable_batch' })
+  })
+
+  it('tells a batch refused for its size from one that could not be read', async () => {
+    // The same batch will be refused identically next time, so it must not
+    // read as something another scan would fix.
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 413,
+      json: async () => ({ detail: { message: 'File too large' } }),
+    } as unknown as Response)
+
+    await expect(run()).rejects.toMatchObject({ reason: 'too_large' })
+  })
+
+  it('shows a message between the two ceilings whole rather than cut', async () => {
+    // 120 is the filename ceiling, 300 the message one. A message in between
+    // used to be truncated mid-sentence and still rendered as our own wording.
+    const message = 'Refus. '.repeat(28).trim()
+    expect(message.length).toBeGreaterThan(120)
+    expect(message.length).toBeLessThan(300)
+
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ detail: { message } }),
+    } as unknown as Response)
+
+    await expect(run()).rejects.toMatchObject({ message })
+  })
+
+  it('ignores a batch total of zero', async () => {
+    // The route refuses an empty batch with a 400, so a zero is not ours - and
+    // it would leave the progress card reading "0 sur 0" for the whole run.
+    fetchMock.mockResolvedValue(
+      streaming(
+        frame({ stage: 'batch', total: 0 }) + frame({ stage: 'result', result: RESULT })
+      )
+    )
+
+    const onBatch = vi.fn()
+    await run({ onBatch })
+
+    expect(onBatch).not.toHaveBeenCalled()
+  })
+
+  it('reports a body that never sends a frame boundary as a transport failure', async () => {
+    // The parser gives up on it; the caller is still owed a reason.
+    const encoder = new TextEncoder()
+    const megabyte = 'x'.repeat(1024 * 1024)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let chunk = 0; chunk < 8; chunk += 1) {
+            controller.enqueue(encoder.encode(megabyte))
+          }
+          controller.close()
+        },
+      }),
+    } as unknown as Response)
+
+    await expect(run()).rejects.toMatchObject({ reason: 'transport' })
+  })
+
+  it('cancels a body it stopped reading', async () => {
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            frame({ stage: 'error', reason: 'server_error', message: 'Boom' })
+          )
+        )
+        // Left open: a body still arriving when the caller gives up on it.
+      },
+    })
+    const reader = body.getReader()
+    reader.cancel = cancel
+    vi.spyOn(body, 'getReader').mockReturnValue(reader)
+
+    fetchMock.mockResolvedValue({ ok: true, status: 200, body } as unknown as Response)
+
+    await expect(run()).rejects.toBeInstanceOf(AnalysisStreamError)
+    expect(cancel).toHaveBeenCalledOnce()
   })
 
   it('refuses a result whose documents are not a list', async () => {

@@ -16,9 +16,20 @@ const INVISIBLE = /[\p{Cf}\p{Cc}]/gu
 // the rest of a row off screen.
 const MAX_DISPLAY_LENGTH = 120
 
+/**
+ * Drop the characters that let a string display as something other than what
+ * it is, without imposing any length policy.
+ *
+ * Filenames and upstream refusal messages both need this and want different
+ * ceilings, so the stripping is separate from the truncation below.
+ */
+export function stripInvisible(value: string): string {
+  return value.replace(INVISIBLE, '').trim()
+}
+
 /** Make a filename safe to display, without changing how it reads. */
 export function displayFilename(filename: string): string {
-  const cleaned = filename.replace(INVISIBLE, '').trim()
+  const cleaned = stripInvisible(filename)
   if (cleaned.length <= MAX_DISPLAY_LENGTH) return cleaned
 
   return cleaned.slice(0, MAX_DISPLAY_LENGTH - 1) + '…'

@@ -4,8 +4,8 @@ import type {
   FailureReason,
 } from '../types/extraction'
 import { MAX_FILES } from './documentSelection'
-import { displayFilename } from './documentName'
-import { EventStreamParser } from './serverSentEvents'
+import { stripInvisible } from './documentName'
+import { EventStreamParser, ParsedFrameTooLarge } from './serverSentEvents'
 
 /**
  * Read `POST /api/analyze/stream`.
@@ -23,8 +23,14 @@ import { EventStreamParser } from './serverSentEvents'
  * was.
  */
 
-/** Why a streamed analysis ended without a summary. */
-export type StreamFailure = FailureReason | 'transport'
+/**
+ * Why a streamed analysis ended without a summary.
+ *
+ * `FailureReason` is what the stream itself can say. `too_large` and
+ * `transport` are refusals that never reach an event: a batch the server sized
+ * out before reading it, and an answer that did not arrive at all.
+ */
+export type StreamFailure = FailureReason | 'too_large' | 'transport'
 
 export class AnalysisStreamError extends Error {
   readonly reason: StreamFailure
@@ -71,22 +77,32 @@ function usable(value: unknown): value is string {
 function safeMessage(value: unknown, fallback: string): string {
   if (!usable(value)) return fallback
 
-  const cleaned = displayFilename(value)
+  // Stripped, not truncated. Borrowing `displayFilename` would cut a message
+  // between 120 and 300 characters mid-sentence and still render it as this
+  // app's own wording - neither shown whole nor replaced by the fallback.
+  const cleaned = stripInvisible(value)
   return cleaned.length > 0 ? cleaned : fallback
 }
 
 // A batch cannot hold more documents than the interface will select, so a
-// larger count is not a batch this page posted. Bounding it keeps a hostile or
-// misrouted `total` from being handed to an allocation.
+// larger count is not a batch this page posted. Nor can it hold none: the
+// route refuses an empty batch with a 400, and a zero would leave the progress
+// card reading "0 sur 0" with every later event out of bounds.
 function acceptableTotal(total: unknown): total is number {
-  return Number.isInteger(total) && (total as number) >= 0 && (total as number) <= MAX_FILES
+  return (
+    Number.isInteger(total) && (total as number) >= 1 && (total as number) <= MAX_FILES
+  )
 }
 
-// The closed set the stream can end on. `reason` is read off the wire and then
-// used to pick what the clinician is told, so an unknown value must not reach
-// the lookup that does it.
-function acceptableReason(reason: unknown): reason is 'unreadable_batch' | 'server_error' {
-  return reason === 'unreadable_batch' || reason === 'server_error'
+// The closed set the stream can end on, typed against the generated schema so
+// a member added to `FailureReason` shows up here as a type error rather than
+// as a value this predicate silently downgrades.
+const STREAM_REASONS: readonly FailureReason[] = ['unreadable_batch', 'server_error']
+
+// `reason` is read off the wire and then picks what the clinician is told, so
+// an unknown value must not reach the lookup that does it.
+function acceptableReason(reason: unknown): reason is FailureReason {
+  return STREAM_REASONS.includes(reason as FailureReason)
 }
 
 /**
@@ -117,16 +133,18 @@ async function refusalMessage(response: Response, fallback: string): Promise<str
 /**
  * Which failure a status sent before the stream opened is.
  *
- * Only 400 is the clinician's documents: it is the refusal the route documents
- * for a batch nothing could be read from. 413 is a batch too large, which is
- * their selection rather than their scans, and it carries its own wording. A
- * 5xx is the service. Everything else - a 404 from a deployment older than the
- * streaming route, a proxy's 405, a 429 - is neither, and saying "no summary
- * could be established" over a routing problem blames a clinician's documents
- * for something no retry of theirs will fix.
+ * Only 400 is the clinician's scans: it is the refusal the route documents for
+ * a batch nothing could be read from. 413 is their selection rather than their
+ * scans - too many files, or one too large - and gets its own wording, because
+ * "no summary could be established" over a size limit invites a retry of the
+ * identical batch. A 5xx is the service. Everything else - a 404 from a
+ * deployment older than the streaming route, a proxy's 405, a 429 - is
+ * neither, and blaming a clinician's documents for a routing problem sends
+ * them back to a scanner that will not fix it.
  */
 function failureOf(status: number): StreamFailure {
-  if (status === 400 || status === 413) return 'unreadable_batch'
+  if (status === 400) return 'unreadable_batch'
+  if (status === 413) return 'too_large'
   if (status >= 500) return 'server_error'
   return 'transport'
 }
@@ -247,7 +265,20 @@ export async function streamAnalysis(
         break
       }
 
-      for (const payload of parser.push(decoder.decode(value, { stream: true }))) {
+      let payloads: string[]
+      try {
+        payloads = parser.push(decoder.decode(value, { stream: true }))
+      } catch (error: unknown) {
+        // The parser gave up on a body that is not this stream. Re-raised as
+        // this module's own error so every caller gets a `reason`, which is
+        // what the signature promises.
+        if (error instanceof ParsedFrameTooLarge) {
+          throw new AnalysisStreamError(fallbackMessage, 'transport')
+        }
+        throw error
+      }
+
+      for (const payload of payloads) {
         const event = asEvent(payload)
         if (!event) continue
 

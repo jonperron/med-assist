@@ -29,15 +29,32 @@ export interface SummaryLayout {
   sites: SummarySection | null
 }
 
+/**
+ * A section this layout can place: a key to sort on and findings to render.
+ *
+ * The shape is checked here rather than trusted, because this runs before any
+ * component does. A null element or a section with no `findings` would
+ * otherwise throw inside a client component, which loses the whole summary
+ * rather than the one section that is malformed.
+ */
+function usable(section: SummarySection | null | undefined): section is SummarySection {
+  return (
+    typeof section === 'object' &&
+    section !== null &&
+    typeof section.key === 'string' &&
+    Array.isArray(section.findings)
+  )
+}
+
 export function layoutSummary(sections: SummarySection[]): SummaryLayout {
-  const sites = sections.find(section => section.key === SITES_KEY) ?? null
-  const hasHost = sections.some(section => section.key === SITES_HOST_KEY)
+  const known = Array.isArray(sections) ? sections.filter(usable) : []
+
+  const sites = known.find(section => section.key === SITES_KEY) ?? null
+  const hasHost = known.some(section => section.key === SITES_HOST_KEY)
 
   // Anything the backend adds that this layout has not heard of is appended in
   // the order it arrived. Dropping it would silently lose clinical content.
-  const remaining = sections.filter(
-    section => section.key !== SITES_KEY || !hasHost
-  )
+  const remaining = known.filter(section => section.key !== SITES_KEY || !hasHost)
 
   const cards = [...remaining].sort((left, right) => {
     const leftRank = CARD_ORDER.indexOf(left.key)

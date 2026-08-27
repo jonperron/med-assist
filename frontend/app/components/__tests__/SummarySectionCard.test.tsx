@@ -118,6 +118,19 @@ describe('SummarySectionCard', () => {
     expect(screen.getByRole('heading', { name: 'Pathologies' })).toBeInTheDocument()
   })
 
+  it('skips a finding in the shape findings used to have', () => {
+    // Before #66 `findings` was `string[]`. React refuses an object child and
+    // would take the page down with it, so a row that is not this shape is
+    // dropped rather than rendered.
+    const { container } = renderCard({
+      findings: ['cirrhose', { text: 'ictère', documents: [0] }] as unknown as
+        SummarySection['findings'],
+    })
+
+    expect(screen.getByText('ictère')).toBeInTheDocument()
+    expect(container.textContent).not.toMatch(/cirrhose/)
+  })
+
   it('shows no score or offset beside a finding', () => {
     const { container } = renderCard()
     expect(container.textContent).not.toMatch(/%|score|0\.\d/i)

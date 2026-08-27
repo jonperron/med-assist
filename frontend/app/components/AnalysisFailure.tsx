@@ -9,13 +9,25 @@ interface Props {
   onStartOver: () => void
 }
 
-// The three failures are three different things to tell a clinician: their
-// documents did not work, the service did not work, or the answer never
-// arrived. Only the first is worth trying another scan for.
+// Four different things to tell a clinician: their scans did not work, they
+// sent more than can be analysed, the service did not work, or the answer
+// never arrived. Only the first is worth trying another scan for, and only the
+// second is fixed by changing the selection.
 const HEADLINES: Record<StreamFailure, string> = {
   unreadable_batch: "Aucun résumé n'a pu être établi",
+  too_large: 'Cet envoi dépasse ce qui peut être analysé',
   server_error: "L'analyse n'a pas abouti",
   transport: "L'analyse s'est interrompue",
+}
+
+// A batch refused for its size will be refused identically next time, so the
+// retry is a control that does nothing. The clinician's move is to change the
+// selection, which is the other button.
+const RETRYABLE: Record<StreamFailure, boolean> = {
+  unreadable_batch: true,
+  too_large: false,
+  server_error: true,
+  transport: true,
 }
 
 /**
@@ -28,6 +40,11 @@ const HEADLINES: Record<StreamFailure, string> = {
  */
 function headlineFor(reason: StreamFailure): string {
   return Object.hasOwn(HEADLINES, reason) ? HEADLINES[reason] : HEADLINES.transport
+}
+
+/** A reason this build does not know is offered the retry, like a transport. */
+function retryable(reason: StreamFailure): boolean {
+  return Object.hasOwn(RETRYABLE, reason) ? RETRYABLE[reason] : true
 }
 
 /**
@@ -57,13 +74,15 @@ export function AnalysisFailure({ message, reason, onRetry, onStartOver }: Props
         </span>
         <span className="text-sm leading-[1.6] text-pretty text-ink-soft">{message}</span>
         <div className="flex flex-wrap items-center gap-2.5 pt-1.5">
-          <button
-            type="button"
-            onClick={onRetry}
-            className="h-11 cursor-pointer rounded-lg border border-edge bg-surface px-5 text-sm font-semibold text-ink hover:bg-paper"
-          >
-            Réessayer
-          </button>
+          {retryable(reason) && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="h-11 cursor-pointer rounded-lg border border-edge bg-surface px-5 text-sm font-semibold text-ink hover:bg-paper"
+            >
+              Réessayer
+            </button>
+          )}
           <button
             type="button"
             onClick={onStartOver}

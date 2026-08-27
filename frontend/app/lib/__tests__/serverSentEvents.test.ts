@@ -71,6 +71,18 @@ describe('EventStreamParser', () => {
     }).toThrow(ParsedFrameTooLarge)
   })
 
+  it('keeps the frames a push completed before it gave up', () => {
+    // A chunk carrying a whole result followed by junk must not lose the
+    // summary that did arrive.
+    const parser = new EventStreamParser()
+    const junk = 'x'.repeat(5 * 1024 * 1024)
+
+    expect(parser.push(`data: {"stage":"result"}\n\n${junk}`)).toEqual([
+      '{"stage":"result"}',
+    ])
+    expect(() => parser.push('more')).toThrow(ParsedFrameTooLarge)
+  })
+
   it('does not abandon a stream whose frames are merely many', () => {
     const parser = new EventStreamParser()
     const frames = 'data: 1\n\n'.repeat(200_000)

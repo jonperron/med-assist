@@ -119,6 +119,11 @@ export default function HomePage() {
     setReading(startReading(selected.length))
 
     try {
+      // A finished stream is not proof the body is ours: a stale base URL can
+      // reach a proxy that streams something else entirely. `streamAnalysis`
+      // is where that is decided - it refuses a result this screen could not
+      // render and raises a `transport` failure instead, so there is one copy
+      // of the rule rather than two that can drift.
       const received = await streamAnalysis(
         `${API_URL}/api/analyze/stream`,
         selected.map(({ file }) => file),
@@ -134,15 +139,6 @@ export default function HomePage() {
         ANALYSIS_FAILED,
         controller.signal
       )
-
-      // A finished stream is not proof the body is ours: a stale base URL can
-      // reach a proxy that streams something else entirely. Storing a missing
-      // summary would end the progress card and return the clinician to the
-      // picker saying nothing.
-      if (!received?.summary || !Array.isArray(received.summary.sections)) {
-        setAnalysisError({ message: ANALYSIS_FAILED, reason: 'transport' })
-        return
-      }
 
       setAnalysis(received)
     } catch (error: unknown) {

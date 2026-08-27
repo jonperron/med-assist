@@ -81,4 +81,35 @@ describe('AnalysisFailure', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent("L'analyse s'est interrompue")
   })
+
+  it('tells a batch refused for its size from one that could not be read', () => {
+    render(
+      <AnalysisFailure
+        message="File too large"
+        reason="too_large"
+        onRetry={() => {}}
+        onStartOver={() => {}}
+      />
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Cet envoi dépasse ce qui peut être analysé'
+    )
+  })
+
+  it('offers no retry for a batch that will be refused identically', () => {
+    render(
+      <AnalysisFailure
+        message="File too large"
+        reason="too_large"
+        onRetry={() => {}}
+        onStartOver={() => {}}
+      />
+    )
+
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: "Choisir d'autres documents" })
+    ).toBeInTheDocument()
+  })
 })
