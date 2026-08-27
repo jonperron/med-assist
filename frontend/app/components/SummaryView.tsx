@@ -1,7 +1,8 @@
 'use client'
 
-import type { ClinicalSummary } from '../types/extraction'
+import type { AnalysisResponse } from '../types/extraction'
 import type { SelectedDocument } from '../lib/documentSelection'
+import { formatDateRange } from '../lib/documentDate'
 import { layoutSummary, SITES_HOST_KEY } from '../lib/summaryLayout'
 import { AppHeader } from './AppHeader'
 import { CautionNote } from './CautionNote'
@@ -12,7 +13,8 @@ import { SourceChips } from './SourceChips'
 import { SummarySectionCard } from './SummarySectionCard'
 
 interface Props {
-  summary: ClinicalSummary
+  /** The whole answer: the summary, and each document as the API read it. */
+  analysis: AnalysisResponse
   documents: SelectedDocument[]
   onStartOver: () => void
 }
@@ -24,8 +26,10 @@ function summaryTitle(count: number): string {
   return count === 1 ? "Résumé d'un document" : `Résumé de ${count} documents`
 }
 
-export function SummaryView({ summary, documents, onStartOver }: Props) {
+export function SummaryView({ analysis, documents, onStartOver }: Props) {
+  const { summary } = analysis
   const { cards, sites } = layoutSummary(summary.sections)
+  const span = formatDateRange(summary.date_range)
 
   // Derived from the content, with `empty` as a hint rather than the decision.
   // The backend sets `empty` only when there is no patient line either, so a
@@ -61,6 +65,10 @@ export function SummaryView({ summary, documents, onStartOver }: Props) {
             <h1 className="font-serif text-[34px] leading-[1.15] font-normal tracking-[-0.015em] text-ink">
               {summaryTitle(summary.document_count)}
             </h1>
+            {/* The span the documents cover, where a clinician places what
+                they are about to read. Absent when nothing could be dated,
+                which is common and is not a fault. */}
+            {span && <span className="text-[14.5px] text-ink-soft">{span}</span>}
             {summary.patient && (
               <span className="text-[14.5px] text-ink-muted">{summary.patient}</span>
             )}
@@ -75,7 +83,7 @@ export function SummaryView({ summary, documents, onStartOver }: Props) {
         {/* Kept in the printed copy on purpose: on a page going into a
             patient file, which documents the summary was built from is the
             first thing a reader needs to check it against. */}
-        <SourceChips documents={documents} />
+        <SourceChips documents={documents} analyzed={analysis.documents} />
 
         {nothingToShow ? (
           <EmptySummary

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { SummaryView } from '../SummaryView'
-import type { ClinicalSummary } from '../../types/extraction'
+import type {
+  AnalysisResponse,
+  AnalyzedDocument,
+  ClinicalSummary,
+} from '../../types/extraction'
 import type { SelectedDocument } from '../../lib/documentSelection'
 
 function summary(overrides: Partial<ClinicalSummary> = {}): ClinicalSummary {
@@ -47,19 +51,48 @@ function documents(names: string[] = ['lettre-adressage.pdf']): SelectedDocument
   }))
 }
 
+function analyzed(dates: (string | null)[]): AnalyzedDocument[] {
+  return dates.map(document_date => ({
+    patient_info: [],
+    anatomy: [],
+    symptoms: [],
+    examinations: [],
+    treatments: [],
+    pathologies: [],
+    temporal: [],
+    measurements: [],
+    other: [],
+    read: true,
+    unreadable_reason: null,
+    document_date,
+  }))
+}
+
+function response(
+  overrides: Partial<ClinicalSummary> = {},
+  dates: (string | null)[] = [null, null]
+): AnalysisResponse {
+  return {
+    summary: summary(overrides),
+    documents: analyzed(dates),
+    retained: false,
+  }
+}
+
 function sourceChips() {
   return within(screen.getByRole('list', { name: 'Lu dans' }))
 }
 
 function renderSummary(
   overrides: Partial<ClinicalSummary> = {},
-  onStartOver = vi.fn()
+  onStartOver = vi.fn(),
+  dates: (string | null)[] = [null, null]
 ) {
   return {
     onStartOver,
     ...render(
       <SummaryView
-        summary={summary(overrides)}
+        analysis={response(overrides, dates)}
         documents={documents(['lettre-adressage.pdf', 'compte-rendu-ecg.pdf'])}
         onStartOver={onStartOver}
       />
@@ -124,6 +157,25 @@ describe('SummaryView', () => {
       screen.queryByRole('heading', { name: 'Localisations' })
     ).not.toBeInTheDocument()
     expect(screen.getByText(/Localisations : foie, veine porte/)).toBeInTheDocument()
+  })
+
+  it('places the summary in time with the span the documents cover', () => {
+    renderSummary({ date_range: { start: '2025-03-04', end: '2025-04-02' } })
+    expect(screen.getByText('du 4 mars au 2 avril 2025')).toBeInTheDocument()
+  })
+
+  it('says nothing about time when no document could be dated', () => {
+    const { container } = renderSummary({ date_range: null })
+    expect(container.textContent).not.toMatch(/du .* au /)
+  })
+
+  it('dates each source chip from the document itself', () => {
+    renderSummary({}, vi.fn(), ['2025-03-04', null])
+
+    const chips = sourceChips()
+    expect(chips.getByText('4 mars 2025')).toBeInTheDocument()
+    // The undated one is left undated rather than borrowing its neighbour.
+    expect(chips.getAllByRole('listitem')[1]).not.toHaveTextContent(/2025/)
   })
 
   it('shows no score, percentage, model or timing anywhere', () => {

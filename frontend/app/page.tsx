@@ -13,7 +13,7 @@ import { ReadingProgress } from './components/ReadingProgress'
 import { SummaryView } from './components/SummaryView'
 import { errorMessage } from './lib/apiError'
 import { describeRejection, type SelectedDocument } from './lib/documentSelection'
-import type { AnalysisResponse, ClinicalSummary } from './types/extraction'
+import type { AnalysisResponse } from './types/extraction'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -34,7 +34,7 @@ function actionLabel(count: number): string {
 
 export default function HomePage() {
   const [documents, setDocuments] = useState<SelectedDocument[]>([])
-  const [summary, setSummary] = useState<ClinicalSummary | null>(null)
+  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null)
   // Two separate refusals. A file this interface will not accept is the
   // clinician's next move at the dropzone; an analysis that failed is a
   // report on the request they already made, and they must not read as one.
@@ -74,7 +74,7 @@ export default function HomePage() {
 
   const startOver = () => {
     setDocuments([])
-    setSummary(null)
+    setAnalysis(null)
     setSelectionError(null)
     setAnalysisError(null)
   }
@@ -89,7 +89,7 @@ export default function HomePage() {
     try {
       setAnalysisError(null)
       setPending(true)
-      setSummary(null)
+      setAnalysis(null)
 
       const response = await axios.post<AnalysisResponse>(
         `${API_URL}/api/analyze`,
@@ -100,13 +100,13 @@ export default function HomePage() {
       // A 200 is not proof the body is ours: a stale base URL can reach a
       // proxy or a login page. Storing a missing summary would end the
       // spinner and return the clinician to the picker saying nothing.
-      const received = response.data?.summary
-      if (!received || !Array.isArray(received.sections)) {
+      const received = response.data
+      if (!received?.summary || !Array.isArray(received.summary.sections)) {
         setAnalysisError(ANALYSIS_FAILED)
         return
       }
 
-      setSummary(received)
+      setAnalysis(received)
     } catch (err: unknown) {
       setAnalysisError(errorMessage(err, ANALYSIS_FAILED))
     } finally {
@@ -114,9 +114,9 @@ export default function HomePage() {
     }
   }
 
-  if (summary) {
+  if (analysis) {
     return (
-      <SummaryView summary={summary} documents={documents} onStartOver={startOver} />
+      <SummaryView analysis={analysis} documents={documents} onStartOver={startOver} />
     )
   }
 
