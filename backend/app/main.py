@@ -14,6 +14,7 @@ from app.api import (
     health_router,
     mock_router,
 )
+from app.core.config import CORSConfiguration
 from app.core.dependencies import get_entity_extractor
 from app.core.middleware import LimitRequestSize, forbid_caching
 
@@ -129,10 +130,17 @@ def create_app(app_env: str | None = None) -> FastAPI:
     # forwards `receive` untouched, so the ceiling still wraps the channel the
     # multipart parser reads from, which is the whole reason it is ASGI
     # middleware.
+    #
+    # The allowed origins are read from the environment, the same way the
+    # frontend reads the API's own URL from `NEXT_PUBLIC_API_URL`. As a literal
+    # here, the two ends of one connection were configured by different
+    # mechanisms and any host other than localhost needed a source edit.
+    # Unset, the value is still the local frontend origin - never a wildcard,
+    # which a browser refuses on a credentialed response anyway.
     application.add_middleware(LimitRequestSize)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],  # Frontend origin
+        allow_origins=list(CORSConfiguration().allowed_origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

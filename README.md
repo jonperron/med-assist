@@ -27,7 +27,10 @@ It is not intended for use in clinical decision-making and should not replace pr
   Retention is bounded by the request rather than by a timer. A submitted document lives in memory for as long as it takes to answer, and the only trace it leaves is the multipart spool the HTTP server writes for parts above 1 MB — which `docker-compose.yml` puts on a `tmpfs`.
 
 - **No language model, no egress**
-  Summaries are assembled from NER output by fixed rules, not generated. Document text is never sent anywhere, and `POST /api/analyze` does not even echo it back to the caller.
+  Summaries are assembled from NER output by fixed rules, not generated. Document text is never sent anywhere, and `POST /api/analyze` does not even echo it back to the caller — nor, since 2026-08-28, the character positions of the spans within it.
+
+- **The browser enforces it too**
+  The interface serves a Content-Security-Policy whose `connect-src` names two origins: the page itself and the backend given by `NEXT_PUBLIC_API_URL`. Script on that page cannot open a connection anywhere else — no fetch, no websocket, no beacon, no remote image. Fonts are self-hosted, images are local, and no referrer is sent anywhere. It is not a complete barrier: no CSP any browser ships can refuse a deliberate navigation, so script running in the page could still leave with data in a URL. What the policy removes is every silent channel, and it enforces "only the configured API origin" — whether that origin is on this machine is the operator's call. [`frontend/README.md`](./frontend/README.md) has the details and the deployment consequence.
 
   This is a local-processing guarantee, not a compliance claim. The extracted entities are health data and remain personal data under GDPR, the API is still unauthenticated, and clinical text is adversarial: read a summary before you rely on it. [`backend/README.md`](./backend/README.md) states the scope and the known gaps.
 
@@ -41,6 +44,17 @@ docker compose up --build
 ```
 
 The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
+
+### Serving it from somewhere other than localhost
+
+Two variables describe the same connection and have to move together:
+
+- `NEXT_PUBLIC_API_URL` is where the browser looks for the API. It is baked into the frontend bundle at build time, so changing it means rebuilding the frontend image.
+- `CORS_ALLOWED_ORIGINS` is which pages the API will answer. Comma-separated, each entry `scheme://host[:port]` with no trailing slash — `https://med-assist.example.org,https://med-assist.example.org:8443`.
+
+Change one without the other and the API is reachable but every answer is dropped by the browser, which shows up as a network error rather than as a refusal. Unset, `CORS_ALLOWED_ORIGINS` stays on the local frontend origin; it is never widened to `*`, because this API answers with credentials and a browser rejects a credentialed response allowed to everyone. A value that is not an origin — a path, a wildcard, a space, a port that is not a number, an international domain that is not in its punycode form — stops the backend at startup instead of failing silently in the browser later; under Compose that shows up as a container restarting rather than as an unhealthy one, so read its log. Two spellings with one obvious reading are rewritten instead of refused: a single trailing slash is dropped, and so is a port the scheme already implies (`https://host:443` is sent by the browser as `https://host`).
+
+CORS is a browser-side control and nothing else. It does not authenticate anyone: any client that is not a browser can call the API whatever this variable says, and there is no authentication in front of it. A deployment reachable by anyone other than the person running it needs a reverse proxy that authenticates, not a shorter origin list.
 
 ### Upgrading from a version that stored documents
 

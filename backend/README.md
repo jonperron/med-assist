@@ -32,6 +32,7 @@ key to hold.
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
 * `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
 * `NER_INFERENCE_THREADS` and `NER_MAX_CONCURRENT_INFERENCES`: see [Inference runs on the CPU](#inference-runs-on-the-cpu).
+* `CORS_ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the API, each written as `scheme://host[:port]` with no trailing slash (default: `http://localhost:3000`). Unset or empty keeps that default rather than widening; `*` is refused at startup, because the API answers with credentials and a browser rejects a credentialed response allowed to everyone. Anything that is not an origin - a path, a query, a space in the host, a wildcard, a port that is not a number, an international domain outside its punycode form - stops the process at startup, with the offending entry named by position and never quoted. A single trailing slash and a port the scheme implies (`:443` on https, `:80` on http) are dropped rather than refused, because a browser omits both and a literal comparison against them would match nothing.
 
 **Example:**
 
@@ -54,9 +55,11 @@ one:
   events: the batch is one request from start to finish.
 * The document text is never echoed back. The summary is the product, and returning
   the text would widen what leaves the server for no gain.
-* Entity `start`/`end` offsets index the text the document yielded, which the API
-  does not return. They locate a span only for a caller that still holds the
-  document.
+* Entity `start`/`end` offsets do not leave the server. They index the text the
+  document yielded, which the API does not return, so they were unusable to a
+  caller; `EntityDetail` excludes them from serialisation, which keeps them out of
+  the response body and out of `openapi.json` while the summarizer still reads them
+  to pair an examination with its value.
 * Uploaded files above 1 MB are spooled to `TMPDIR` by the HTTP server before any route
   code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
   the container's writable layer; a bare `uvicorn` run does not, and will write them to
