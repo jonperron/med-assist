@@ -32,6 +32,7 @@ key to hold.
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
 * `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
 * `NER_INFERENCE_THREADS` and `NER_MAX_CONCURRENT_INFERENCES`: see [Inference runs on the CPU](#inference-runs-on-the-cpu).
+* `CORS_ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the API, each written as `scheme://host[:port]` with no trailing slash (default: `http://localhost:3000`). Unset or empty keeps that default rather than widening; `*` is refused at startup, because the API answers with credentials and a browser rejects a credentialed response allowed to everyone. Anything that is not an origin - a path, a query, a space in the host, a wildcard, a port that is not a number, an international domain outside its punycode form - stops the process at startup, with the offending entry named by position and never quoted. A single trailing slash and a port the scheme implies (`:443` on https, `:80` on http) are dropped rather than refused, because a browser omits both and a literal comparison against them would match nothing.
 
 **Example:**
 

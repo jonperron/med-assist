@@ -42,6 +42,17 @@ docker compose up --build
 
 The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
 
+### Serving it from somewhere other than localhost
+
+Two variables describe the same connection and have to move together:
+
+- `NEXT_PUBLIC_API_URL` is where the browser looks for the API. It is baked into the frontend bundle at build time, so changing it means rebuilding the frontend image.
+- `CORS_ALLOWED_ORIGINS` is which pages the API will answer. Comma-separated, each entry `scheme://host[:port]` with no trailing slash — `https://med-assist.example.org,https://med-assist.example.org:8443`.
+
+Change one without the other and the API is reachable but every answer is dropped by the browser, which shows up as a network error rather than as a refusal. Unset, `CORS_ALLOWED_ORIGINS` stays on the local frontend origin; it is never widened to `*`, because this API answers with credentials and a browser rejects a credentialed response allowed to everyone. A value that is not an origin — a path, a wildcard, a space, a port that is not a number, an international domain that is not in its punycode form — stops the backend at startup instead of failing silently in the browser later; under Compose that shows up as a container restarting rather than as an unhealthy one, so read its log. Two spellings with one obvious reading are rewritten instead of refused: a single trailing slash is dropped, and so is a port the scheme already implies (`https://host:443` is sent by the browser as `https://host`).
+
+CORS is a browser-side control and nothing else. It does not authenticate anyone: any client that is not a browser can call the API whatever this variable says, and there is no authentication in front of it. A deployment reachable by anyone other than the person running it needs a reverse proxy that authenticates, not a shorter origin list.
+
 ### Upgrading from a version that stored documents
 
 Before 2026-08-28 the stack ran a Redis service and kept extracted entities — and,
