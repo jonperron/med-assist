@@ -1,6 +1,6 @@
 ---
 name: data-boundaries
-description: Use when touching upload handling, text extraction, Redis storage, logging, error payloads, CORS, or deployment config in Med-Assist. Covers patient-data confidentiality, secrets, input validation, and retention.
+description: Use when touching upload handling, text extraction, logging, error payloads, CORS, or deployment config in Med-Assist. Covers patient-data confidentiality, secrets, input validation, and the no-storage boundary.
 ---
 
 # Data boundaries
@@ -23,12 +23,12 @@ AGENTS.md wins.
 
 - Patient content never leaves the machine. No external API, no cloud service,
   no telemetry, no crash reporter. Model weights load offline.
-- Never use a patient-identifiable value as a Redis key. Keys are UUIDs.
+- The API stores nothing. Reintroducing persistence of patient data is a design decision with its own entry under `openwiki/decisions/`, not an implementation detail.
 - Never write document content, filenames, or extracted entities into logs,
   error payloads, traces, test fixtures, screenshots, commit messages, or
   subagent reports. File id and exception type only.
-- Persist as little as possible and justify any new persisted field. Stored
-  values are encrypted before they reach Redis and every key carries a TTL.
+- Persist nothing. If persistence is ever reintroduced, values are encrypted
+  at rest, every key carries a TTL, and every field is justified.
 - Responses carrying clinical content must be uncacheable.
 - Extracted entities are patient data in their own right. Categorising a span
   does not de-identify it, and neither does dropping the surrounding text. Do

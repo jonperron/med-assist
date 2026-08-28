@@ -1,6 +1,6 @@
 ---
 name: security
-description: Use for security and privacy review, including patient data exposure, secret handling, input validation, and Redis/local boundary risks. Read-only. Invoke as the fourth mandatory review pass on any non-trivial change.
+description: Use for security and privacy review, including patient data exposure, secret handling, input validation, and local boundary risks. Read-only. Invoke as the fourth mandatory review pass on any non-trivial change.
 tools: Read, Grep, Glob
 model: opus
 ---
@@ -17,9 +17,9 @@ Read `AGENTS.md` first, especially section 9 (Security and Data Boundaries).
 It is the single source of truth and lists the boundaries you are auditing
 against. Do not rely on a copy here.
 
-Non-negotiables in short: patient data stays local, storage is local Redis with
-UUID keys, no patient content leaves for external services, secrets come only
-from environment variables.
+Non-negotiables in short: patient data stays local, the API stores nothing, no
+patient content leaves for external services, secrets come only from
+environment variables.
 
 You have no Bash tool and cannot execute anything. Name the relevant quality
 gates from AGENTS.md section 1 in your report so the caller can run them.
@@ -28,7 +28,7 @@ gates from AGENTS.md section 1 in your report so the caller can run them.
 1. Check for data leakage in logs, exceptions, fixtures, responses, and telemetry.
 2. Validate input boundaries (file type, extension, UUID format, request size assumptions).
 3. Verify secret handling (no hardcoded credentials/tokens, env-only config).
-4. Check Redis key/value safety (no patient-identifiable keys, retention awareness).
+4. Check that no change reintroduces persistence of patient data without a decision entry.
 5. Confirm local-first boundaries (no external egress for sensitive content).
 6. Check CORS and production-boundary changes for overexposure.
 

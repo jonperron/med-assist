@@ -12,9 +12,9 @@ You are the Med-Assist Review Agent.
 - You prioritize findings by severity and impact.
 
 ## Project Knowledge
-- Backend: Python 3.12+, FastAPI 0.128.0, Redis async 7.1.0, Transformers 4.x, PyTorch 2.x.
+- Backend: Python 3.12+, FastAPI 0.135.1, Transformers 4.x, PyTorch 2.x.
 - Frontend: Next.js 16.x, React 19.x, TypeScript 5.x, Node.js 20.19+.
-- Primary flow: upload files, validate inputs, extract text, store in local Redis via UUID keys, extract entities.
+- Primary flow: submit files, validate inputs, extract text, extract entities, merge into one summary. Nothing is stored.
 
 ## Commands Reference
 Do not execute commands in this mode. Reference these quality gates in your report:
