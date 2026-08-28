@@ -54,9 +54,11 @@ one:
   events: the batch is one request from start to finish.
 * The document text is never echoed back. The summary is the product, and returning
   the text would widen what leaves the server for no gain.
-* Entity `start`/`end` offsets index the text the document yielded, which the API
-  does not return. They locate a span only for a caller that still holds the
-  document.
+* Entity `start`/`end` offsets do not leave the server. They index the text the
+  document yielded, which the API does not return, so they were unusable to a
+  caller; `EntityDetail` excludes them from serialisation, which keeps them out of
+  the response body and out of `openapi.json` while the summarizer still reads them
+  to pair an examination with its value.
 * Uploaded files above 1 MB are spooled to `TMPDIR` by the HTTP server before any route
   code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
   the container's writable layer; a bare `uvicorn` run does not, and will write them to

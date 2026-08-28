@@ -196,9 +196,11 @@ def pair_measurements(
     The pairing is positional, not semantic. A value is attached only when it
     starts within `MEASUREMENT_GAP` characters after the end of an examination
     span, and only the test nearest before it can claim it, so one value is
-    never reported against two tests. A span with no offsets - the shape stored
-    entities have once the text is gone - is never paired, since there is
-    nothing to measure the distance in.
+    never reported against two tests. A span with no offsets is never paired,
+    since there is nothing to measure the distance in - the fields are optional
+    on the model, and the extractor leaves them unset for a span it did not
+    locate. They are read here and nowhere else: `EntityDetail` excludes them
+    from serialisation, so this runs before the only consumer they have.
 
     It also inherits the extractor's per-document deduplication, which keeps the
     first occurrence of a repeated span and its offsets. A test named once in

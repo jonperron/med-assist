@@ -54,6 +54,18 @@ class TestMockSummary:
     def test_it_never_echoes_the_document_text(self, summary_payload):
         assert "text" not in summary_payload
 
+    def test_it_sends_no_entity_offsets_either(self, summary_payload):
+        # The mock sets offsets because the summarizer pairs by them, and the
+        # real route excludes them from the response. A mock that answered
+        # them would hand a client developing against it a field the real
+        # endpoint never sends.
+        assert all(
+            "start" not in entity and "end" not in entity
+            for document in summary_payload["documents"]
+            for category in ExtractedEntities.model_fields
+            for entity in document[category]
+        )
+
     def test_it_can_pretend_several_documents_were_merged(self, client):
         payload = client.get("/mock_summary?documents=3").json()
 

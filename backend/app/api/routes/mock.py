@@ -15,7 +15,12 @@ from app.services.summarizer import summarize
 mock_router = APIRouter()
 
 # A mock is only worth having if it answers the shape the real API answers, so
-# it is built from the same models with the offsets the text really has.
+# it is built from the same models with the offsets the text really has. The
+# offsets are not part of that shape: `EntityDetail` excludes them from
+# serialisation, so they never reach the response here any more than on the real
+# route. They are set because the summarizer reads them - it pairs an
+# examination with the value that follows it - and a mock built without them
+# would answer a summary the real route would not.
 # MOCK_TEXT is not served by any endpoint. It is what the offsets below are
 # measured against, and test_mock_route.py asserts that they still land on their
 # entity - deleting it as unused would delete that check.

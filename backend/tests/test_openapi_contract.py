@@ -82,6 +82,17 @@ def test_the_exported_schema_still_describes_the_app(schema):
     )
 
 
+def test_the_entity_contract_names_no_offsets(schema):
+    # `start` and `end` index the text extracted from the document, and the API
+    # never returns that text - so an offset was unusable to a caller and was
+    # position information about clinical content leaving the server for no
+    # gain. They stay on the model, excluded from serialisation, because the
+    # summarizer pairs an examination with its value by them.
+    entity = schema["components"]["schemas"]["EntityDetail"]
+
+    assert set(entity["properties"]) == {"text", "label", "score"}
+
+
 STREAM = "/api/analyze/stream"
 EVENT_STREAM = "text/event-stream"
 
