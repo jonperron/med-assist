@@ -11,6 +11,18 @@ from app.main import DEVELOPMENT, PRODUCTION, create_app
 
 MOCK_PATH = "/mock_summary"
 
+# The stored-document endpoints this service used to serve. Kept as a fixed
+# list so a future change that reintroduces one of them - even under a
+# router mounted for another reason - fails a test rather than shipping
+# silently: this service stores nothing, and mounting any of these again is a
+# decision entry before it is code.
+REMOVED_STORED_DOCUMENT_ENDPOINTS = {
+    "/api/upload_document/",
+    "/api/upload_documents/",
+    "/api/get_extracted_text/{file_id}",
+    "/api/documents/{file_id}",
+}
+
 
 def paths(app):
     return {route.path for route in app.routes}
@@ -18,6 +30,26 @@ def paths(app):
 
 def test_production_does_not_mount_the_development_endpoints():
     assert MOCK_PATH not in paths(create_app(PRODUCTION))
+
+
+def test_neither_environment_mounts_a_stored_document_endpoint():
+    for environment in (PRODUCTION, DEVELOPMENT):
+        assert not REMOVED_STORED_DOCUMENT_ENDPOINTS & paths(create_app(environment))
+
+
+def test_a_stored_document_request_answers_not_found(monkeypatch):
+    # The model is never involved in routing a 404, but building the real
+    # application still loads it at startup - stubbed here the same way the
+    # other TestClient-backed tests in this module stub it.
+    monkeypatch.setattr(main, "get_entity_extractor", lambda: object())
+
+    with TestClient(create_app(PRODUCTION)) as client:
+        file_id = "123e4567-e89b-12d3-a456-426614174000"
+
+        assert client.post("/api/upload_document/").status_code == 404
+        assert client.post("/api/upload_documents/").status_code == 404
+        assert client.get(f"/api/get_extracted_text/{file_id}").status_code == 404
+        assert client.delete(f"/api/documents/{file_id}").status_code == 404
 
 
 def test_development_mounts_them_when_asked_explicitly():
