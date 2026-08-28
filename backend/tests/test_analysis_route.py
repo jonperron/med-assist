@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.analysis import router
+from app.api.routes.analysis import ENTITY_CATEGORIES, router
 from app.core.dependencies import get_entity_extractor, get_text_extractor
 from app.core.middleware import MAX_REQUEST_SIZE_BYTES, REQUEST_TOO_LARGE
 from app.interfaces.service_interfaces import (
@@ -446,7 +446,7 @@ class TestTheEntityPayloadIsUntouched:
 
     The summarizer joins an examination to its value on a copy. If that copy
     ever reached `documents`, a caller reading `examinations[0].text` would get
-    a span that is not in the document, at offsets that no longer index it.
+    a span that is not in the document.
     """
 
     @pytest.fixture
@@ -478,7 +478,25 @@ class TestTheEntityPayloadIsUntouched:
         # The document still reports the span the model actually marked.
         examination = body["documents"][0]["examinations"][0]
         assert examination["text"] == "Troponine I"
-        assert (examination["start"], examination["end"]) == (0, 11)
+
+    def test_the_pairing_reads_offsets_the_response_does_not_carry(
+        self, client, mock_entity_extractor, paired
+    ):
+        # The two halves of this change, asserted together: the summarizer
+        # still pairs by `start` and `end` - it produced the joined finding
+        # above - and neither offset crosses the boundary. Deleting them from
+        # the model would break the first; serialising them would undo the
+        # second.
+        mock_entity_extractor.extract_entities = AsyncMock(return_value=paired)
+
+        body = client.post("/api/analyze", files=[txt()]).json()
+
+        assert all(
+            "start" not in entity and "end" not in entity
+            for document in body["documents"]
+            for category in ENTITY_CATEGORIES
+            for entity in document[category]
+        )
 
 
 def test_an_unexpected_entity_shape_is_a_server_error(

@@ -13,20 +13,30 @@ class EntityDetail(BaseModel):
     text: str = Field(description="The extracted entity text")
     label: str = Field(description="The entity label/type from the NER model")
     score: float = Field(description="Confidence score (0-1)")
+    # The two offsets below index the text extracted from the document, and
+    # that text never leaves the server - so an offset was unusable to a caller
+    # and was, strictly, position information about clinical content crossing
+    # the boundary for no gain. `exclude=True` keeps them off the wire and out
+    # of the serialisation-mode schema FastAPI generates responses from, while
+    # leaving them readable in Python: the summarizer pairs an examination with
+    # the value that follows it by comparing them, and that runs before the
+    # response is built.
     start: Optional[int] = Field(
         default=None,
+        exclude=True,
         description=(
-            "Start position in the text extracted from the document. The API "
-            "never returns that text, so the span can only be located by "
-            "extracting it again the same way."
+            "Internal only, never serialised: where the span starts in the "
+            "text extracted from the document. The summarizer pairs spans by "
+            "it; no response carries it."
         ),
     )
     end: Optional[int] = Field(
         default=None,
+        exclude=True,
         description=(
-            "End position in the text extracted from the document. The API "
-            "never returns that text, so the span can only be located by "
-            "extracting it again the same way."
+            "Internal only, never serialised: where the span ends in the text "
+            "extracted from the document. The summarizer pairs spans by it; no "
+            "response carries it."
         ),
     )
 

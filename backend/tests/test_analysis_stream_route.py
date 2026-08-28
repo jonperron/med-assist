@@ -25,7 +25,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes.analysis import analyze_stream, router
+from app.api.routes.analysis import ENTITY_CATEGORIES, analyze_stream, router
 from app.core.dependencies import get_entity_extractor, get_text_extractor
 from app.core.middleware import MAX_REQUEST_SIZE_BYTES, REQUEST_TOO_LARGE
 from app.interfaces.service_interfaces import (
@@ -152,6 +152,20 @@ class TestTheAnswer:
         plain = client.post("/api/analyze", files=[txt(), txt()])
 
         assert [event["result"] for event in streamed] == [plain.json()]
+
+    def test_the_result_carries_no_entity_offsets(self, client):
+        # The offsets index text the API never returns, so `EntityDetail`
+        # excludes them. `response_model` documents an SSE payload without
+        # filtering it, so the stream is asserted on its own rather than left
+        # to the parity test above: the two would agree even if both leaked.
+        [result] = stages(client.post(STREAM, files=[txt()]), "result")
+
+        assert all(
+            "start" not in entity and "end" not in entity
+            for document in result["result"]["documents"]
+            for category in ENTITY_CATEGORIES
+            for entity in document[category]
+        )
 
     def test_parity_holds_where_a_document_could_not_be_read(
         self, client, mock_text_extractor

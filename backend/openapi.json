@@ -418,18 +418,6 @@
       "EntityDetail": {
         "description": "Detailed information about an extracted entity.",
         "properties": {
-          "end": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "End position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.",
-            "title": "End"
-          },
           "label": {
             "description": "The entity label/type from the NER model",
             "title": "Label",
@@ -439,18 +427,6 @@
             "description": "Confidence score (0-1)",
             "title": "Score",
             "type": "number"
-          },
-          "start": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Start position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.",
-            "title": "Start"
           },
           "text": {
             "description": "The extracted entity text",

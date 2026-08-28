@@ -54,10 +54,12 @@ build, so a broken test reaches `main` unless it is caught here. Run all three.
   to reach its own backend.
 - API errors arrive as `{"detail": {"message": ...}}`. Read that shape before
   falling back to a generic message.
-- Document text and entity offsets are optional by design. The API stores
-  nothing and never returns the text it read, so a component that assumes the
-  prose is present breaks on every case, not a rare one. Offsets may arrive, but
-  they index text the client does not have.
+- The API stores nothing and never returns the text it read, so a component
+  that assumes the prose is present breaks on every case, not a rare one. It
+  does not return entity offsets either: they index that text, so they were
+  unusable here, and since 2026-08-28 they stay on the server model for the
+  summarizer's own use. Do not write handling for a span position - the
+  generated types no longer carry one.
 - Nothing clinical goes into `localStorage`, `sessionStorage`, a cookie, a URL,
   or any analytics or logging sink. Page state only.
 - Strip untrusted text at the render boundary with `lib/safeText`. A finding,

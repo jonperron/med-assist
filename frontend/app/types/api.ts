@@ -419,11 +419,6 @@ export interface components {
          */
         EntityDetail: {
             /**
-             * End
-             * @description End position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.
-             */
-            end?: number | null;
-            /**
              * Label
              * @description The entity label/type from the NER model
              */
@@ -433,11 +428,6 @@ export interface components {
              * @description Confidence score (0-1)
              */
             score: number;
-            /**
-             * Start
-             * @description Start position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.
-             */
-            start?: number | null;
             /**
              * Text
              * @description The extracted entity text
