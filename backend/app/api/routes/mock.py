@@ -1,19 +1,15 @@
 from datetime import date, timedelta
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Query
 
-from app.core.validation import parse_file_id
 from app.use_cases.validate_file import MAX_BATCH_FILES
 from app.schemas.extraction import (
     AnalysisResponse,
     AnalyzedDocument,
     EntityDetail,
-    ExtractedEntities,
-    ExtractionResponse,
     UnreadableReason,
 )
-from app.services.file_handler import drop_offsets
 from app.services.summarizer import summarize
 
 mock_router = APIRouter()
@@ -59,50 +55,6 @@ MOCK_ENTITIES: Dict[str, List[EntityDetail]] = {
 # never drift into the future as the mock keeps being served.
 MOCK_FIRST_DATE = date(2024, 3, 4)
 MOCK_DATE_STEP = timedelta(days=7)
-
-
-@mock_router.get(
-    "/mock_extracted_text/{file_id}",
-    response_model=ExtractionResponse,
-    responses={
-        200: {
-            "model": ExtractionResponse,
-            "description": "Mocked extracted text and entities (dev only)",
-        }
-    },
-    tags=["dev", "mock"],
-)
-async def mock_extracted_text(
-    file_id: str = Path(
-        ...,
-        description="Unique identifier for the mock extracted text",
-        examples=["123e4567-e89b-12d3-a456-426614174000"],
-    ),
-    retained: bool = Query(
-        default=False,
-        description=(
-            "Answer as a deployment that kept the document text "
-            "(STORE_DOCUMENT_TEXT=true). Off by default, like the deployment."
-        ),
-    ),
-) -> ExtractionResponse:
-    """
-    Mock endpoint for frontend development.
-
-    Returns a dummy ExtractionResponse payload. Nothing here is read from
-    storage and no model runs, but the id is validated and the default answer
-    is the one the shipped configuration gives: no text, and no offsets, since
-    an offset means nothing without the text it indexes.
-    """
-    entities = MOCK_ENTITIES if retained else drop_offsets(MOCK_ENTITIES)
-
-    return ExtractionResponse(
-        file_id=str(parse_file_id(file_id)),
-        text=MOCK_TEXT if retained else None,
-        extracted_entities=ExtractedEntities(**entities),
-        mapping_info={"language": "fr", "dataset": "french_clinical"},
-        expires_in_seconds=3600,
-    )
 
 
 @mock_router.get(

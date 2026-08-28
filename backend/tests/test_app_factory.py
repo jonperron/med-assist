@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.main import DEVELOPMENT, PRODUCTION, create_app
 
-MOCK_PATH = "/mock_extracted_text/{file_id}"
+MOCK_PATH = "/mock_summary"
 
 
 def paths(app):

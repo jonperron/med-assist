@@ -16,7 +16,6 @@ const RESULT = {
     empty: true,
   },
   documents: [],
-  retained: false,
 } as unknown as AnalysisResponse
 
 function frame(event: unknown): string {

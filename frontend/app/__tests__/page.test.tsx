@@ -22,7 +22,6 @@ const RESULT: AnalysisResponse = {
     empty: false,
   },
   documents: [],
-  retained: false,
 }
 
 function frame(event: unknown): string {

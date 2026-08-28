@@ -11,10 +11,8 @@ from fastapi.responses import JSONResponse
 
 from app.api import (
     analysis_router,
-    extractions_router,
     health_router,
     mock_router,
-    uploads_router,
 )
 from app.core.dependencies import get_entity_extractor
 from app.core.middleware import forbid_caching, reject_oversized_requests
@@ -139,11 +137,6 @@ def create_app(app_env: str | None = None) -> FastAPI:
     application.include_router(
         analysis_router, prefix="/api", tags=["Stateless Analysis"]
     )
-    application.include_router(uploads_router, prefix="/api", tags=["Document Uploads"])
-    application.include_router(
-        extractions_router, prefix="/api", tags=["Text Extractions"]
-    )
-
     if environment == DEVELOPMENT:
         application.include_router(mock_router)
 

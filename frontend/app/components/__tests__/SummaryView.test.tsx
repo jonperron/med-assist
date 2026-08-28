@@ -79,7 +79,6 @@ function response(
   return {
     summary: summary(overrides),
     documents: analyzed(dates, read),
-    retained: false,
   }
 }
 

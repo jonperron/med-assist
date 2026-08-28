@@ -114,7 +114,6 @@ def test_analyze_does_not_echo_the_document_text(client):
 def test_analyze_never_stores_anything(client):
     body = client.post("/api/analyze", files=[txt()]).json()
 
-    assert body["retained"] is False
     # Nothing to come back for: no identifier is issued.
     assert "file_id" not in body
     assert "expires_in_seconds" not in body
