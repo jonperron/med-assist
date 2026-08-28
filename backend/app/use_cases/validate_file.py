@@ -77,8 +77,8 @@ async def validate_batch(files: List[UploadFile]) -> None:
     Refuse a batch before any of it is processed.
 
     The whole batch is validated up front so a refusal on the fourth file
-    cannot leave the first three already analysed - or, on the storing path,
-    already written under ids the caller never receives.
+    cannot leave the first three already analysed, paying for inference the
+    caller is then told nothing about.
 
     :param files: The uploaded files.
     :raises HTTPException: 400 for an empty batch or a rejected file, 413 for a

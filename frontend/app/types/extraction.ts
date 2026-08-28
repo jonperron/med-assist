@@ -6,12 +6,9 @@
 import type { components } from './api'
 
 export type EntityDetail = components['schemas']['EntityDetail']
-export type ExtractedEntities = components['schemas']['ExtractedEntities']
-export type ExtractionResponse = components['schemas']['ExtractionResponse']
 export type AnalysisResponse = components['schemas']['AnalysisResponse']
 export type ClinicalSummary = components['schemas']['ClinicalSummary']
 export type SummarySection = components['schemas']['SummarySection']
-export type UploadResponse = components['schemas']['UploadResponse']
 export type ErrorResponse = components['schemas']['ErrorResponse']
 export type Finding = components['schemas']['Finding']
 export type AnalyzedDocument = components['schemas']['AnalyzedDocument']

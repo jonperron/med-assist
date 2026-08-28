@@ -112,130 +112,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/documents/{file_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Document
-         * @description Delete a stored document before its retention window expires.
-         *
-         *     Args:
-         *         file_id: The unique identifier of the document to delete
-         *         text_repository: Injected text repository dependency
-         *
-         *     Raises:
-         *         HTTPException: 400 for a malformed file ID, 404 if nothing was stored
-         */
-        delete: operations["delete_document_api_documents__file_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/get_extracted_text/{file_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Extracted Text
-         * @description Endpoint to retrieve the entities extracted from a processed file.
-         *
-         *     Entities are extracted at upload time, so this only reads what was stored.
-         *     The document text comes back only when the deployment kept it.
-         *
-         *     Args:
-         *         file_id: The unique identifier of the file to read
-         *         text_repository: Injected text repository dependency
-         *         entity_extractor: Injected entity extractor dependency
-         *
-         *     Returns:
-         *         ExtractionResponse: Contains the file ID, identified medical entities and,
-         *         when retained, the extracted text
-         *
-         *     Raises:
-         *         HTTPException: 404 if file not found or not processed yet
-         */
-        get: operations["get_extracted_text_api_get_extracted_text__file_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/upload_document/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload Document
-         * @description Upload a medical document for text extraction and entity recognition.
-         *
-         *     Args:
-         *         file: The uploaded file (PDF, DOCX, TXT)
-         *
-         *     Returns:
-         *         UploadResponse: Contains file ID, filename, and upload confirmation
-         *
-         *     Raises:
-         *         HTTPException: 400 for invalid file type, 500 for server errors
-         */
-        post: operations["upload_document_api_upload_document__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/upload_documents/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload Documents
-         * @description Upload multiple medical documents for text extraction and entity recognition.
-         *
-         *     Each file is processed on its own and answered with its own id. The batch id
-         *     only correlates the files of this request: nothing is written under it, so
-         *     there is one less patient-adjacent key living out a retention window.
-         *
-         *     Args:
-         *         files: The uploaded files (PDF, DOCX, TXT)
-         *
-         *     Returns:
-         *         MultipleUploadResponse: Contains batch id with associated file ids
-         *
-         *     Raises:
-         *         HTTPException: 400 for invalid file type, 500 for server errors
-         */
-        post: operations["upload_documents_api_upload_documents__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -349,12 +225,6 @@ export interface components {
             mapping_info?: {
                 [key: string]: string;
             } | null;
-            /**
-             * Retained
-             * @description Always false: this endpoint never writes to storage
-             * @default false
-             */
-            retained: boolean;
             /** @description The submitted documents merged into one readable patient summary. This is what the endpoint is for; the rest is detail behind it. */
             summary: components["schemas"]["ClinicalSummary"];
         };
@@ -468,22 +338,6 @@ export interface components {
              */
             files: string[];
         };
-        /** Body_upload_document_api_upload_document__post */
-        Body_upload_document_api_upload_document__post: {
-            /**
-             * File
-             * @description The file to upload (PDF, DOCX, TXT).
-             */
-            file: string;
-        };
-        /** Body_upload_documents_api_upload_documents__post */
-        Body_upload_documents_api_upload_documents__post: {
-            /**
-             * Files
-             * @description List of medical documents to upload. Supported formats: PDF, DOCX, TXT. Maximum size: 10MB per file.
-             */
-            files: string[];
-        };
         /**
          * ClinicalSummary
          * @description A readable summary of one or more documents about the same patient.
@@ -566,7 +420,7 @@ export interface components {
         EntityDetail: {
             /**
              * End
-             * @description End position in the text. Absent when the document text was not retained, since an offset means nothing without the text.
+             * @description End position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.
              */
             end?: number | null;
             /**
@@ -581,7 +435,7 @@ export interface components {
             score: number;
             /**
              * Start
-             * @description Start position in the text. Absent when the document text was not retained, since an offset means nothing without the text.
+             * @description Start position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.
              */
             start?: number | null;
             /**
@@ -647,98 +501,6 @@ export interface components {
             detail: components["schemas"]["ErrorDetail"];
         };
         /**
-         * ExtractedEntities
-         * @description All extracted medical entities grouped by category.
-         */
-        ExtractedEntities: {
-            /**
-             * Anatomy
-             * @description Anatomical structures
-             * @default []
-             */
-            anatomy: components["schemas"]["EntityDetail"][];
-            /**
-             * Examinations
-             * @description Medical examinations
-             * @default []
-             */
-            examinations: components["schemas"]["EntityDetail"][];
-            /**
-             * Measurements
-             * @description Measurements and values
-             * @default []
-             */
-            measurements: components["schemas"]["EntityDetail"][];
-            /**
-             * Other
-             * @description Other medical entities
-             * @default []
-             */
-            other: components["schemas"]["EntityDetail"][];
-            /**
-             * Pathologies
-             * @description Diseases and conditions
-             * @default []
-             */
-            pathologies: components["schemas"]["EntityDetail"][];
-            /**
-             * Patient Info
-             * @description Patient demographic information
-             * @default []
-             */
-            patient_info: components["schemas"]["EntityDetail"][];
-            /**
-             * Symptoms
-             * @description Signs and symptoms
-             * @default []
-             */
-            symptoms: components["schemas"]["EntityDetail"][];
-            /**
-             * Temporal
-             * @description Temporal information
-             * @default []
-             */
-            temporal: components["schemas"]["EntityDetail"][];
-            /**
-             * Treatments
-             * @description Treatments and medications
-             * @default []
-             */
-            treatments: components["schemas"]["EntityDetail"][];
-        };
-        /** ExtractionResponse */
-        ExtractionResponse: {
-            /**
-             * Expires In Seconds
-             * @description Seconds before the stored document is automatically deleted
-             */
-            expires_in_seconds?: number | null;
-            /** @description Medical entities found in the text with detailed information */
-            extracted_entities: components["schemas"]["ExtractedEntities"];
-            /**
-             * File Id
-             * @description Unique identifier of the processed file
-             */
-            file_id: string;
-            /**
-             * Mapping Info
-             * @description Information about the label mapping used (language, dataset)
-             */
-            mapping_info?: {
-                [key: string]: string;
-            } | null;
-            /**
-             * Processed At
-             * @description When the extraction was completed
-             */
-            processed_at?: string | null;
-            /**
-             * Text
-             * @description Extracted text from the document. Null unless the deployment opted into storing document text.
-             */
-            text?: string | null;
-        };
-        /**
          * FailureReason
          * @description What kind of failure ended the batch, for a caller that has to act on it.
          *
@@ -772,34 +534,6 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** MultipleUploadResponse */
-        MultipleUploadResponse: {
-            /**
-             * Batch Id
-             * @description Identifier correlating the files of one upload request. Nothing is stored under it: the batch cannot be resolved server-side, only the file IDs can.
-             */
-            batch_id: string;
-            /**
-             * File Ids
-             * @description List of file IDs in the batch
-             */
-            file_ids: string[];
-            /**
-             * Message
-             * @description Batch upload status message
-             */
-            message: string;
-            /**
-             * Total Files
-             * @description Total number of files processed
-             */
-            total_files?: number | null;
-            /**
-             * Uploaded At
-             * @description Upload timestamp
-             */
-            uploaded_at?: string | null;
         };
         /**
          * SummarySection
@@ -838,44 +572,6 @@ export interface components {
          * @enum {string}
          */
         UnreadableReason: "no_text";
-        /** UploadResponse */
-        UploadResponse: {
-            /**
-             * Content Type
-             * @description MIME type of the file
-             */
-            content_type?: string | null;
-            /**
-             * Expires In Seconds
-             * @description Seconds before the stored document is automatically deleted
-             */
-            expires_in_seconds?: number | null;
-            /**
-             * File Id
-             * @description Unique identifier of the uploaded file
-             */
-            file_id: string;
-            /**
-             * Filename
-             * @description Original filename
-             */
-            filename: string;
-            /**
-             * Message
-             * @description Upload status message
-             */
-            message: string;
-            /**
-             * Size
-             * @description File size in bytes
-             */
-            size?: number | null;
-            /**
-             * Uploaded At
-             * @description Upload timestamp
-             */
-            uploaded_at?: string | null;
-        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1037,251 +733,6 @@ export interface operations {
                 };
             };
             /** @description Internal server error, raised before the stream opened. A failure after that is a `result`-less `error` event instead. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The model is not loaded yet */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    delete_document_api_documents__file_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Unique identifier of the document to delete */
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Document deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Invalid file ID format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Document not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_extracted_text_api_get_extracted_text__file_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Unique identifier of the uploaded file to read entities from */
-                file_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExtractionResponse"];
-                };
-            };
-            /** @description Invalid file ID format */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description File not found or not processed yet */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description The model is not loaded yet */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    upload_document_api_upload_document__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_document_api_upload_document__post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UploadResponse"];
-                };
-            };
-            /** @description Invalid file type, or a document that cannot be read */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description File too large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The model is not loaded yet */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    upload_documents_api_upload_documents__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_documents_api_upload_documents__post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MultipleUploadResponse"];
-                };
-            };
-            /** @description Invalid file type, or a document that cannot be read */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description A file is too large, or the batch holds too many files */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Internal server error */
             500: {
                 headers: {
                     [name: string]: unknown;

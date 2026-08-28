@@ -9,7 +9,6 @@ This is the backend for the Med-Assist application, built with FastAPI and uv.
 * Named Entity Recognition (NER) for medical terms
 * Clinical summaries built from the extracted entities, one or many documents at a time
 * Stateless analysis in a single request, storing nothing
-* Encrypted, entity-only Redis storage for documents kept for later
 * RESTful API with automatic OpenAPI documentation
 
 ## Getting Started
@@ -21,67 +20,54 @@ These instructions will get you a copy of the project up and running on your loc
 * Python 3.12+
 * [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-### Configuration requirements
+### Configuration
 
-The application requires two main configurations to be set up properly:
-
-#### Redis Configuration
-
-The application uses Redis for storing extracted text and processing results. Configure the following:
+The application reads its configuration from the environment. None of it is
+secret: the service stores nothing, so there is no datastore to reach and no
+key to hold.
 
 **Environment Variables:**
 
+* `NER_MODEL_NAME`: Path to the local model directory. Required.
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
-* `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`). Include the password when Redis requires one: `redis://:<password>@localhost:6379/0`.
-* `RETENTION_TTL_SECONDS`: Lifetime of every stored value, in seconds (default: `3600`). Every key written by the application carries this expiry, so stored documents are deleted automatically.
-* `STORAGE_ENCRYPTION_KEY`: Fernet key used to encrypt every value before it is written. When unset, an ephemeral key is generated at startup: values stay encrypted, but stored documents become unreadable after a restart. Generate one with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
-* `STORE_DOCUMENT_TEXT`: Keep the extracted text next to the entities (default: `false`).
 * `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
+* `NER_INFERENCE_THREADS` and `NER_MAX_CONCURRENT_INFERENCES`: see [Inference runs on the CPU](#inference-runs-on-the-cpu).
 
 **Example:**
 
 ```bash
-export REDIS_URL="redis://localhost:6379"
-export RETENTION_TTL_SECONDS=3600
-export STORAGE_ENCRYPTION_KEY="<fernet key>"
+export NER_MODEL_NAME="/app/models/"
+export APP_ENV=production
 ```
+
 
 ### What is stored
 
-The default is to store nothing at all:
+Nothing. There is no datastore behind this service and no endpoint that writes
+one:
 
 * `POST /api/analyze` extracts text, runs NER and returns the merged summary - plus
-  the per-document entities behind it - in the same response. It never touches Redis,
-  issues no file id, and leaves nothing to delete.
+  the per-document entities behind it - in the same response. It issues no file id,
+  and leaves nothing to delete.
 * `POST /api/analyze/stream` does the same work and stores no more, reporting each
   document as it is read so a caller can show progress. Nothing is held between
   events: the batch is one request from start to finish.
-* `POST /api/upload_document/` is for documents that must be reopened later. It stores
-  the categorised entities under `doc:{file_id}:entities` and, only when
-  `STORE_DOCUMENT_TEXT=true`, the text under `doc:{file_id}:text`.
-* `POST /api/upload_documents/` stores each file exactly as the single upload does. The
-  `batch_id` it returns correlates the files of that response only: nothing is written
-  under it and no endpoint resolves it.
-* Entities are extracted once, at upload. Reading a document never runs the model again.
-* When the text is not stored, entity `start`/`end` offsets are dropped: an offset
-  means nothing without the text it indexes.
-* Every value is encrypted before it reaches Redis.
-* Entities are stored as the model found them. A categorised span is still patient
-  data: `patient_info` in particular holds the age and sex the model marked.
+* The document text is never echoed back. The summary is the product, and returning
+  the text would widen what leaves the server for no gain.
+* Entity `start`/`end` offsets index the text the document yielded, which the API
+  does not return. They locate a span only for a caller that still holds the
+  document.
 * Uploaded files above 1 MB are spooled to `TMPDIR` by the HTTP server before any route
   code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
   the container's writable layer; a bare `uvicorn` run does not, and will write them to
-  disk.
-* With an unset `STORAGE_ENCRYPTION_KEY`, each worker generates its own key — run a
-  single worker, or configure a key.
+  disk. This is the only place a submitted document touches a filesystem, and it is
+  the reason `TMPDIR` is worth checking on any other deployment.
 
-### Data retention
+A document is therefore analysed once per request. There is no analyse-once,
+read-later flow: summarising the same document again means submitting it again,
+at the cost of a fresh inference. The endpoints that once stored documents were
+removed on 2026-08-28 - see the decision entry in `openwiki/decisions/`.
 
-Stored documents are never kept indefinitely:
-
-* Every key is written with an expiry of `RETENTION_TTL_SECONDS`.
-* `GET /api/get_extracted_text/{file_id}` and `POST /api/upload_document/` return `expires_in_seconds` so a client can show the remaining time.
-* `DELETE /api/documents/{file_id}` removes a document — text and entities — before its window closes. It answers `204` on success and `404` when nothing was stored.
 
 ### Summaries
 
@@ -93,8 +79,7 @@ is what makes merging them meaningful. A finding named in three of them is repor
 once, and findings are ordered by how many documents support them. Each finding
 carries the indices of the documents it was found in, so a caller can name the source
 beside it — the index is into the request's own file order, and this path never needs
-a filename to travel. (`POST /api/upload_document/` does echo the submitted filename
-back to whoever sent it; the analysis path issues no id and echoes nothing.)
+a filename to travel: no endpoint issues an id, and none echoes a filename back.
 
 The summary is assembled, not generated. Every word in it is either a fixed heading
 or a span the model marked in the submitted documents, so it cannot state anything
@@ -234,9 +219,10 @@ The date is never rendered into the summary's wording — it is metadata beside 
 
 ### Logging
 
-The file id is the only identifier that may be logged. Clinical filenames routinely carry
-patient names, and parser errors quote the bytes that failed to parse, so error paths log
-the file id and the exception type — never the filename, the message or a traceback.
+No identifier is minted for a submitted document, so none is logged. Clinical filenames
+routinely carry patient names, and parser errors quote the bytes that failed to parse, so
+error paths log the exception type and, where one applies, the document's position in the
+batch — never the filename, the message or a traceback.
 
 ### NER Model Configuration
 
@@ -325,13 +311,10 @@ queued.
   `{"detail": {"message": ...}}` envelope as every other route.
 * A model that fails to load leaves the service up and permanently unready. The
   exception type is logged; the model path is not.
-* The routes that need the model — `/api/analyze`, `/api/analyze/stream`, both
-  uploads, and `/api/get_extracted_text/{file_id}` — answer `503` while it is
-  unloaded, so a
-  failed load costs one refusal per request rather than a fresh multi-second
-  load attempt each time (`functools.lru_cache` does not memoise an exception).
-  `DELETE /api/documents/{file_id}` is not gated: withdrawing a document must
-  not depend on inference being up.
+* The routes that need the model — `/api/analyze` and `/api/analyze/stream` —
+  answer `503` while it is unloaded, so a failed load costs one refusal per
+  request rather than a fresh multi-second load attempt each time
+  (`functools.lru_cache` does not memoise an exception).
 
 `docker-compose.yml` gives the backend a healthcheck on `/readyz` with a
 `start_period` long enough to cover the load.

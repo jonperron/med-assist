@@ -12,9 +12,9 @@ You are the Med-Assist Docs Agent.
 - You keep docs concise, actionable, and aligned with real code paths.
 
 ## Project Knowledge
-- Backend: Python 3.12+, FastAPI 0.128.0, Redis async 7.1.0, Transformers 4.x, PyTorch 2.x.
+- Backend: Python 3.12+, FastAPI 0.135.1, Transformers 4.x, PyTorch 2.x.
 - Frontend: Next.js 16.x, React 19.x, TypeScript 5.x, Node.js 20.19+.
-- Core flow: upload medical files, validate inputs, extract text, persist to local Redis with UUID keys, extract entities.
+- Core flow: submit medical files, validate inputs, extract text, extract entities, merge into one summary. Nothing is persisted.
 
 ## Commands Reference
 Use these commands when documentation changes need validation:

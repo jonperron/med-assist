@@ -37,21 +37,20 @@ The system must prioritize:
 
 ## 3) Tech Stack
 
-- Backend: Python 3.12+, FastAPI `0.135.1`, Redis async client `7.1.0`, Transformers `4.x`, PyTorch `2.x`.
+- Backend: Python 3.12+, FastAPI `0.135.1`, Transformers `4.x`, PyTorch `2.x`.
 - Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `24.x`.
-- Storage: local Redis only, UUID-based keys, limited retention footprint.
-- Infra: Docker Compose with `redis`, `backend`, and `frontend` services.
+- Storage: none. The API keeps nothing after a request; there is no datastore.
+- Infra: Docker Compose with `backend` and `frontend` services.
 
 ## 4) Project Structure
 
-- `backend/app/api/routes/`: HTTP routes (`analysis`, `uploads`, `extractions`, `health`, `mock`).
-- `backend/app/services/`: extraction and file processing logic.
-- `backend/app/repositories/` and `backend/app/db/`: Redis-backed persistence layer.
+- `backend/app/api/routes/`: HTTP routes (`analysis`, `health`, `mock`).
+- `backend/app/services/`: extraction, summarisation and document-dating logic.
 - `backend/tests/` + root-level backend tests: unit/integration tests.
 - `frontend/app/`: Next.js app router pages and components.
 
 Nominal flow:
-1. Upload one or multiple medical files (PDF, DOC, DOCX, TXT).
+1. Submit one or multiple medical files (PDF, DOCX, TXT).
 2. Validate MIME type and extension.
 3. Extract text.
 4. Extract medical entities.
@@ -62,14 +61,12 @@ Nominal flow:
    that yields no text is skipped rather than failing the batch; each finding
    reports the submission indices of the documents it came from, never a
    filename.
-6. Return the API response. The default path (`POST /api/analyze`) stores nothing;
+6. Return the API response. `POST /api/analyze` answers in one response;
    `POST /api/analyze/stream` is the same work reported document by document as
-   Server-Sent Events, and stores nothing either - its progress events carry a
-   position and a read flag, never document content, and its final event is the
-   body the default path would have returned. The upload path stores the
-   categorised entities under UUID keys in local Redis,
-   and the document text only when `STORE_DOCUMENT_TEXT` is set. A multi-file
-   upload stores each file that way and writes nothing under its batch id.
+   Server-Sent Events - its progress events carry a position and a read flag,
+   never document content, and its final event is the body the default path
+   would have returned. Neither stores anything, and they are the only two
+   analysis endpoints: the stored-document routes were removed on 2026-08-28.
 
 ## 5) Testing and Validation Rules
 
@@ -84,12 +81,14 @@ Nominal flow:
 - Make small, reversible, testable changes.
 - Preserve public API contracts unless explicitly asked to change them.
 - Keep error messages safe: no stack traces, secrets, or patient identifiers in responses.
-- Validate external input boundaries (file type, extension, ID format).
+- Validate external input boundaries (file type, extension, batch size, and
+  the format of any identifier an endpoint accepts - today none does).
 - Never prefix a name with an underscore. Python has no private members, so
   `_helper` hides nothing — it only asks politely, and the request is
   unenforceable.
 
-One concrete example of expected backend style:
+One concrete example of expected backend style. It illustrates the shape of
+a boundary check and is not code in the tree - no endpoint takes an id:
 
 ```python
 from uuid import UUID
@@ -186,7 +185,7 @@ Recommended prompt template:
 
 ```text
 Perform a security review of this change set in thorough mode.
-Focus on patient data exposure, secret handling, input validation, Redis key safety,
+Focus on patient data exposure, secret handling, input validation,
 external data egress, and production config boundaries.
 Return only actionable findings with severity, affected files, and remediation steps.
 ```
@@ -201,7 +200,7 @@ Invocation examples:
 - `@Lint Agent Run a lint/static-check pass in medium mode. Keep fixes minimal and behavior-preserving.`
 - `@Test Agent Run a test pass in medium mode. Focus on missing tests and execute relevant quality gates.`
 - `@Review Agent Review this change set in medium mode. Focus on behavior regressions, API compatibility, and missing tests.`
-- `@Security Agent Perform a thorough security review focused on patient data exposure, input validation, and Redis key safety.`
+- `@Security Agent Perform a thorough security review focused on patient data exposure, input validation, and external data egress.`
 
 ## 9) Security and Data Boundaries (Never Cross)
 
@@ -209,7 +208,7 @@ Never do any of the following:
 - Never expose patient data in logs, error payloads, traces, fixtures, or screenshots.
 - Never hardcode secrets or tokens in code, tests, or docs.
 - Never send patient content to external APIs or cloud services.
-- Never use patient-identifiable values as Redis keys.
+- Never introduce persistent storage of patient data without an explicit decision entry.
 - Never modify production deployment configs or credentials as part of routine feature work.
 - Never edit dependency/vendor/model artifact directories unless explicitly requested:
   - `backend/models/`
@@ -224,7 +223,7 @@ Always do:
 - Keep secrets in environment variables only.
 - Keep CORS strict and environment-aligned.
 - Minimize persisted data and justify any new persistent field.
-- Prefer explicit Redis TTLs when retention is introduced.
+- If retention is ever reintroduced, it needs explicit TTLs and its own decision entry.
 
 The working detail behind these boundaries is loaded on demand by each tool when
 a change touches upload handling, storage, logging, or deployment config. The

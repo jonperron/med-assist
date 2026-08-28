@@ -20,17 +20,11 @@ It is not intended for use in clinical decision-making and should not replace pr
 - **Local-first by design**
   Med-Assist runs entirely on your infrastructure—no external APIs or cloud dependencies.
 
-- **Nothing stored by default**
-  `POST /api/analyze` reads a document, extracts its entities and answers in a single request. Nothing reaches storage, so there is no file id to come back for and nothing to delete. `POST /api/analyze/stream` streams the same work document by document so a caller can show progress; it holds nothing between events either.
+- **Nothing stored, at all**
+  `POST /api/analyze` reads a document, extracts its entities and answers in a single request. Nothing reaches storage, so there is no file id to come back for and nothing to delete. `POST /api/analyze/stream` streams the same work document by document so a caller can show progress; it holds nothing between events either. These two are the whole API: there is no datastore behind the service and no endpoint that writes one.
 
-- **Entities, not prose**
-  When a document is uploaded for later, only the categorised entities are kept — a few hundred bytes of clinical vocabulary rather than a complete patient record. Set `STORE_DOCUMENT_TEXT=true` to keep the text as well.
-
-- **Secure storage**
-  All data is stored in a local Redis instance that is reachable only from the internal Docker network, requires a password, and never writes to disk. Every value is encrypted with `STORAGE_ENCRYPTION_KEY` before it is written.
-
-- **Automatic deletion**
-  Every stored document expires after `RETENTION_TTL_SECONDS` (one hour by default). `DELETE /api/documents/{file_id}` removes a document immediately.
+- **Nothing to expire, nothing to erase**
+  Retention is bounded by the request rather than by a timer. A submitted document lives in memory for as long as it takes to answer, and the only trace it leaves is the multipart spool the HTTP server writes for parts above 1 MB — which `docker-compose.yml` puts on a `tmpfs`.
 
 - **No language model, no egress**
   Summaries are assembled from NER output by fixed rules, not generated. Document text is never sent anywhere, and `POST /api/analyze` does not even echo it back to the caller.
@@ -42,11 +36,27 @@ It is not intended for use in clinical decision-making and should not replace pr
 ## 🚀 Running Locally
 
 ```bash
-cp .env.example .env      # then set REDIS_PASSWORD to a long random value
+cp .env.example .env      # no secrets to fill in; the defaults run as-is
 docker compose up --build
 ```
 
 The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
+
+### Upgrading from a version that stored documents
+
+Before 2026-08-28 the stack ran a Redis service and kept extracted entities — and,
+where `STORE_DOCUMENT_TEXT` was set, document text. That service is gone from
+`docker-compose.yml`, which orphans an existing container rather than deleting it:
+the data outlives the upgrade, and the endpoint that could erase a record no longer
+exists. Destroy it explicitly.
+
+```bash
+docker compose down --remove-orphans -v   # from the old checkout
+```
+
+Then delete the old `STORAGE_ENCRYPTION_KEY` from every `.env`, backup and secret
+store. Stored values were Fernet tokens, so a surviving key is the difference
+between discarded data and readable data.
 
 ---
 

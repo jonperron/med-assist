@@ -41,16 +41,9 @@ def test_analysis_is_refused_while_the_model_is_missing(client):
     assert response.json() == {"detail": {"message": MODEL_NOT_LOADED}}
 
 
-@pytest.mark.parametrize(
-    "method, path",
-    [
-        ("post", "/api/upload_document/"),
-        ("post", "/api/upload_documents/"),
-        ("get", "/api/get_extracted_text/123e4567-e89b-12d3-a456-426614174000"),
-    ],
-)
-def test_every_route_that_needs_the_model_refuses_the_same_way(client, method, path):
-    response = getattr(client, method)(path)
+def test_the_streaming_route_refuses_the_same_way(client):
+    # The two analysis endpoints share the gate, so they must share the answer.
+    response = client.post("/api/analyze/stream", files={"file": TXT_FILE})
 
     assert response.status_code == 503
 
@@ -61,12 +54,3 @@ def test_a_refused_request_does_not_try_to_load_the_model_again(client, loads):
 
     # One attempt, at startup. The requests cost a refusal each, not a load.
     assert loads == [1]
-
-
-def test_deleting_a_document_does_not_need_the_model():
-    # Deletion is a storage operation. Gating it on the model would leave a
-    # clinician unable to withdraw a document because inference is down.
-    paths = create_app(PRODUCTION).openapi()["paths"]
-
-    assert "503" not in paths["/api/documents/{file_id}"]["delete"]["responses"]
-    assert "503" in paths["/api/analyze"]["post"]["responses"]

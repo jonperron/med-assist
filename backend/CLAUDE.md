@@ -31,9 +31,10 @@ tests or files outside `backend/app`, since that is a wider file set.
 - Organize by feature/domain, not by type
 - No circular import
 - Respect the layering: `api/routes/` holds HTTP concerns, `use_cases/`
-  orchestrates, `services/` does extraction, parsing and model work,
-  `repositories/` persists behind the protocols in `interfaces/`. A route that
-  reaches straight into Redis is a review finding, not a shortcut.
+  orchestrates, and `services/` does extraction, parsing and model work behind
+  the protocols in `interfaces/`. A route that reaches straight into a service's
+  internals is a review finding, not a shortcut. There is no persistence layer:
+  the API stores nothing, and adding one is a decision entry before it is code.
 
 ## Code style
 
@@ -60,9 +61,8 @@ tests or files outside `backend/app`, since that is a wider file set.
 
 - Annotate every function signature. mypy runs in pre-commit and in CI.
 - Prefer Pydantic models in `schemas/` over dicts at API and service boundaries.
-- Redis access is async. Do not block the event loop with synchronous I/O inside
-  a coroutine, and keep CPU-bound model work off the request path where that is
-  avoidable.
+- Do not block the event loop with synchronous I/O inside a coroutine, and keep
+  CPU-bound model work off the request path where that is avoidable.
 
 ## Error handling
 

@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
-from datetime import date, datetime
+from datetime import date
 
 from app.schemas.summary import ClinicalSummary
 
@@ -16,15 +16,17 @@ class EntityDetail(BaseModel):
     start: Optional[int] = Field(
         default=None,
         description=(
-            "Start position in the text. Absent when the document text was not "
-            "retained, since an offset means nothing without the text."
+            "Start position in the text extracted from the document. The API "
+            "never returns that text, so the span can only be located by "
+            "extracting it again the same way."
         ),
     )
     end: Optional[int] = Field(
         default=None,
         description=(
-            "End position in the text. Absent when the document text was not "
-            "retained, since an offset means nothing without the text."
+            "End position in the text extracted from the document. The API "
+            "never returns that text, so the span can only be located by "
+            "extracting it again the same way."
         ),
     )
 
@@ -100,31 +102,6 @@ class AnalyzedDocument(ExtractedEntities):
     )
 
 
-class ExtractionResponse(BaseModel):
-    file_id: str = Field(description="Unique identifier of the processed file")
-    text: Optional[str] = Field(
-        default=None,
-        description=(
-            "Extracted text from the document. Null unless the deployment "
-            "opted into storing document text."
-        ),
-    )
-    extracted_entities: ExtractedEntities = Field(
-        description="Medical entities found in the text with detailed information"
-    )
-    processed_at: Optional[datetime] = Field(
-        default=None, description="When the extraction was completed"
-    )
-    mapping_info: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="Information about the label mapping used (language, dataset)",
-    )
-    expires_in_seconds: Optional[int] = Field(
-        default=None,
-        description="Seconds before the stored document is automatically deleted",
-    )
-
-
 class AnalysisResponse(BaseModel):
     """Result of a stateless analysis. Nothing behind this response is stored."""
 
@@ -146,8 +123,4 @@ class AnalysisResponse(BaseModel):
     mapping_info: Optional[Dict[str, str]] = Field(
         default=None,
         description="Information about the label mapping used (language, dataset)",
-    )
-    retained: bool = Field(
-        default=False,
-        description="Always false: this endpoint never writes to storage",
     )
