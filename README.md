@@ -29,6 +29,9 @@ It is not intended for use in clinical decision-making and should not replace pr
 - **No language model, no egress**
   Summaries are assembled from NER output by fixed rules, not generated. Document text is never sent anywhere, and `POST /api/analyze` does not even echo it back to the caller — nor, since 2026-08-28, the character positions of the spans within it.
 
+- **The browser enforces it too**
+  The interface serves a Content-Security-Policy whose `connect-src` names two origins: the page itself and the backend given by `NEXT_PUBLIC_API_URL`. Script on that page cannot open a connection anywhere else — no fetch, no websocket, no beacon, no remote image. Fonts are self-hosted, images are local, and no referrer is sent anywhere. It is not a complete barrier: no CSP any browser ships can refuse a deliberate navigation, so script running in the page could still leave with data in a URL. What the policy removes is every silent channel, and it enforces "only the configured API origin" — whether that origin is on this machine is the operator's call. [`frontend/README.md`](./frontend/README.md) has the details and the deployment consequence.
+
   This is a local-processing guarantee, not a compliance claim. The extracted entities are health data and remain personal data under GDPR, the API is still unauthenticated, and clinical text is adversarial: read a summary before you rely on it. [`backend/README.md`](./backend/README.md) states the scope and the known gaps.
 
 ---
