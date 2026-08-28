@@ -1,5 +1,6 @@
-version: '3.8'
-
+# `deploy.resources.limits` below is applied by Compose V2 and silently ignored
+# by the legacy v1 `docker-compose` binary. Check `docker compose version`
+# before believing in the limits.
 services:
   backend:
     build:
@@ -10,8 +11,39 @@ services:
     # Multipart parts above 1MB are spooled to a file under TMPDIR before any
     # route code runs. A RAM-backed /tmp keeps uploaded documents off the
     # container's writable layer, including on the stateless analysis path.
+    #
+    # The 50MB request ceiling bounds one request; this bounds the sum of those
+    # in flight. 256m covers four concurrent max-size uploads, which is why it
+    # is not simply the ceiling: a fifth would fail on a full filesystem. It is
+    # charged against the memory limit below. `noexec,nosuid,nodev` because
+    # nothing here is ever executed - only written and read back.
     tmpfs:
-      - /tmp:size=128m,mode=1777
+      - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
+    # Nothing else bounds this container, and it holds the model resident for
+    # the life of the process. Measured: 470 MiB idle, 504 MiB peak across a
+    # batch of five long documents. 2g is roughly four times that - headroom
+    # for a large PDF, whose parser expands the file in memory, rather than a
+    # tight fit. It starts and analyses at 512m with nothing to spare.
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEMORY_LIMIT:-2g}
+          cpus: "${BACKEND_CPU_LIMIT:-2}"
+    # A hard memory limit makes an OOM kill reachable, and without this the
+    # service would stay down until someone ran `docker compose up` by hand.
+    restart: unless-stopped
+    # A parser crash would otherwise dump a core containing document text and
+    # extracted entities, onto the host and outside the tmpfs.
+    ulimits:
+      core: 0
+    # Uvicorn writes an access line per request and the default json-file
+    # driver never rotates, so an untouched deployment grows a log file until
+    # the disk fills. Capped at three 10MB files per service.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - PYTHONUNBUFFERED=1
       - TMPDIR=/tmp
@@ -22,7 +54,11 @@ services:
       - TRANSFORMERS_OFFLINE=1
       - HF_HUB_DISABLE_TELEMETRY=1
       # Inference is CPU-only. These bound what one container spends on it.
-      - NER_INFERENCE_THREADS=${NER_INFERENCE_THREADS:-0}
+      # The thread count defaults to the CPU limit rather than to torch's own
+      # default of one thread per core: torch reads the host's core count, not
+      # the cgroup quota, so on a 16-core host it would start 16 threads inside
+      # a 2-core quota and pay the difference in contention.
+      - NER_INFERENCE_THREADS=${NER_INFERENCE_THREADS:-${BACKEND_CPU_LIMIT:-2}}
       - NER_MAX_CONCURRENT_INFERENCES=${NER_MAX_CONCURRENT_INFERENCES:-1}
       # Development mode mounts the mock endpoints; production is the default.
       - APP_ENV=${APP_ENV:-production}
@@ -55,4 +91,15 @@ services:
       - "3000:3000" # Exposes Next.js standalone server on host port 3000
     depends_on:
       - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${FRONTEND_MEMORY_LIMIT:-512m}
+          cpus: "${FRONTEND_CPU_LIMIT:-1}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     container_name: med_assist_frontend

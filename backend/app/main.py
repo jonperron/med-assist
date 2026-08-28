@@ -1,11 +1,11 @@
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -15,7 +15,7 @@ from app.api import (
     mock_router,
 )
 from app.core.dependencies import get_entity_extractor
-from app.core.middleware import forbid_caching, reject_oversized_requests
+from app.core.middleware import LimitRequestSize, forbid_caching
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,18 @@ def create_app(app_env: str | None = None) -> FastAPI:
         RequestValidationError, malformed_requests_stay_generic
     )
 
+    # The last one registered runs first, so the stack is forbid_caching, then
+    # CORS, then the size ceiling, then the router.
+    #
+    # The order of the middle two is load-bearing. LimitRequestSize writes its
+    # 413 straight to `send` rather than returning through the router, so a
+    # refusal only carries CORS headers if CORSMiddleware is outside it -
+    # otherwise the browser sees an opaque network error and the frontend's
+    # `too_large` branch is unreachable. Putting CORS outside costs nothing: it
+    # forwards `receive` untouched, so the ceiling still wraps the channel the
+    # multipart parser reads from, which is the whole reason it is ASGI
+    # middleware.
+    application.add_middleware(LimitRequestSize)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],  # Frontend origin
@@ -125,11 +137,6 @@ def create_app(app_env: str | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # The last one registered runs first, so forbid_caching wraps everything
-    # below it - including a refusal - and an oversized body is refused before
-    # it is read.
-    application.middleware("http")(reject_oversized_requests)
     application.middleware("http")(forbid_caching)
 
     # Include routers from the API layer

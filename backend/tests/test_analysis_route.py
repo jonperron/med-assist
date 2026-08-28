@@ -7,10 +7,12 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.analysis import router
 from app.core.dependencies import get_entity_extractor, get_text_extractor
+from app.core.middleware import MAX_REQUEST_SIZE_BYTES, REQUEST_TOO_LARGE
 from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
     TextExtractionServiceInterface,
 )
+from app.main import PRODUCTION, create_app
 from app.schemas.errors import ErrorDetail
 from app.schemas.extraction import EntityDetail
 from app.use_cases.validate_file import MAX_BATCH_FILES
@@ -516,3 +518,121 @@ def test_a_skipped_document_is_logged_by_position_only(
     assert "yielded no text" in caplog.text
     assert "Dupont" not in caplog.text
     assert "homme" not in caplog.text
+
+
+# The single origin app.main allows. Named so a refusal asserting it fails
+# loudly if the allowed origin ever changes.
+ALLOWED_ORIGIN = "http://localhost:3000"
+
+
+def chunked(body: bytes):
+    """Send a body with no Content-Length, the shape a streaming upload takes."""
+    return iter([body])
+
+
+def multipart(payload: bytes, filename: str = "d.txt") -> tuple[bytes, dict]:
+    """Wrap a payload as a one-file multipart body, built by hand so it can be
+    sent without a declared length."""
+    body = (
+        b'--B\r\nContent-Disposition: form-data; name="files"; '
+        b'filename="'
+        + filename.encode()
+        + b'"\r\nContent-Type: text/plain\r\n\r\n'
+        + payload
+        + b"\r\n--B--\r\n"
+    )
+    return body, {"Content-Type": "multipart/form-data; boundary=B"}
+
+
+class TestMiddlewareInteraction:
+    """
+    `/api/analyze` behind the real middleware stack, not just its bare router.
+
+    The fixture in the rest of this file mounts only the router, so none of the
+    tests above exercise `LimitRequestSize`. That middleware exists for exactly
+    this route's shape - a multipart upload spooled to disk by the parser - so
+    the regression it fixes has to be reproduced against the real app.
+    """
+
+    @pytest.fixture
+    def full_app_client(self, mock_text_extractor, mock_entity_extractor):
+        app = create_app(PRODUCTION)
+        app.dependency_overrides[get_text_extractor] = lambda: mock_text_extractor
+        app.dependency_overrides[get_entity_extractor] = lambda: mock_entity_extractor
+        return TestClient(app)
+
+    def test_a_normal_request_still_works_behind_the_middleware(self, full_app_client):
+        response = full_app_client.post("/api/analyze", files=[txt()])
+
+        assert response.status_code == 200
+        assert response.json()["summary"]["document_count"] == 1
+
+    def test_an_oversized_declared_body_is_refused_before_the_route_runs(
+        self, full_app_client, mock_entity_extractor
+    ):
+        response = full_app_client.post(
+            "/api/analyze",
+            files=[txt()],
+            headers={"content-length": str(MAX_REQUEST_SIZE_BYTES + 1)},
+        )
+
+        assert response.status_code == 413
+        assert response.json()["detail"]["message"] == REQUEST_TOO_LARGE
+        mock_entity_extractor.extract_entities.assert_not_called()
+
+    def test_an_undeclared_oversized_multipart_upload_is_refused_with_413(
+        self, full_app_client, mock_entity_extractor
+    ):
+        # The regression this middleware exists for, reproduced through the real
+        # route: a chunked body declares no length, so nothing but the receive
+        # channel counter stops the file part being spooled to disk in full.
+        # Before this middleware, FastAPI's own parser answered a truncated body
+        # with a 400 of its own; this must be a 413 from the ceiling instead.
+        body, headers = multipart(b"x" * (MAX_REQUEST_SIZE_BYTES + 1))
+
+        response = full_app_client.post(
+            "/api/analyze", content=chunked(body), headers=headers
+        )
+
+        assert response.status_code == 413
+        assert response.json()["detail"]["message"] == REQUEST_TOO_LARGE
+        mock_entity_extractor.extract_entities.assert_not_called()
+
+    def test_an_undeclared_oversized_refusal_is_also_uncacheable(self, full_app_client):
+        body, headers = multipart(b"x" * (MAX_REQUEST_SIZE_BYTES + 1))
+
+        response = full_app_client.post(
+            "/api/analyze", content=chunked(body), headers=headers
+        )
+
+        assert response.headers["cache-control"] == "no-store"
+
+    def test_a_declared_refusal_carries_cors_headers(self, full_app_client):
+        # The refusal is written straight to `send` rather than returned through
+        # the router, so it only carries CORS headers if CORSMiddleware sits
+        # outside the ceiling. Without them the browser sees an opaque network
+        # error and the frontend's `too_large` branch never runs - the refusal
+        # is delivered to curl and to nothing the clinician uses.
+        response = full_app_client.post(
+            "/api/analyze",
+            files=[txt()],
+            headers={
+                "Origin": ALLOWED_ORIGIN,
+                "content-length": str(MAX_REQUEST_SIZE_BYTES + 1),
+            },
+        )
+
+        assert response.status_code == 413
+        assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
+
+    def test_an_undeclared_refusal_carries_cors_headers(self, full_app_client):
+        body, headers = multipart(b"x" * (MAX_REQUEST_SIZE_BYTES + 1))
+
+        response = full_app_client.post(
+            "/api/analyze",
+            content=chunked(body),
+            headers={**headers, "Origin": ALLOWED_ORIGIN},
+        )
+
+        assert response.status_code == 413
+        assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN

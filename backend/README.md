@@ -61,7 +61,13 @@ one:
   code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
   the container's writable layer; a bare `uvicorn` run does not, and will write them to
   disk. This is the only place a submitted document touches a filesystem, and it is
-  the reason `TMPDIR` is worth checking on any other deployment.
+  the reason `TMPDIR` is worth checking on any other deployment. The spooled file is
+  unlinked as the request ends, so nothing accumulates - but it is invisible to `ls`
+  while it exists, since it is an unnamed inode.
+* How much can be spooled is bounded by `LimitRequestSize`, which refuses a body over
+  50 MB. It checks `Content-Length` where one is declared and counts bytes on the
+  receive channel where one is not, so a chunked upload cannot write past the ceiling
+  and be refused afterwards.
 
 A document is therefore analysed once per request. There is no analyse-once,
 read-later flow: summarising the same document again means submitting it again,
