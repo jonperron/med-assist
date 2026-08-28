@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.analysis import analyze_stream, router
 from app.core.dependencies import get_entity_extractor, get_text_extractor
-from app.core.middleware import MAX_REQUEST_SIZE_BYTES
+from app.core.middleware import MAX_REQUEST_SIZE_BYTES, REQUEST_TOO_LARGE
 from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
     TextExtractionServiceInterface,
@@ -502,3 +502,29 @@ class TestMiddlewareInteraction:
         assert not response.headers["content-type"].startswith("text/event-stream")
         # The size refusal is wrapped by forbid_caching too, same as any answer.
         assert response.headers["cache-control"] == "no-store"
+
+    def test_an_undeclared_oversized_multipart_upload_is_refused_before_the_stream_opens(
+        self, full_app_client, mock_entity_extractor
+    ):
+        # The regression this middleware exists for, reproduced on the streaming
+        # route: `accepted_batch` is a dependency, so the whole multipart body -
+        # including the oversized file part - is already being parsed before the
+        # generator's first `yield` commits the response to a 200. A chunked
+        # body declares no length, so only the receive-channel counter catches
+        # it, and it has to answer 413 rather than let FastAPI's own truncated-
+        # parse 400 through, and rather than open the stream at all.
+        body = (
+            b'--B\r\nContent-Disposition: form-data; name="files"; '
+            b'filename="d.txt"\r\nContent-Type: text/plain\r\n\r\n'
+            + b"x" * (MAX_REQUEST_SIZE_BYTES + 1)
+            + b"\r\n--B--\r\n"
+        )
+        headers = {"Content-Type": "multipart/form-data; boundary=B"}
+
+        response = full_app_client.post(STREAM, content=iter([body]), headers=headers)
+
+        assert response.status_code == 413
+        assert response.json()["detail"]["message"] == REQUEST_TOO_LARGE
+        assert not response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["cache-control"] == "no-store"
+        mock_entity_extractor.extract_entities.assert_not_called()

@@ -20,5 +20,12 @@ COPY ./models ./models
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
 
-# Run app.main.py when the container launches
-CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run app.main.py when the container launches.
+#
+# --limit-concurrency bounds requests in flight. The 50 MB ceiling in
+# LimitRequestSize bounds one request; without this, nothing bounds their sum,
+# and concurrent uploads share both the tmpfs they spool into and the container
+# memory limit. Four is what the 256m tmpfs in docker-compose.yml covers at the
+# full ceiling; the rest of the allowance leaves room for health probes.
+CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", "--port", "8000", "--limit-concurrency", "8"]

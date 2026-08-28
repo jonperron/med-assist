@@ -72,6 +72,18 @@ Concretely, inference is CPU-only and the image carries nothing else:
 - Documents longer than the model's 512-token window are read through a sliding window rather than truncated, so the end of a long discharge summary is analysed like the beginning.
 - The model is read once at startup, off the request path. `GET /readyz` answers `503` until it is in memory, and so do the routes that need it, so nothing reports healthy before it can actually analyse a document.
 
+And what the stack may take from the host is capped rather than recommended:
+
+- Both services carry memory and CPU limits (`BACKEND_MEMORY_LIMIT`, `BACKEND_CPU_LIMIT`, and the frontend pair). Measured under the defaults: the backend is ready 12 seconds after start, idles at 470 MiB, and peaks at 504 MiB across a batch of five long documents. The 2 GB default is headroom for a large PDF rather than a tight fit; it starts and analyses at 512 MB with nothing to spare.
+- `NER_INFERENCE_THREADS` defaults to the CPU limit rather than to torch's own default, because torch reads the host's core count and not the cgroup quota. This is the single largest lever here: on a 14-core host under a 2-core quota, the same five-document batch took **11 seconds** with the two matched and **215 seconds** with torch left to start a thread per host core. Raise `BACKEND_CPU_LIMIT` to make analysis faster; leave the two in step whichever way you move them.
+- Container logs rotate at three 10 MB files per service. Compose's default driver never rotates, which is the one thing here that would otherwise grow until the disk filled.
+- A request body over 50 MB is refused. Where a length is declared, it is refused before a byte is read; where one is not, the count runs on the receive channel and the body is cut off at the ceiling. Either way it cannot be written in full and refused afterwards.
+- Uploads above 1 MB are spooled to a RAM-backed `/tmp`, sized at 256 MB to cover four concurrent max-size requests, with uvicorn's `--limit-concurrency` bounding how many can be in flight. Spooled parts never reach the container's writable layer. They are pages in host RAM, so a host under memory pressure can page them to swap — the guarantee is about the container's disk, not about physics.
+
+Nothing is persisted between requests, so there is no datastore to size, back up or grow.
+
+Note that `deploy.resources.limits` is applied by Compose V2 and silently ignored by the legacy v1 `docker-compose` binary; check `docker compose version` before relying on the limits.
+
 ---
 
 ## 🧩 Project Structure
