@@ -117,6 +117,10 @@ def test_analyze_never_stores_anything(client):
     # Nothing to come back for: no identifier is issued.
     assert "file_id" not in body
     assert "expires_in_seconds" not in body
+    # `retained` was a constant false meaning "unlike the storing path". There
+    # is no storing path, and a storage-flavoured field reappearing on the one
+    # response shape promised to be storage-free is worth failing over.
+    assert "retained" not in body
 
 
 def test_analyze_reports_an_empty_summary_rather_than_an_empty_page(

@@ -65,8 +65,8 @@ async def unexpected_failures_stay_generic(
 
     Without this, an exception reaching Starlette's default handler is logged
     with its full traceback - and the values in scope on these paths are
-    document text and decrypted entities. The path is safe to log; it holds a
-    file id at most.
+    document text and the entities read from it. The request path is safe to
+    log: no route mints an identifier for a document, so it carries none.
     """
     logger.error(
         "Unhandled error serving %s (%s)", request.url.path, type(exc).__name__

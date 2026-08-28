@@ -23,6 +23,12 @@ REMOVED_STORED_DOCUMENT_ENDPOINTS = {
     "/api/documents/{file_id}",
 }
 
+# The development mock mirrored the extraction endpoint. It went with the route
+# it mocked, and a mock answering a shape the API no longer sends is worse than
+# no mock at all - so it is pinned against the development app, where mocks do
+# mount.
+REMOVED_MOCK_PATH = "/mock_extracted_text/{file_id}"
+
 
 def paths(app):
     return {route.path for route in app.routes}
@@ -35,6 +41,10 @@ def test_production_does_not_mount_the_development_endpoints():
 def test_neither_environment_mounts_a_stored_document_endpoint():
     for environment in (PRODUCTION, DEVELOPMENT):
         assert not REMOVED_STORED_DOCUMENT_ENDPOINTS & paths(create_app(environment))
+
+
+def test_development_does_not_mount_the_removed_extraction_mock():
+    assert REMOVED_MOCK_PATH not in paths(create_app(DEVELOPMENT))
 
 
 def test_a_stored_document_request_answers_not_found(monkeypatch):

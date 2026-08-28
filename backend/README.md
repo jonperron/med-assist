@@ -219,9 +219,10 @@ The date is never rendered into the summary's wording — it is metadata beside 
 
 ### Logging
 
-The file id is the only identifier that may be logged. Clinical filenames routinely carry
-patient names, and parser errors quote the bytes that failed to parse, so error paths log
-the file id and the exception type — never the filename, the message or a traceback.
+No identifier is minted for a submitted document, so none is logged. Clinical filenames
+routinely carry patient names, and parser errors quote the bytes that failed to parse, so
+error paths log the exception type and, where one applies, the document's position in the
+batch — never the filename, the message or a traceback.
 
 ### NER Model Configuration
 

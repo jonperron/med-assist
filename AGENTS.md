@@ -81,12 +81,14 @@ Nominal flow:
 - Make small, reversible, testable changes.
 - Preserve public API contracts unless explicitly asked to change them.
 - Keep error messages safe: no stack traces, secrets, or patient identifiers in responses.
-- Validate external input boundaries (file type, extension, ID format).
+- Validate external input boundaries (file type, extension, batch size, and
+  the format of any identifier an endpoint accepts - today none does).
 - Never prefix a name with an underscore. Python has no private members, so
   `_helper` hides nothing — it only asks politely, and the request is
   unenforceable.
 
-One concrete example of expected backend style:
+One concrete example of expected backend style. It illustrates the shape of
+a boundary check and is not code in the tree - no endpoint takes an id:
 
 ```python
 from uuid import UUID

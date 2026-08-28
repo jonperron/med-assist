@@ -26,7 +26,7 @@ gates from AGENTS.md section 1 in your report so the caller can run them.
 
 ## Security Checklist
 1. Check for data leakage in logs, exceptions, fixtures, responses, and telemetry.
-2. Validate input boundaries (file type, extension, UUID format, request size assumptions).
+2. Validate input boundaries (file type, extension, batch size, request size assumptions).
 3. Verify secret handling (no hardcoded credentials/tokens, env-only config).
 4. Check that no change reintroduces persistence of patient data without a decision entry.
 5. Confirm local-first boundaries (no external egress for sensitive content).

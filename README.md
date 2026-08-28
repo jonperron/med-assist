@@ -42,6 +42,22 @@ docker compose up --build
 
 The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
 
+### Upgrading from a version that stored documents
+
+Before 2026-08-28 the stack ran a Redis service and kept extracted entities — and,
+where `STORE_DOCUMENT_TEXT` was set, document text. That service is gone from
+`docker-compose.yml`, which orphans an existing container rather than deleting it:
+the data outlives the upgrade, and the endpoint that could erase a record no longer
+exists. Destroy it explicitly.
+
+```bash
+docker compose down --remove-orphans -v   # from the old checkout
+```
+
+Then delete the old `STORAGE_ENCRYPTION_KEY` from every `.env`, backup and secret
+store. Stored values were Fernet tokens, so a surviving key is the difference
+between discarded data and readable data.
+
 ---
 
 ## 🌱 Green Impact

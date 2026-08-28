@@ -420,7 +420,7 @@ export interface components {
         EntityDetail: {
             /**
              * End
-             * @description End position in the text the document yielded. The API never returns that text, so this locates the span only for a caller holding the document itself.
+             * @description End position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.
              */
             end?: number | null;
             /**
@@ -435,7 +435,7 @@ export interface components {
             score: number;
             /**
              * Start
-             * @description Start position in the text the document yielded. The API never returns that text, so this locates the span only for a caller holding the document itself.
+             * @description Start position in the text extracted from the document. The API never returns that text, so the span can only be located by extracting it again the same way.
              */
             start?: number | null;
             /**

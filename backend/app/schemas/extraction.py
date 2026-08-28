@@ -16,17 +16,17 @@ class EntityDetail(BaseModel):
     start: Optional[int] = Field(
         default=None,
         description=(
-            "Start position in the text the document yielded. The API never "
-            "returns that text, so this locates the span only for a caller "
-            "holding the document itself."
+            "Start position in the text extracted from the document. The API "
+            "never returns that text, so the span can only be located by "
+            "extracting it again the same way."
         ),
     )
     end: Optional[int] = Field(
         default=None,
         description=(
-            "End position in the text the document yielded. The API never "
-            "returns that text, so this locates the span only for a caller "
-            "holding the document itself."
+            "End position in the text extracted from the document. The API "
+            "never returns that text, so the span can only be located by "
+            "extracting it again the same way."
         ),
     )
 

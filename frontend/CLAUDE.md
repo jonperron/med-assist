@@ -54,10 +54,10 @@ build, so a broken test reaches `main` unless it is caught here. Run all three.
   to reach its own backend.
 - API errors arrive as `{"detail": {"message": ...}}`. Read that shape before
   falling back to a generic message.
-- Document text and entity offsets are optional by design. The default analysis
-  path stores nothing, and a stored document usually carries entities without
-  the prose they were extracted from. Rendering that assumes either is present
-  breaks on the common case, not the rare one.
+- Document text and entity offsets are optional by design. The API stores
+  nothing and never returns the text it read, so a component that assumes the
+  prose is present breaks on every case, not a rare one. Offsets may arrive, but
+  they index text the client does not have.
 - Nothing clinical goes into `localStorage`, `sessionStorage`, a cookie, a URL,
   or any analytics or logging sink. Page state only.
 - Strip untrusted text at the render boundary with `lib/safeText`. A finding,
