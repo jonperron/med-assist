@@ -20,7 +20,6 @@ repos:
     hooks:
     -   id: mypy
         args: [--ignore-missing-imports]
-        additional_dependencies: [types-redis>=4.6.0.20241004]
 -   repo: local
     hooks:
     -   id: no-underscore-prefixed-names
