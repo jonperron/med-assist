@@ -635,6 +635,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description No valid credential. Only a deployment that configures a shared credential answers this; one that does not never refuses for this reason. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description A file is too large, or the batch holds too many files */
             413: {
                 headers: {
@@ -697,6 +706,15 @@ export interface operations {
             };
             /** @description Invalid document */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid credential. Only a deployment that configures a shared credential answers this; one that does not never refuses for this reason. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
