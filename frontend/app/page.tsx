@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { AnalysisFailure } from './components/AnalysisFailure'
+import { AppFooter } from './components/AppFooter'
 import { AppHeader } from './components/AppHeader'
 import { CautionNote } from './components/CautionNote'
 import { DocumentList } from './components/DocumentList'
@@ -225,6 +226,8 @@ export default function HomePage() {
 
         <CautionNote>{CAVEAT}</CautionNote>
       </main>
+
+      <AppFooter />
     </div>
   )
 }

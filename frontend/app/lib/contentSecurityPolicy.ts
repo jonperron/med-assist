@@ -188,7 +188,9 @@ export function securityHeaders(
     { key: 'Content-Security-Policy', value: contentSecurityPolicy(options) },
     { key: 'X-Content-Type-Options', value: 'nosniff' },
     // The page must not name itself to anywhere it navigates. There is no
-    // analytics sink and no outbound link that needs attribution.
+    // analytics sink, and the one outbound link - the footer's issue tracker -
+    // does not need attribution: it carries `rel="noreferrer"` of its own, so
+    // the two hold independently rather than one relying on the other.
     { key: 'Referrer-Policy', value: 'no-referrer' },
     // `frame-ancestors 'none'` above is the real control; this is for agents
     // that do not implement it.
