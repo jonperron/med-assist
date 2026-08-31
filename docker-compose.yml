@@ -19,6 +19,19 @@ services:
     # nothing here is ever executed - only written and read back.
     tmpfs:
       - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
+    # The weights live on the host and are mounted in, not copied into the
+    # image. They are ~420MB and gitignored, so baking them in rebuilt a layer
+    # of them on every source edit and made a checkout without them fail the
+    # build rather than start. Mounted, the image is code and the model is data:
+    # swapping in a retrained model is a restart, not a rebuild.
+    #
+    # Read-only because nothing here writes to the weights - transformers is
+    # pointed at a local directory with the Hub disabled, so it only reads. A
+    # missing or empty MODEL_DIR is not fatal: Docker creates the host path,
+    # the load fails, and the container answers 503 on /readyz and on the
+    # analysis routes while the interface says the service is unavailable.
+    volumes:
+      - ${MODEL_DIR:-./backend/models}:/app/models:ro
     # Nothing else bounds this container, and it holds the model resident for
     # the life of the process. Measured: 470 MiB idle, 504 MiB peak across a
     # batch of five long documents. 2g is roughly four times that - headroom

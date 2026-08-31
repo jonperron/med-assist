@@ -6,6 +6,11 @@
 # image build. .gitignore does not apply here.
 training/
 
+# The weights, ~420MB, mounted at runtime rather than copied in. Left out of
+# .dockerignore they would be uploaded to the daemon on every build and cached
+# there, whether or not a COPY mentions them.
+models/
+
 .venv/
 tests/
 __pycache__/

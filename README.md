@@ -45,6 +45,30 @@ docker compose up --build
 
 The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
 
+### The model
+
+The weights are not in this repository and not in the image. They are mounted
+into the backend read-only from `MODEL_DIR`, which defaults to
+`./backend/models` — put `config.json`, `model.safetensors`, `tokenizer.json`
+and `tokenizer_config.json` there, or point `MODEL_DIR` at wherever they
+already are. Swapping in a retrained model is then `docker compose restart
+backend`, with no rebuild.
+
+Start the stack without them and nothing crashes: Docker creates the path
+empty, the backend comes up, and `GET /readyz` and both analysis routes answer
+`503`. The interface says so at the top of the screen and holds the analyse
+button shut, so a missing mount looks like a service that is not available yet
+rather than like documents that were rejected. It rechecks every few seconds
+and re-enables itself — there is nothing to reload. If that warning is on
+screen, `MODEL_DIR` is the first thing to check, and `docker compose logs
+backend` says whether the load failed.
+
+A second, differently worded notice appears when the interface cannot reach the
+backend at all rather than being told it is not ready. That one leaves the
+button enabled: a deployment that does not route `/readyz` — it sits at the
+root, while analysis sits under `/api` — would otherwise have a working
+analysis path disabled by a probe that is the only broken part.
+
 ### Serving it from somewhere other than localhost
 
 Two variables describe the same connection and have to move together:
@@ -85,6 +109,7 @@ Concretely, inference is CPU-only and the image carries nothing else:
 - One document is inside the model at a time by default (`NER_MAX_CONCURRENT_INFERENCES`), so the model's peak memory follows the largest document rather than the number of concurrent uploads.
 - Documents longer than the model's 512-token window are read through a sliding window rather than truncated, so the end of a long discharge summary is analysed like the beginning.
 - The model is read once at startup, off the request path. `GET /readyz` answers `503` until it is in memory, and so do the routes that need it, so nothing reports healthy before it can actually analyse a document.
+- The weights are mounted rather than copied into the image, which takes the backend image from 2.47 GB to 1.62 GB and stops a 420 MB layer being rebuilt, re-exported and re-uploaded to the daemon every time a line of `app/` changes.
 
 And what the stack may take from the host is capped rather than recommended:
 

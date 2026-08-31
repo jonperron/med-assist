@@ -15,7 +15,27 @@ RUN uv sync --frozen --no-dev
 
 # Copy the content of the local src directory to the working directory
 COPY ./app ./app
-COPY ./models ./models
+
+# The weights are deliberately not copied. They are ~420MB, they are gitignored,
+# and they change on a different schedule from the code: baked in, every source
+# edit rebuilt a layer of them, and a checkout without them failed the build
+# instead of starting. docker-compose.yml bind-mounts them read-only at
+# /app/models, which is where NER_MODEL_NAME points. A container started without
+# that mount still starts - it answers 503 on /readyz and on the analysis routes
+# rather than crash-looping, and the interface says so.
+
+# The Hub stays off, in the image rather than only in docker-compose.yml.
+#
+# These used to be reachable only through compose, which was survivable while
+# the weights were baked in: there was always a local model to read. Now that
+# the image ships without them, the obvious way to "fix" an unready container is
+# to point NER_MODEL_NAME at a Hub id - and without these set, transformers
+# would happily fetch it over the network. This service analyses clinical
+# documents on the promise that nothing leaves the machine, so the refusal
+# travels with the image and compose no longer has to remember it.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
