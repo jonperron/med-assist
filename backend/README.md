@@ -255,8 +255,15 @@ export NER_INFERENCE_THREADS=2
 The served model is not a Hub artifact picked off the shelf: it is
 `Dr-BERT/DrBERT-7GB` fine-tuned for token classification on the DEFT 2021
 corpus of French clinical cases. The training project builds it and writes the
-weights, the fast tokenizer and a `metrics.json` into `backend/models/`, which
-`docker-compose.yml` mounts as `NER_MODEL_NAME`.
+weights, the fast tokenizer and a `metrics.json` into `backend/models/`.
+
+Those files are not in this repository and not in the image. `docker-compose.yml`
+bind-mounts the directory read-only at `/app/models`, which is what
+`NER_MODEL_NAME` points at; `MODEL_DIR` in `.env` moves the host side of that
+mount. A retrained model is therefore a restart rather than a rebuild - and an
+image run without the mount still starts, answering `503` on `/readyz` and on
+the analysis routes rather than failing at build time the way a copied-in model
+did.
 
 That project lives in its own repository — the training corpus is clinical data
 and cannot be distributed here, and training wants the CUDA build of `torch`
