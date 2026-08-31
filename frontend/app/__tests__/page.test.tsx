@@ -355,8 +355,11 @@ describe('HomePage', () => {
     selectFiles(2)
     submit()
 
+    // The card appears on the batch frame, and the mark only on the document
+    // frame that follows it a tick later. Waiting for the card and then reading
+    // it synchronously asserts on the state in between.
     const card = await screen.findByRole('status')
-    expect(within(card).getByText('non lu')).toBeInTheDocument()
+    expect(await within(card).findByText('non lu')).toBeInTheDocument()
   })
 
   it('surfaces the message of a refusal sent before the stream opened', async () => {
