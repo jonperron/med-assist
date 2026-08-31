@@ -1,0 +1,80 @@
+# An authenticating reverse proxy in front of Med-Assist.
+#
+# Copy to Caddyfile, replace every placeholder, and read deploy/README.md for
+# what this does and does not protect. Nothing in this file is a credential:
+# the password is a hash you generate, and the backend's shared credential is
+# read from the environment and never written here.
+#
+# The shape is one domain, not two. That is what makes the shipped browser
+# interface work behind authentication: the page and the API are the same
+# origin, so a browser that has authenticated to the domain sends its
+# credentials on the interface's own calls to /api and /readyz. Two domains
+# would prompt on the page and then fail every fetch, because a browser does
+# not volunteer credentials on a cross-origin request.
+#
+# Set alongside it, in .env:
+#   NEXT_PUBLIC_API_URL=https://med-assist.example.org   (needs a frontend rebuild)
+#   CORS_ALLOWED_ORIGINS=https://med-assist.example.org
+#   API_ACCESS_TOKEN=<generated, see .env.example>
+
+med-assist.example.org {
+	# Authenticates the person. This is the control that actually keeps
+	# strangers out; everything below is depth behind it.
+	#
+	# Generate the hash with `caddy hash-password` and paste the result - it is
+	# a bcrypt hash, not a password, and it is still not something to commit.
+	# On Caddy older than 2.8 the directive is spelled `basicauth`.
+	#
+	# Basic auth is the smallest thing that works and is a fair way short of
+	# the best. It has no lockout, no second factor and no session, and every
+	# request carries the password. For anything beyond a handful of known
+	# people, replace this block with `forward_auth` to an identity provider;
+	# the rest of the file is unchanged.
+	basic_auth {
+		clinician REPLACE_WITH_THE_OUTPUT_OF_caddy_hash-password
+	}
+
+	# The paths the backend answers: the analysis routes, and the two health
+	# endpoints the interface polls. Everything else is the frontend.
+	@backend path /api/* /healthz /readyz
+
+	handle @backend {
+		reverse_proxy backend:8000 {
+			# Replaces the browser's Basic credentials with the backend's own,
+			# so the person's password never reaches the application and the
+			# application still refuses anything that did not come through
+			# here. Read from the proxy's environment - do not inline a value.
+			header_up Authorization "Bearer {env.API_ACCESS_TOKEN}"
+
+			# POST /api/analyze/stream answers Server-Sent Events. Without
+			# this, Caddy buffers them and the progress the clinician is
+			# watching arrives in one lump at the end, which is the whole
+			# feature gone.
+			flush_interval -1
+
+			# A batch of documents takes tens of seconds on a CPU. The default
+			# read timeout is generous enough today; raise it here rather than
+			# discovering the ceiling as a truncated stream.
+			transport http {
+				read_timeout 300s
+			}
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	# Uploaded documents are patient data in flight. Caddy obtains and renews
+	# the certificate itself; there is no HTTP listener to fall back to.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# The access log records paths and status codes. No route here mints or
+	# accepts an identifier for a document, so a path names nothing - but keep
+	# it that way if you add query parameters to anything.
+	log {
+		output file /var/log/caddy/med-assist.log
+	}
+}

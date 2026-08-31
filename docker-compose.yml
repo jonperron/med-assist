@@ -6,8 +6,23 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Bound to loopback, not to every interface. `8000:8000` published an
+    # unauthenticated endpoint that ingests clinical documents on every address
+    # the host answers on, which is fine on a laptop and is a hole on a server:
+    # a platform that attaches a domain to this stack reaches the container over
+    # the Docker network and never needed the host port, while anyone scanning
+    # the host's public address did.
+    #
+    # A browser on the same machine still reaches http://localhost:8000, so a
+    # local `docker compose up` is unchanged. A browser on another machine no
+    # longer reaches it at all - that is the point, and it is what makes a
+    # non-localhost deployment go through a proxy. See deploy/README.md.
+    #
+    # BACKEND_BIND_ADDRESS exists so that undoing this is a deliberate act with
+    # a name rather than an edit to this file. 0.0.0.0 puts an API that answers
+    # anyone back on the public interface unless API_ACCESS_TOKEN is set.
     ports:
-      - "8000:8000"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     # Multipart parts above 1MB are spooled to a file under TMPDIR before any
     # route code runs. A RAM-backed /tmp keeps uploaded documents off the
     # container's writable layer, including on the stateless analysis path.
@@ -81,6 +96,13 @@ services:
       # have to. A malformed value fails the container at startup rather than
       # leaving every call to fail in the browser.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # The shared credential the analysis routes require, if there is one.
+      # Empty by default, which is the same as unset: the routes answer anyone
+      # who can reach the port, exactly as they always have. Setting it refuses
+      # every caller that does not present it - including the browser interface
+      # in this same stack, which cannot hold a secret. Only a deployment whose
+      # proxy adds the header should set it. See .env.example.
+      - API_ACCESS_TOKEN=${API_ACCESS_TOKEN:-}
     # Ready means the weights are in memory, not merely that the port is open.
     # The model loads at startup and takes seconds on a CPU, hence start_period.
     healthcheck:

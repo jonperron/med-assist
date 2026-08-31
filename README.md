@@ -78,7 +78,18 @@ Two variables describe the same connection and have to move together:
 
 Change one without the other and the API is reachable but every answer is dropped by the browser, which shows up as a network error rather than as a refusal. Unset, `CORS_ALLOWED_ORIGINS` stays on the local frontend origin; it is never widened to `*`, because this API answers with credentials and a browser rejects a credentialed response allowed to everyone. A value that is not an origin — a path, a wildcard, a space, a port that is not a number, an international domain that is not in its punycode form — stops the backend at startup instead of failing silently in the browser later; under Compose that shows up as a container restarting rather than as an unhealthy one, so read its log. Two spellings with one obvious reading are rewritten instead of refused: a single trailing slash is dropped, and so is a port the scheme already implies (`https://host:443` is sent by the browser as `https://host`).
 
-CORS is a browser-side control and nothing else. It does not authenticate anyone: any client that is not a browser can call the API whatever this variable says, and there is no authentication in front of it. A deployment reachable by anyone other than the person running it needs a reverse proxy that authenticates, not a shorter origin list.
+CORS is a browser-side control and nothing else. It does not authenticate anyone: any client that is not a browser can call the API whatever this variable says. A deployment reachable by anyone other than the person running it needs a reverse proxy that authenticates, not a shorter origin list.
+
+### Who can reach the API
+
+`POST /api/analyze` accepts clinical documents from whoever asks, and by default asks nobody for anything. Two things in this repository narrow that, and neither is authentication:
+
+- **The backend's port is published on loopback.** `docker-compose.yml` binds `127.0.0.1:8000:8000`, so a browser on the machine running the stack reaches `http://localhost:8000` as before, a reverse proxy on the Docker network reaches the container as before, and the host's public address no longer reaches the API at all. `BACKEND_BIND_ADDRESS` puts it back on every interface if you decide it belongs there.
+- **The analysis routes can require a shared credential.** Set `API_ACCESS_TOKEN` and both analysis endpoints refuse anything without `Authorization: Bearer <that value>`, answering a fixed `401`. Unset — the default — nothing changes. `/healthz` and `/readyz` are never gated: the container healthcheck calls readiness from inside the container, and the interface polls it from a browser.
+
+The credential is one secret shared by every caller. It identifies nobody and cannot be revoked for one client, and **the browser interface in this stack cannot use it** — the page calls the API directly, so any value it could send is readable by every visitor. Setting it without a proxy that injects the header turns the interface off.
+
+Authenticating a person belongs in front of the application. [`deploy/README.md`](./deploy/README.md) has the shape that works — one domain, the proxy authenticating the human and adding the backend's credential on the way through — with a Caddy configuration to copy and the Coolify specifics.
 
 ### Upgrading from a version that stored documents
 
