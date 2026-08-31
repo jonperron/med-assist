@@ -71,3 +71,8 @@ models/
 
 # Model training lives in its own private repository
 backend/training/
+
+# Agent worktrees. Each holds a full checkout at whatever revision the subtask
+# branched from, so `git add -A` in the primary checkout would otherwise commit
+# a stale copy of the tree into itself.
+.claude/worktrees/
