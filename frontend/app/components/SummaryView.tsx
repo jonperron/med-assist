@@ -6,6 +6,7 @@ import { formatDateRange } from '../lib/documentDate'
 import { safeText } from '../lib/safeText'
 import { layoutSummary, SITES_HOST_KEY } from '../lib/summaryLayout'
 import { unreadDocuments } from '../lib/unreadDocuments'
+import { AppFooter } from './AppFooter'
 import { AppHeader } from './AppHeader'
 import { CautionNote } from './CautionNote'
 import { EmptySummary } from './EmptySummary'
@@ -117,6 +118,8 @@ export function SummaryView({ analysis, documents, onStartOver }: Props) {
 
         <CautionNote>{CAVEAT}</CautionNote>
       </main>
+
+      <AppFooter />
     </div>
   )
 }

@@ -234,7 +234,12 @@ describe('SummaryView', () => {
     const { container } = renderSummary()
     const chip = sourceChips().getByText('Lettre adressage')
 
-    expect(container.querySelector('[data-print="hide"]')).not.toContainElement(chip)
+    // Every print-hidden region, not the first one. `querySelector` returned
+    // the header, which the chip was never inside, so the assertion held for
+    // a reason that had nothing to do with what it was checking.
+    const hidden = container.querySelectorAll('[data-print="hide"]')
+    expect(hidden.length).toBeGreaterThan(0)
+    hidden.forEach(region => expect(region).not.toContainElement(chip))
   })
 
   it('starts over on request', () => {
@@ -253,5 +258,14 @@ describe('SummaryView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Imprimer' }))
     expect(print).toHaveBeenCalledOnce()
     vi.unstubAllGlobals()
+  })
+
+  it('carries the footer', () => {
+    // The screen a clinician spends the longest on is the one where the
+    // question "where did my documents go" is most likely to be asked.
+    renderSummary()
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(
+      /Aucun document n'est enregistré sur le serveur/
+    )
   })
 })

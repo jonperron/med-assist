@@ -57,6 +57,39 @@ Refresh and HMR need. The variant is selected from the phase Next passes to the
 config, not from `NODE_ENV`, so an inherited environment variable cannot put it
 in a production build.
 
+## Version and footer
+
+Both screens carry `app/components/AppFooter.tsx`: the build version, a link to
+the public issue tracker, and one sentence on what becomes of a submitted
+document.
+
+The version comes from `package.json`, which stays the only place it is written
+down. `next.config.ts` reads the manifest at build time and injects it through
+Next's `env` option, so `app/lib/version.ts` reads a string literal that the
+bundler has already substituted; the manifest itself never reaches the bundle.
+`vitest.config.ts` defines the same value from the same file, so the footer
+under test shows the version it would ship with rather than the `dev` fallback.
+Bumping a release therefore means bumping `package.json` and nothing else.
+
+The issue link is the only off-origin navigation this interface offers. No CSP
+directive governs a user-initiated navigation, so what makes it safe is where it
+goes: a public repository holding no patient data. It carries
+`rel="noopener noreferrer"`, and `Referrer-Policy: no-referrer` keeps the
+address of the page the clinician was on out of the request.
+
+The privacy sentence says the documents live in temporary storage for the length
+of the request rather than claiming they never touch a disk, because the HTTP
+server spools a multipart part above 1 MB. Both halves of it hold on any
+filesystem — the spool is an unnamed inode, unlinked at creation — but only
+`docker-compose.yml` makes that spool RAM-backed, by mounting a `tmpfs` at `/tmp`
+and setting `TMPDIR`. A deployment that does not (a bare `uvicorn` run, a plain
+`docker run`, a k8s manifest) still erases the file with the response, but on a
+disk-backed `/tmp` the freed blocks are recoverable from the raw device. Backing
+`TMPDIR` with RAM is therefore a precondition for the strongest reading of the
+sentence, and belongs in any deployment that is not the Compose file.
+
+It is the badge's claim spelled out; if either is reworded, reword both.
+
 ## API types
 
 `app/types/api.ts` is generated from the backend's OpenAPI document and is not

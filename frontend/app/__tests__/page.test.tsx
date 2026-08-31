@@ -177,8 +177,40 @@ describe('HomePage', () => {
     render(<HomePage />)
 
     // The clinician is asked for documents, not for a data-handling policy.
+    // The ban on the vocabulary is the original guard, now scoped to `main`
+    // rather than dropped: the footer states what becomes of the documents,
+    // which is a fact about the service and belongs on screen, and scoping
+    // exempts it by construction instead of by deleting the assertion. Inside
+    // the working area the words still have no business appearing, because
+    // there is no choice to offer and a control would imply one.
     expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0)
-    expect(screen.queryByText(/serveur|supprim|masqu/i)).not.toBeInTheDocument()
+    expect(document.querySelectorAll('input[type="radio"]')).toHaveLength(0)
+    expect(document.querySelectorAll('select')).toHaveLength(0)
+
+    const workingArea = within(screen.getByRole('main'))
+    expect(workingArea.queryByText(/serveur|supprim|masqu/i)).not.toBeInTheDocument()
+  })
+
+  it('makes no absolute claim about erasure anywhere on the page', () => {
+    render(<HomePage />)
+
+    // What the footer may say is bounded by what the service does. The spool
+    // the HTTP server writes for a large part is a real file - RAM-backed
+    // under `docker-compose.yml`, not necessarily anywhere else - so "never
+    // written to disk" and "definitively deleted" are both stronger than the
+    // truth. This guards the whole page, footer included.
+    expect(document.body.textContent).not.toMatch(/jamais.{0,30}disque/i)
+    expect(document.body.textContent).not.toMatch(/définitivement/i)
+  })
+
+  it('carries the footer', () => {
+    render(<HomePage />)
+    expect(screen.getByRole('contentinfo')).toHaveTextContent(
+      /Aucun document n'est enregistré sur le serveur/
+    )
+    expect(
+      screen.getByRole('link', { name: /Signaler un problème/ })
+    ).toBeInTheDocument()
   })
 
   it('counts the documents off as the stream reports them', async () => {
