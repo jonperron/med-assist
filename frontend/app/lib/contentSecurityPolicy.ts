@@ -76,6 +76,25 @@ function quoteForError(value: string): string {
 }
 
 /**
+ * The configured API base, trimmed, with the default standing in for an unset
+ * or blank value.
+ *
+ * Exported so the page fetches from exactly the value the policy was built for.
+ * They used to derive it separately - this trimmed, `page.tsx` did not - and a
+ * whitespace-only `NEXT_PUBLIC_API_URL` is truthy: the policy would be built
+ * for the default origin while `fetch` received a blank base and resolved the
+ * analysis POST against the frontend's own origin, sending a clinician's
+ * documents to the Next server rather than to the API.
+ *
+ * The whole base is returned rather than {@link apiOrigin}'s origin, because
+ * this is what a path is appended to: reducing it here would silently drop a
+ * path prefix from a deployment that configured one.
+ */
+export function apiBaseUrl(apiUrl?: string): string {
+  return apiUrl?.trim() || DEFAULT_API_URL
+}
+
+/**
  * The origin of the configured API, and nothing else from the URL.
  *
  * A CSP source expression is an origin: scheme, host, port. Passing a whole
@@ -87,7 +106,7 @@ function quoteForError(value: string): string {
  * notice was wrong until a clinician's analysis failed in the browser.
  */
 export function apiOrigin(apiUrl?: string): string {
-  const configured = apiUrl?.trim() || DEFAULT_API_URL
+  const configured = apiBaseUrl(apiUrl)
 
   let parsed: URL
   try {

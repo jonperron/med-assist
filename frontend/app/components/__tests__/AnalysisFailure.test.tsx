@@ -112,4 +112,37 @@ describe('AnalysisFailure', () => {
       screen.getByRole('button', { name: "Choisir d'autres documents" })
     ).toBeInTheDocument()
   })
+
+  it('offers no retry while the service has said it cannot analyse', () => {
+    // A retryable reason, withheld because the service is known to be refusing:
+    // the retry would send the same batch to a backend that will refuse it, and
+    // it would sit beside a submit button the page has already disabled.
+    render(
+      <AnalysisFailure
+        message="Internal server error"
+        reason="server_error"
+        canRetry={false}
+        onRetry={() => {}}
+        onStartOver={() => {}}
+      />
+    )
+
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: "Choisir d'autres documents" })
+    ).toBeInTheDocument()
+  })
+
+  it('offers the retry by default, so a caller that says nothing loses nothing', () => {
+    render(
+      <AnalysisFailure
+        message="Internal server error"
+        reason="server_error"
+        onRetry={() => {}}
+        onStartOver={() => {}}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
 })

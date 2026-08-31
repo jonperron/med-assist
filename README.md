@@ -56,9 +56,18 @@ backend`, with no rebuild.
 
 Start the stack without them and nothing crashes: Docker creates the path
 empty, the backend comes up, and `GET /readyz` and both analysis routes answer
-`503` rather than the container crash-looping. If an analysis is refused that
-way, `MODEL_DIR` is the first thing to check, and `docker compose logs backend`
-says whether the load failed.
+`503`. The interface says so at the top of the screen and holds the analyse
+button shut, so a missing mount looks like a service that is not available yet
+rather than like documents that were rejected. It rechecks every few seconds
+and re-enables itself — there is nothing to reload. If that warning is on
+screen, `MODEL_DIR` is the first thing to check, and `docker compose logs
+backend` says whether the load failed.
+
+A second, differently worded notice appears when the interface cannot reach the
+backend at all rather than being told it is not ready. That one leaves the
+button enabled: a deployment that does not route `/readyz` — it sits at the
+root, while analysis sits under `/api` — would otherwise have a working
+analysis path disabled by a probe that is the only broken part.
 
 ### Serving it from somewhere other than localhost
 

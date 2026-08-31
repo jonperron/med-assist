@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_API_URL,
+  apiBaseUrl,
   apiOrigin,
   contentSecurityPolicy,
   securityHeaders,
@@ -18,6 +19,39 @@ function directive(policy: string, name: string): string {
 
   return found
 }
+
+describe('apiBaseUrl', () => {
+  it('is what the page fetches from, so the policy and the request agree', () => {
+    expect(apiBaseUrl('https://med-assist.example.org')).toBe(
+      'https://med-assist.example.org'
+    )
+  })
+
+  it('falls back for a value that is only whitespace', () => {
+    // The page used to take this value behind a bare falsy check, where a
+    // whitespace string is truthy: the policy was built for the default origin
+    // while `fetch` got a blank base and resolved the analysis POST against the
+    // frontend's own origin - a clinician's documents to the wrong server.
+    expect(apiBaseUrl('   ')).toBe(DEFAULT_API_URL)
+    expect(apiBaseUrl('')).toBe(DEFAULT_API_URL)
+    expect(apiBaseUrl(undefined)).toBe(DEFAULT_API_URL)
+  })
+
+  it('keeps a path prefix that the origin would drop', () => {
+    // This is the base a path is appended to, not a CSP source expression.
+    // Reducing it to an origin here would silently unconfigure a deployment
+    // served under a prefix.
+    expect(apiBaseUrl('https://example.org/backend')).toBe(
+      'https://example.org/backend'
+    )
+  })
+
+  it('is the value apiOrigin resolves, so the two cannot drift', () => {
+    expect(apiOrigin('  https://example.org:8443/ignored  ')).toBe(
+      new URL(apiBaseUrl('  https://example.org:8443/ignored  ')).origin
+    )
+  })
+})
 
 describe('apiOrigin', () => {
   it('keeps the origin and drops the path', () => {

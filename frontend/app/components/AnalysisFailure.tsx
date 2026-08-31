@@ -5,6 +5,13 @@ interface Props {
   message: string
   /** Which kind of failure this is, for the headline above the message. */
   reason: StreamFailure
+  /**
+   * False while the service has said it cannot analyse. The retry would send
+   * the same batch to a backend known to refuse it, and an enabled control
+   * beside a disabled submit button reads as the interface contradicting
+   * itself - this is the state where the two most need to agree.
+   */
+  canRetry?: boolean
   onRetry: () => void
   onStartOver: () => void
 }
@@ -56,7 +63,13 @@ function retryable(reason: StreamFailure): boolean {
  * its message precisely so a client does not have to read English prose to
  * tell a bad document from a failed service.
  */
-export function AnalysisFailure({ message, reason, onRetry, onStartOver }: Props) {
+export function AnalysisFailure({
+  message,
+  reason,
+  canRetry = true,
+  onRetry,
+  onStartOver,
+}: Props) {
   return (
     <div
       role="alert"
@@ -74,7 +87,7 @@ export function AnalysisFailure({ message, reason, onRetry, onStartOver }: Props
         </span>
         <span className="text-sm leading-[1.6] text-pretty text-ink-soft">{message}</span>
         <div className="flex flex-wrap items-center gap-2.5 pt-1.5">
-          {retryable(reason) && (
+          {retryable(reason) && canRetry && (
             <button
               type="button"
               onClick={onRetry}

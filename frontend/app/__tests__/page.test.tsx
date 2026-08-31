@@ -1,10 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import HomePage from '../page'
+import { READY_PATH } from '../lib/serviceStatus'
 import type { AnalysisResponse } from '../types/extraction'
 
-const fetchMock = vi.fn()
+// The page makes two different requests, and every test cares about exactly one
+// of them: the readiness check the poll issues on mount, and the analysis the
+// clinician submits. Routed apart here so a test can set one without setting
+// the other, and so a call index means what it used to.
+const analysisMock = vi.fn()
+const readyMock = vi.fn()
+
+function route(url: string, init?: RequestInit) {
+  return String(url).endsWith(READY_PATH) ? readyMock(url, init) : analysisMock(url, init)
+}
+
+const fetchMock = vi.fn(route)
 vi.stubGlobal('fetch', fetchMock)
+
+/** A backend with the model in memory. The default every test starts from. */
+function ready(): Response {
+  return { ok: true, status: 200 } as unknown as Response
+}
 
 const RESULT: AnalysisResponse = {
   summary: {
@@ -75,7 +92,22 @@ function refusal(status: number, message: string): Response {
 }
 
 function answers(chunks: string[] = [stream()]) {
-  fetchMock.mockResolvedValue(streaming(chunks))
+  analysisMock.mockResolvedValue(streaming(chunks))
+}
+
+/**
+ * Render the page and let the readiness check on mount settle.
+ *
+ * The check is issued from an effect and resolves on a microtask, so without
+ * flushing it here the state it sets lands outside `act` and every test that
+ * does not await something else warns about it.
+ */
+async function renderPage() {
+  let rendered!: ReturnType<typeof render>
+  await act(async () => {
+    rendered = render(<HomePage />)
+  })
+  return rendered
 }
 
 function selectFiles(count = 1, type = 'text/plain', extension = 'txt') {
@@ -91,90 +123,111 @@ function submit() {
   fireEvent.click(screen.getByRole('button', { name: /^Résumer / }))
 }
 
+/**
+ * The service notice, selected by name.
+ *
+ * Four components on these screens are `role="status"`, and an unqualified
+ * query throws on more than one match - a coupling that would otherwise only
+ * show up as two unrelated tests breaking on a layout change.
+ */
+function notice() {
+  return screen.getByRole('status', { name: 'État du service' })
+}
+
+function queryNotice() {
+  return screen.queryByRole('status', { name: 'État du service' })
+}
+
 function postedForm(call = 0) {
-  return (fetchMock.mock.calls[call][1] as RequestInit).body as FormData
+  return (analysisMock.mock.calls[call][1] as RequestInit).body as FormData
 }
 
 describe('HomePage', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    // Reset rather than clear. `clearAllMocks` drops call history but leaves
+    // implementations in place, so an analysis response set by one test would
+    // still be answering in the next test that forgot to set its own - which
+    // passes, on the previous test's stream.
+    vi.resetAllMocks()
+    fetchMock.mockImplementation(route)
+    readyMock.mockResolvedValue(ready())
   })
 
   it('summarises the selected documents', async () => {
     answers()
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
-    expect(fetchMock.mock.calls[0][0]).toContain('/api/analyze/stream')
+    await waitFor(() => expect(analysisMock).toHaveBeenCalledOnce())
+    expect(analysisMock.mock.calls[0][0]).toContain('/api/analyze/stream')
     expect(await screen.findByText('fièvre')).toBeInTheDocument()
     expect(screen.getByText('Patient, 67 ans, homme.')).toBeInTheDocument()
   })
 
-  it('asks the backend nothing until the clinician submits', () => {
-    render(<HomePage />)
+  it('asks the backend nothing until the clinician submits', async () => {
+    await renderPage()
     selectFiles(2)
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(analysisMock).not.toHaveBeenCalled()
     expect(screen.getByText('2 documents prêts')).toBeInTheDocument()
   })
 
   it('posts every document under the field the API reads', async () => {
     answers()
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(3)
     submit()
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await waitFor(() => expect(analysisMock).toHaveBeenCalledOnce())
     expect(postedForm().getAll('files')).toHaveLength(3)
   })
 
-  it('refuses an unsupported document without asking the backend', () => {
-    render(<HomePage />)
+  it('refuses an unsupported document without asking the backend', async () => {
+    await renderPage()
     selectFiles(1, 'image/png', 'png')
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(analysisMock).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(/PDF, DOCX ou TXT/)
     expect(screen.queryByRole('button', { name: /^Résumer / })).not.toBeInTheDocument()
   })
 
-  it('distinguishes a format the browser could not name from a wrong one', () => {
-    render(<HomePage />)
+  it('distinguishes a format the browser could not name from a wrong one', async () => {
+    await renderPage()
     selectFiles(1, 'application/octet-stream', 'docx')
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(analysisMock).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(/navigateur/)
   })
 
   it('drops a document from the batch before submitting', async () => {
     answers()
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(2)
     fireEvent.click(screen.getByRole('button', { name: 'Retirer report0.txt' }))
     submit()
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await waitFor(() => expect(analysisMock).toHaveBeenCalledOnce())
     expect(postedForm().getAll('files')).toHaveLength(1)
   })
 
   it('never stores and never issues an id', async () => {
     answers()
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
-    expect(fetchMock.mock.calls[0][0]).not.toContain('/api/upload')
+    await waitFor(() => expect(analysisMock).toHaveBeenCalledOnce())
+    expect(analysisMock.mock.calls[0][0]).not.toContain('/api/upload')
     expect(screen.queryByText(/File ID/)).not.toBeInTheDocument()
   })
 
-  it('offers no storage, retention or masking controls', () => {
-    render(<HomePage />)
+  it('offers no storage, retention or masking controls', async () => {
+    await renderPage()
 
     // The clinician is asked for documents, not for a data-handling policy.
     expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0)
@@ -191,7 +244,7 @@ describe('HomePage', () => {
     let release: () => void = () => {}
     const held = new Promise<void>(resolve => (release = resolve))
 
-    fetchMock.mockResolvedValue({
+    analysisMock.mockResolvedValue({
       ok: true,
       status: 200,
       body: new ReadableStream<Uint8Array>({
@@ -223,7 +276,7 @@ describe('HomePage', () => {
       }),
     } as unknown as Response)
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(3)
     submit()
 
@@ -235,9 +288,9 @@ describe('HomePage', () => {
 
   it('shows progress while the analysis runs', async () => {
     let settle: (value: Response) => void = () => {}
-    fetchMock.mockReturnValue(new Promise<Response>(resolve => (settle = resolve)))
+    analysisMock.mockReturnValue(new Promise<Response>(resolve => (settle = resolve)))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -254,7 +307,7 @@ describe('HomePage', () => {
       frame({ stage: 'batch', total: 2 }),
       frame({ stage: 'document', index: 0, read: false, unreadable_reason: 'no_text' }),
     ]
-    fetchMock.mockResolvedValue({
+    analysisMock.mockResolvedValue({
       ok: true,
       status: 200,
       body: new ReadableStream<Uint8Array>({
@@ -266,7 +319,7 @@ describe('HomePage', () => {
       }),
     } as unknown as Response)
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(2)
     submit()
 
@@ -275,11 +328,11 @@ describe('HomePage', () => {
   })
 
   it('surfaces the message of a refusal sent before the stream opened', async () => {
-    fetchMock.mockResolvedValue(
+    analysisMock.mockResolvedValue(
       refusal(400, 'Unable to extract text from the document.')
     )
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -289,7 +342,7 @@ describe('HomePage', () => {
   })
 
   it('tells a batch that could not be read from a service that failed', async () => {
-    fetchMock.mockResolvedValue(
+    analysisMock.mockResolvedValue(
       streaming([
         frame({ stage: 'batch', total: 1 }),
         frame({
@@ -300,7 +353,7 @@ describe('HomePage', () => {
       ])
     )
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -310,7 +363,7 @@ describe('HomePage', () => {
   })
 
   it('does not blame the documents for the service failing', async () => {
-    fetchMock.mockResolvedValue(
+    analysisMock.mockResolvedValue(
       streaming([
         frame({ stage: 'batch', total: 1 }),
         frame({
@@ -321,7 +374,7 @@ describe('HomePage', () => {
       ])
     )
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -331,9 +384,9 @@ describe('HomePage', () => {
   })
 
   it('reports a stream that ended without answering', async () => {
-    fetchMock.mockResolvedValue(streaming([frame({ stage: 'batch', total: 1 })]))
+    analysisMock.mockResolvedValue(streaming([frame({ stage: 'batch', total: 1 })]))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -343,9 +396,9 @@ describe('HomePage', () => {
   })
 
   it('reports a network failure without implicating the documents', async () => {
-    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    analysisMock.mockRejectedValue(new TypeError('Failed to fetch'))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -355,9 +408,9 @@ describe('HomePage', () => {
   })
 
   it('keeps the batch so a failed analysis can be retried', async () => {
-    fetchMock.mockResolvedValue(refusal(500, 'Internal server error'))
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(2)
     submit()
     await screen.findByRole('alert')
@@ -365,14 +418,14 @@ describe('HomePage', () => {
     answers()
     fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(analysisMock).toHaveBeenCalledTimes(2))
     expect(postedForm(1).getAll('files')).toHaveLength(2)
   })
 
   it('starts over from a failed analysis rather than only retrying the same batch', async () => {
-    fetchMock.mockResolvedValue(refusal(500, 'Internal server error'))
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(2)
     submit()
     await screen.findByRole('alert')
@@ -385,9 +438,9 @@ describe('HomePage', () => {
   })
 
   it('drops the failure card when the batch it described is emptied', async () => {
-    fetchMock.mockResolvedValue(refusal(500, 'Internal server error'))
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(2)
     submit()
     await screen.findByRole('alert')
@@ -400,9 +453,9 @@ describe('HomePage', () => {
   })
 
   it('drops the failure card when the batch is changed', async () => {
-    fetchMock.mockResolvedValue(refusal(500, 'Internal server error'))
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles(2)
     submit()
     await screen.findByRole('alert')
@@ -412,14 +465,14 @@ describe('HomePage', () => {
   })
 
   it('reports a result event that does not carry a summary', async () => {
-    fetchMock.mockResolvedValue(
+    analysisMock.mockResolvedValue(
       streaming([
         frame({ stage: 'batch', total: 1 }),
         frame({ stage: 'result', result: { detail: 'not ours' } }),
       ])
     )
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -428,7 +481,7 @@ describe('HomePage', () => {
   })
 
   it('reports a summary whose sections are not a list', async () => {
-    fetchMock.mockResolvedValue(
+    analysisMock.mockResolvedValue(
       streaming([
         frame({
           stage: 'result',
@@ -437,7 +490,7 @@ describe('HomePage', () => {
       ])
     )
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
@@ -446,7 +499,7 @@ describe('HomePage', () => {
 
   it('ignores an event stage this build has never heard of', async () => {
     // The union is meant to grow. An older client has to keep working.
-    fetchMock.mockResolvedValue(
+    analysisMock.mockResolvedValue(
       streaming([
         frame({ stage: 'batch', total: 1 }),
         frame({ stage: 'weather', forecast: 'rain' }),
@@ -455,29 +508,29 @@ describe('HomePage', () => {
       ])
     )
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
 
     expect(await screen.findByText('fièvre')).toBeInTheDocument()
   })
 
-  it('refuses an oversized document without asking the backend', () => {
-    render(<HomePage />)
+  it('refuses an oversized document without asking the backend', async () => {
+    await renderPage()
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     const heavy = new File(['x'], 'gros.txt', { type: 'text/plain' })
     Object.defineProperty(heavy, 'size', { value: 11 * 1024 * 1024 })
     fireEvent.change(input, { target: { files: [heavy] } })
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(analysisMock).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent(/volumineux/)
   })
 
   it('clears a previous summary when starting over', async () => {
     answers()
 
-    render(<HomePage />)
+    await renderPage()
     selectFiles()
     submit()
     expect(await screen.findByText('fièvre')).toBeInTheDocument()
@@ -486,6 +539,222 @@ describe('HomePage', () => {
 
     await waitFor(() => expect(screen.queryByText('fièvre')).not.toBeInTheDocument())
     expect(screen.queryByText(/documents prêts/)).not.toBeInTheDocument()
+  })
+
+  it('warns before the clinician commits anything when the service cannot analyse', async () => {
+    readyMock.mockResolvedValue(refusal(503, 'The service is starting up.'))
+
+    await renderPage()
+
+    // No document selected, nothing submitted: the state of the service is on
+    // screen before the clinician gathers a batch it would have refused.
+    expect(notice()).toHaveTextContent("Le service n'est pas disponible")
+    expect(analysisMock).not.toHaveBeenCalled()
+  })
+
+  it('says nothing about the service while the first check is still open', async () => {
+    // A warning rendered during the first round trip would flash on every load
+    // of a perfectly healthy deployment.
+    readyMock.mockReturnValue(new Promise<Response>(() => {}))
+
+    // Rendered directly rather than through `renderPage`: the point is the
+    // window before the first answer, so there is deliberately nothing to
+    // flush and the promise never settles.
+    render(<HomePage />)
+
+    expect(queryNotice()).not.toBeInTheDocument()
+    // And the interface is not held shut while it waits to hear.
+    selectFiles()
+    expect(screen.getByRole('button', { name: /^Résumer / })).toBeEnabled()
+  })
+
+  it('holds the analysis shut rather than sending a batch that comes back refused', async () => {
+    readyMock.mockResolvedValue(refusal(503, 'The service is starting up.'))
+
+    await renderPage()
+    selectFiles(2)
+
+    expect(screen.getByRole('button', { name: /^Résumer / })).toBeDisabled()
+
+    submit()
+    expect(analysisMock).not.toHaveBeenCalled()
+  })
+
+  it('lets the clinician gather documents while the service is down', async () => {
+    // The wait is usually seconds. Locking the dropzone would make them redo
+    // the selection once it clears.
+    readyMock.mockResolvedValue(refusal(503, 'The service is starting up.'))
+
+    await renderPage()
+    selectFiles(2)
+
+    expect(screen.getByText('2 documents prêts')).toBeInTheDocument()
+  })
+
+  it('clears the warning by itself once the service comes up', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      readyMock
+        .mockResolvedValueOnce(refusal(503, 'The service is starting up.'))
+        .mockResolvedValue(ready())
+
+      await renderPage()
+      selectFiles()
+      expect(notice()).toHaveTextContent("Le service n'est pas disponible")
+      expect(screen.getByRole('button', { name: /^Résumer / })).toBeDisabled()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000)
+      })
+
+      // No reload, no second visit: the poll re-enables the interface.
+      expect(queryNotice()).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^Résumer / })).toBeEnabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('raises the warning when a service that was up goes away', async () => {
+    // The recovery path is tested below; this is the other direction, and it is
+    // the one that covers the reschedule after a ready answer. Without it, a
+    // regression that stops polling once ready passes the whole suite.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await renderPage()
+      selectFiles()
+      expect(queryNotice()).not.toBeInTheDocument()
+
+      readyMock.mockResolvedValue(refusal(503, 'The service is starting up.'))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000)
+      })
+
+      expect(notice()).toHaveTextContent("Le service n'est pas disponible")
+      expect(screen.getByRole('button', { name: /^Résumer / })).toBeDisabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports a check it could not reach without taking the analysis away', async () => {
+    // A deployment that does not route /readyz would otherwise have a working
+    // analysis path permanently disabled by a probe that does not work.
+    readyMock.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await renderPage()
+    selectFiles()
+
+    expect(notice()).toHaveTextContent('Med-Assist ne répond pas')
+    expect(screen.getByRole('button', { name: /^Résumer / })).toBeEnabled()
+  })
+
+  it('takes the retry away once the service turns out to be refusing', async () => {
+    // The state where the gate matters most: the previous attempt just failed
+    // and the service is known to be refusing. An enabled retry beside a
+    // disabled submit button is the interface contradicting itself.
+    //
+    // The service is up when the batch is submitted - otherwise the submit
+    // button is already shut and no failure card is ever reached, which would
+    // make this pass without exercising anything. It goes down in time for the
+    // re-check that the failure itself triggers.
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
+
+    await renderPage()
+    selectFiles(2)
+    readyMock.mockResolvedValue(refusal(503, 'The service is starting up.'))
+    submit()
+
+    // The failure card is on screen, so the retry is a control this state would
+    // otherwise be offering.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "L'analyse n'a pas abouti"
+    )
+    await waitFor(() => expect(queryNotice()).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: "Choisir d'autres documents" })
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the retry while the service is up', async () => {
+    // The guard against the test above passing for the wrong reason: the same
+    // failure with a healthy service must still offer the retry.
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
+
+    await renderPage()
+    selectFiles(2)
+    submit()
+    await screen.findByRole('alert')
+
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+  })
+
+  it('asks the service about itself as soon as an analysis fails', async () => {
+    // The failed request already carries an answer about the service. Waiting
+    // up to 30 seconds for the next scheduled poll would leave the button
+    // enabled for a second doomed attempt.
+    analysisMock.mockResolvedValue(refusal(500, 'Internal server error'))
+
+    await renderPage()
+    const beforeSubmit = readyMock.mock.calls.length
+
+    selectFiles()
+    submit()
+    await screen.findByRole('alert')
+
+    await waitFor(() =>
+      expect(readyMock.mock.calls.length).toBeGreaterThan(beforeSubmit)
+    )
+  })
+
+  it('does not go and ask when it was the documents that failed', async () => {
+    // A batch nothing could be read from says nothing about the service.
+    analysisMock.mockResolvedValue(
+      refusal(400, 'Unable to extract text from the document.')
+    )
+
+    await renderPage()
+    const beforeSubmit = readyMock.mock.calls.length
+
+    selectFiles()
+    submit()
+    await screen.findByRole('alert')
+
+    expect(readyMock.mock.calls.length).toBe(beforeSubmit)
+  })
+
+  it('checks again when the clinician comes back to the tab', async () => {
+    // A hidden tab has its timers throttled to roughly a minute, so the promise
+    // that the screen updates by itself needs help on return.
+    readyMock.mockResolvedValue(refusal(503, 'The service is starting up.'))
+    await renderPage()
+    const beforeReturn = readyMock.mock.calls.length
+
+    readyMock.mockResolvedValue(ready())
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(readyMock.mock.calls.length).toBeGreaterThan(beforeReturn)
+    expect(queryNotice()).not.toBeInTheDocument()
+  })
+
+  it('stops checking once the page is left', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { unmount } = await renderPage()
+      const checked = readyMock.mock.calls.length
+
+      unmount()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000)
+      })
+
+      expect(readyMock).toHaveBeenCalledTimes(checked)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('abandons the in-flight request rather than leaving it running when the page is left', async () => {
@@ -499,12 +768,12 @@ describe('HomePage', () => {
       },
     })
 
-    fetchMock.mockImplementation((_: string, init: RequestInit) => {
+    analysisMock.mockImplementation((_: string, init: RequestInit) => {
       capturedSignal = init.signal as AbortSignal
       return Promise.resolve({ ok: true, status: 200, body } as unknown as Response)
     })
 
-    const { unmount } = render(<HomePage />)
+    const { unmount } = await renderPage()
     selectFiles()
     submit()
 
