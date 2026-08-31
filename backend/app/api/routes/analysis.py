@@ -55,6 +55,16 @@ BATCH_DESCRIPTION = (
 # The generic failure, worded as the 500 body the non-streaming route sends.
 INTERNAL_ERROR = "Internal server error"
 
+# How the credential gate is documented on both analysis endpoints. It is
+# middleware, so FastAPI cannot see it and would otherwise leave a deployment's
+# 401 out of the schema entirely; and it is conditional, so the description says
+# when it applies rather than asserting that every deployment refuses an
+# anonymous caller.
+UNAUTHORIZED_DESCRIPTION = (
+    "No valid credential. Only a deployment that configures a shared credential "
+    "answers this; one that does not never refuses for this reason."
+)
+
 # How a refusal is documented on the streaming endpoint. Declaring `model=`
 # there would file the error shape under the route's own media type, which on
 # that endpoint is text/event-stream - and a refusal is ordinary JSON, sent
@@ -159,6 +169,7 @@ def describe(document: ReadDocument) -> AnalyzedDocument:
     dependencies=[Depends(require_the_model)],
     responses={
         400: {"model": ErrorResponse, "description": "Invalid or unreadable document"},
+        401: {"model": ErrorResponse, "description": UNAUTHORIZED_DESCRIPTION},
         413: {
             "model": ErrorResponse,
             "description": "A file is too large, or the batch holds too many files",
@@ -251,6 +262,7 @@ async def analyze(
     dependencies=[Depends(require_the_model)],
     responses={
         400: {"description": "Invalid document", **JSON_REFUSAL},
+        401: {"description": UNAUTHORIZED_DESCRIPTION, **JSON_REFUSAL},
         413: {
             "description": "A file is too large, or the batch holds too many files",
             **JSON_REFUSAL,

@@ -14,6 +14,11 @@ from app.api import (
     health_router,
     mock_router,
 )
+from app.core.access import (
+    ACCESS_TOKEN_VARIABLE,
+    RequireAccessToken,
+    configured_access_token,
+)
 from app.core.config import CORSConfiguration
 from app.core.dependencies import get_entity_extractor
 from app.core.middleware import LimitRequestSize, forbid_caching
@@ -119,8 +124,11 @@ def create_app(app_env: str | None = None) -> FastAPI:
         RequestValidationError, malformed_requests_stay_generic
     )
 
+    access_token = configured_access_token()
+
     # The last one registered runs first, so the stack is forbid_caching, then
-    # CORS, then the size ceiling, then the router.
+    # CORS, then the credential gate if there is one, then the size ceiling,
+    # then the router.
     #
     # The order of the middle two is load-bearing. LimitRequestSize writes its
     # 413 straight to `send` rather than returning through the router, so a
@@ -138,6 +146,27 @@ def create_app(app_env: str | None = None) -> FastAPI:
     # Unset, the value is still the local frontend origin - never a wildcard,
     # which a browser refuses on a credentialed response anyway.
     application.add_middleware(LimitRequestSize)
+
+    # Registered after the ceiling so that it runs before it: a caller with no
+    # credential is refused on its headers, and the body it was sending is
+    # never read, let alone spooled to TMPDIR and measured. Mounted only when a
+    # credential is configured, and the two cases are logged because the
+    # difference between them is the whole security posture of the deployment -
+    # a mistyped variable name would otherwise leave the routes open and look
+    # exactly like a service that had been locked down.
+    if access_token:
+        application.add_middleware(RequireAccessToken, token=access_token)
+        logger.info(
+            "The analysis routes require a bearer credential. The browser "
+            "interface cannot supply one; put an authenticating proxy in front."
+        )
+    else:
+        logger.warning(
+            "No %s is configured: the analysis routes answer any client that "
+            "can reach this port. CORS does not change that.",
+            ACCESS_TOKEN_VARIABLE,
+        )
+
     application.add_middleware(
         CORSMiddleware,
         allow_origins=list(CORSConfiguration().allowed_origins),

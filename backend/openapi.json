@@ -738,6 +738,16 @@
             },
             "description": "Invalid or unreadable document"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid credential. Only a deployment that configures a shared credential answers this; one that does not never refuses for this reason."
+          },
           "413": {
             "content": {
               "application/json": {
@@ -841,6 +851,16 @@
               }
             },
             "description": "Invalid document"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid credential. Only a deployment that configures a shared credential answers this; one that does not never refuses for this reason."
           },
           "413": {
             "content": {
