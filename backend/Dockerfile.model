@@ -1,0 +1,40 @@
+# The weights, and nothing else, as an OCI image.
+#
+# This exists so the backend image can be built from a Git clone alone. The
+# weights are ~420MB and gitignored, so a clone does not carry them; a build
+# that needs a host directory is not reproducible on a platform that builds
+# from a clone, which is every hosted one. Published once per model version to
+# a PRIVATE registry, it turns the weights into something a build can pull.
+#
+# PRIVATE. Never push this image, or a backend image built from it, to a public
+# package. It is Dr-BERT/DrBERT-7GB fine-tuned on the DEFT 2021 corpus of French
+# clinical cases. That corpus is not distributable - which settles it on its own
+# - and the possibility that fine-tuned weights carry memorised spans of their
+# training data cannot be ruled out. Publishing is a data-protection problem,
+# not a licence question, and it cannot be undone. See
+# scripts/build_model_image.sh, which prints the publish sequence and does not
+# run it.
+#
+# Do not add an org.opencontainers.image.source label here. It links the package
+# to this repository on GHCR, and a linked package inherits the repository's
+# visibility - which is public.
+#
+# FROM scratch because there is nothing to run: no shell, no libc, no
+# entrypoint. `docker run` on it fails, which is correct - it is a carrier for
+# `COPY --from`, and its single layer is the weights themselves, so the digest
+# covers exactly the bytes that will be loaded and nothing else.
+FROM scratch
+
+# Build this through scripts/build_model_image.sh rather than by hand. The
+# script stages an allowlisted set of files into a context of its own, so the
+# published image holds the model and not whatever else the source directory
+# happened to contain - a training run's output directory holds checkpoints and
+# prediction dumps, and a prediction dump over this corpus contains clinical
+# text.
+#
+# `models` and not `./models`: see Dockerfile.model.dockerignore. Built against
+# the ./backend context instead, the context-wide .dockerignore excludes
+# models/ and this COPY fails the build with `"/models": not found`, naming the
+# .dockerignore line that did it. That is loud, and verified to be loud - it
+# does not quietly produce an empty image.
+COPY models /models

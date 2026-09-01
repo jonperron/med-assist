@@ -1,0 +1,20 @@
+# BuildKit looks for <dockerfile-name>.dockerignore beside the Dockerfile
+# before falling back to the context-wide .dockerignore. That fallback is what
+# this file exists to avoid: .dockerignore excludes models/, which is right for
+# the application image and wrong here - against the ./backend context,
+# `COPY models /models` then fails the build with `"/models": not found`.
+#
+# Note this file REPLACES backend/.dockerignore for this build; it does not add
+# to it. Everything that file denies by name - training/, .env, the caches - is
+# covered here only by the blanket `*`. So the deny lines after `!models` are
+# not redundant: last match wins, and they keep those paths out even if someone
+# later adds a broader `!` exception. This image is published; check any new `!`
+# pattern against backend/.dockerignore's deny list before adding it.
+#
+# In normal use scripts/build_model_image.sh builds against a staged context
+# holding only allowlisted model files, so `*` has little left to exclude. This
+# file is the second line of defence, for a build run against ./backend by hand.
+*
+!models
+training/
+.env

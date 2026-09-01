@@ -6,9 +6,13 @@
 # image build. .gitignore does not apply here.
 training/
 
-# The weights, ~420MB, mounted at runtime rather than copied in. Left out of
-# .dockerignore they would be uploaded to the daemon on every build and cached
-# there, whether or not a COPY mentions them.
+# The weights, ~420MB. They reach the image through the model build stage
+# (see Dockerfile.model), not through this context. Left out of .dockerignore
+# they would be uploaded to the daemon on every build of the application
+# image and cached there, whether or not a COPY mentions them.
+#
+# Dockerfile.model needs the opposite rule and gets it from its own
+# Dockerfile.model.dockerignore, which BuildKit prefers over this file.
 models/
 
 .venv/
