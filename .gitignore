@@ -76,3 +76,9 @@ backend/training/
 # branched from, so `git add -A` in the primary checkout would otherwise commit
 # a stale copy of the tree into itself.
 .claude/worktrees/
+
+# A copied deploy/caddy/Caddyfile holds the operator bcrypt hash from
+# `caddy hash-password`. This repository is public, and a bcrypt hash in a
+# public repository is an offline cracking target. Only the .example is
+# tracked.
+deploy/caddy/Caddyfile

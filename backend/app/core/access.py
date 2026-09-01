@@ -212,14 +212,23 @@ class RequireAccessToken:
 
     Three paths through it are deliberate:
 
-    - `/healthz` and `/readyz` are never covered. The container healthcheck
-      calls readiness from inside the container, where it could hold the
-      credential and does not need to; the frontend's availability poll calls it
-      from a browser, where it could not hold one at all. Between them that
-      settles it. What the two endpoints disclose is whether a process is up and
-      whether weights are in memory - no configuration, no document, nothing
-      that names a patient - so gating them would cost the interface its "the
-      service is starting" notice and buy nothing.
+    - **Everything outside `/api` is open, not only the health endpoints.** The
+      gate is a prefix, so `/healthz`, `/readyz`, `/`, FastAPI's `/docs`,
+      `/redoc` and `/openapi.json`, and the development-only `/mock_summary`
+      all answer without a credential. The two health endpoints are the
+      deliberate part: the container healthcheck calls readiness from inside
+      the container, where it could hold the credential and does not need to,
+      and the interface's availability poll calls it from a browser, where it
+      could not hold one at all. What they disclose is whether a process is up
+      and whether weights are in memory - no configuration, no document. The
+      schema endpoints are the incidental part, and a deployment that does not
+      want its API described to strangers has to keep them off the proxy;
+      `deploy/caddy/Caddyfile.example` routes only `/api`, `/healthz` and
+      `/readyz` to this service, so they are not reachable there. This is
+      stated at length because the set is wider than "the health endpoints",
+      and because a future router mounted outside `/api` would be ungated with
+      nothing failing - `test_access_token.py` pins the current set so that
+      addition breaks a test.
     - A CORS preflight never reaches here. `CORSMiddleware` is mounted outside
       this one and answers `OPTIONS` itself, which it has to: a browser sends no
       `Authorization` on a preflight, so a gate that saw one would refuse the
@@ -236,8 +245,30 @@ class RequireAccessToken:
         # avoids a decode of attacker-controlled input on every request.
         self.expected = token.encode("utf-8")
 
+    def routed_path(self, scope: Scope) -> str:
+        """
+        The path the router will match on, which is not always `scope["path"]`.
+
+        An application mounted behind a prefix carries that prefix in
+        `root_path`, and Starlette's router strips it before matching: served
+        under `--root-path /med-assist`, a request for `/med-assist/api/analyze`
+        reaches the route registered as `/api/analyze`. A gate comparing the
+        raw path would not recognise it, would call through without a word, and
+        the route would analyse the batch - the whole control silently absent on
+        exactly the deployment that added a proxy, which is the deployment this
+        feature exists for. So the prefix is stripped here the same way.
+
+        :param scope: The ASGI connection scope.
+        :return: The path with any mount prefix removed.
+        """
+        path = scope.get("path", "")
+        root_path = scope.get("root_path", "")
+        if root_path and path.startswith(root_path):
+            return path[len(root_path) :] or "/"
+        return path
+
     def covers(self, path: str) -> bool:
-        """Whether the gate applies to a path."""
+        """Whether the gate applies to a routed path."""
         return path == PROTECTED_PREFIX or path.startswith(f"{PROTECTED_PREFIX}/")
 
     def accepts(self, scope: Scope) -> bool:
@@ -256,7 +287,16 @@ class RequireAccessToken:
         return hmac.compare_digest(credential, self.expected)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not self.covers(scope.get("path", "")):
+        # `websocket` is covered as well as `http`, though no route in this
+        # application is one today. An exemption for every scope that is not
+        # HTTP would mean the first `/api` WebSocket anyone adds ships ungated,
+        # with no test failing and nothing here to warn its author. `lifespan`
+        # and anything else still passes through: it carries no path.
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        if not self.covers(self.routed_path(scope)):
             await self.app(scope, receive, send)
             return
 
@@ -270,6 +310,16 @@ class RequireAccessToken:
         # a log file is a working one for whoever reads the log.
         logger.warning(
             "Refused a request to %s that carried no valid credential",
-            scope.get("path", ""),
+            self.routed_path(scope),
         )
+
+        if scope["type"] == "websocket":
+            # The handshake is refused before it is accepted. The connect
+            # message is received first because a server is entitled to expect
+            # the application to read it, and 1008 is the policy-violation code
+            # - there is no 401 on a socket that was never opened.
+            await receive()
+            await send({"type": "websocket.close", "code": 1008})
+            return
+
         await unauthorized()(scope, receive, send)

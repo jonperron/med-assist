@@ -15,8 +15,9 @@ import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.core.access import (
     ACCESS_TOKEN_VARIABLE,
@@ -471,3 +472,128 @@ def test_an_unconfigured_deployment_still_streams_anonymously(open_client):
 
     assert response.status_code == 200
     assert [event for event in stream_events(response) if event["stage"] == "result"]
+
+
+# --- The gate matches the path the router matches ------------------------
+
+
+def test_a_mounted_application_is_still_gated(set_token):
+    """
+    The bypass this test exists for: an app served behind a prefix.
+
+    Starlette's router strips `root_path` before matching, so under
+    `--root-path /med-assist` a request for `/med-assist/api/analyze` reaches
+    the route registered as `/api/analyze`. A gate comparing the raw path would
+    not recognise it, would call through silently, and the batch would be
+    analysed - the control absent on precisely the deployment that added a
+    proxy, which is the deployment this feature exists for.
+    """
+    client = TestClient(stubbed(create_app(PRODUCTION)), root_path="/med-assist")
+
+    assert client.post(f"/med-assist{ANALYZE}").status_code == 401
+
+
+def test_a_mounted_application_still_accepts_the_credential(set_token):
+    client = TestClient(stubbed(create_app(PRODUCTION)), root_path="/med-assist")
+
+    response = client.post(f"/med-assist{ANALYZE}", headers=bearer())
+
+    assert response.status_code == 422
+
+
+def test_a_mounted_health_endpoint_stays_open(set_token):
+    client = TestClient(stubbed(create_app(PRODUCTION)), root_path="/med-assist")
+
+    assert client.get("/med-assist/readyz").status_code == 200
+
+
+# --- Scopes that are not HTTP --------------------------------------------
+
+
+def socket_application() -> FastAPI:
+    """An application with one WebSocket route behind the gate."""
+    application = FastAPI()
+
+    @application.websocket("/api/socket")
+    async def socket(websocket: WebSocket) -> None:  # pylint: disable=W0612
+        await websocket.accept()
+        await websocket.send_text("through")
+
+    application.add_middleware(RequireAccessToken, token=TOKEN)
+    return application
+
+
+def test_a_websocket_on_the_prefix_is_refused_before_it_is_accepted():
+    # No route here is a WebSocket today. The gate covers the scope anyway so
+    # that the first `/api` socket anyone adds does not ship ungated with
+    # nothing failing, and this test is what would notice if the exemption came
+    # back.
+    client = TestClient(socket_application())
+
+    with pytest.raises(WebSocketDisconnect) as refused:
+        with client.websocket_connect("/api/socket"):
+            pass
+
+    assert refused.value.code == 1008
+
+
+def test_a_websocket_carrying_the_credential_connects():
+    client = TestClient(socket_application())
+
+    with client.websocket_connect("/api/socket", headers=bearer()) as connection:
+        assert connection.receive_text() == "through"
+
+
+# --- Which routes the gate does and does not cover ------------------------
+
+
+# Every path the application serves outside the `/api` prefix, and therefore
+# every path a configured deployment still answers anonymously. Pinned as a
+# literal set so that a router mounted outside `/api` fails this test rather
+# than shipping ungated in silence - the enumeration in `RequireAccessToken`'s
+# docstring, in deploy/README.md and in the decision entry has to stay true.
+UNGATED_PATHS = {
+    "/",
+    "/healthz",
+    "/readyz",
+    "/docs",
+    "/docs/oauth2-redirect",
+    "/redoc",
+    "/openapi.json",
+}
+
+
+def test_the_ungated_paths_are_exactly_the_documented_set(set_token):
+    application = create_app(PRODUCTION)
+    gate = RequireAccessToken(application, token=TOKEN)
+
+    ungated = {
+        route.path for route in application.routes if not gate.covers(route.path)
+    }
+
+    assert ungated == UNGATED_PATHS
+
+
+def test_every_analysis_route_is_gated(set_token):
+    application = create_app(PRODUCTION)
+    gate = RequireAccessToken(application, token=TOKEN)
+
+    analysis = [route.path for route in application.routes if "analyze" in route.path]
+
+    assert analysis
+    assert all(gate.covers(path) for path in analysis)
+
+
+def test_the_schema_endpoints_answer_a_gated_deployment_anonymously(gated_client):
+    # Not a hole to fix here - it is the documented consequence of gating a
+    # prefix - but it is asserted so that the documentation saying so cannot
+    # quietly stop being true. The proxy example routes only /api and the two
+    # health paths, so these are unreachable there.
+    assert gated_client.get("/openapi.json").status_code == 200
+
+
+def test_a_short_credential_stops_the_application_not_just_the_helper(monkeypatch):
+    monkeypatch.setenv(ACCESS_TOKEN_VARIABLE, "too-short")
+
+    with pytest.raises(AccessTokenError):
+        create_app(PRODUCTION)

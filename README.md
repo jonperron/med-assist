@@ -32,7 +32,7 @@ It is not intended for use in clinical decision-making and should not replace pr
 - **The browser enforces it too**
   The interface serves a Content-Security-Policy whose `connect-src` names two origins: the page itself and the backend given by `NEXT_PUBLIC_API_URL`. Script on that page cannot open a connection anywhere else — no fetch, no websocket, no beacon, no remote image. Fonts are self-hosted, images are local, and no referrer is sent anywhere. It is not a complete barrier: no CSP any browser ships can refuse a deliberate navigation, so script running in the page could still leave with data in a URL. What the policy removes is every silent channel, and it enforces "only the configured API origin" — whether that origin is on this machine is the operator's call. [`frontend/README.md`](./frontend/README.md) has the details and the deployment consequence.
 
-  This is a local-processing guarantee, not a compliance claim. The extracted entities are health data and remain personal data under GDPR, the API is still unauthenticated, and clinical text is adversarial: read a summary before you rely on it. [`backend/README.md`](./backend/README.md) states the scope and the known gaps.
+  This is a local-processing guarantee, not a compliance claim. The extracted entities are health data and remain personal data under GDPR, the API authenticates nobody unless `API_ACCESS_TOKEN` is set (see *Who can reach the API*), and clinical text is adversarial: read a summary before you rely on it. [`backend/README.md`](./backend/README.md) states the scope and the known gaps.
 
 ---
 
@@ -70,6 +70,8 @@ root, while analysis sits under `/api` — would otherwise have a working
 analysis path disabled by a probe that is the only broken part.
 
 ### Serving it from somewhere other than localhost
+
+**Read *Who can reach the API* below before following this.** Since the backend's port is bound to loopback, pointing `NEXT_PUBLIC_API_URL` at `http://your-host:8000` no longer works: the browser cannot reach that address at all, and the failure looks exactly like the CORS mismatch described here — a network error rather than a refusal — which sends you to the wrong variable. Either put the API behind a proxy on the frontend's domain ([`deploy/README.md`](./deploy/README.md)) or set `BACKEND_BIND_ADDRESS` deliberately.
 
 Two variables describe the same connection and have to move together:
 

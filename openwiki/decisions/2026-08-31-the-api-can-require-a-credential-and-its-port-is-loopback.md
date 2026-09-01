@@ -52,8 +52,23 @@ running the stack still reaches `http://localhost:8000`, so a local
 `docker compose up` is unchanged; a reverse proxy on the Docker network still
 reaches the container, because a platform that attaches domains routes over that
 network and never used the host port. What is gone is the path from the host's
-public address straight into the API. This is the highest-value change in the
-set and it costs nothing that a localhost deployment notices.
+public address straight into the API. It costs nothing that a localhost
+deployment notices.
+
+**How much that binding is worth, corrected.** The security pass of AGENTS.md
+section 8 pushed back on an earlier draft of this entry, which called the
+binding "the highest-value change in the set". Against the threat this entry
+opens with - a platform attaching a public domain to the backend service - it is
+worth nothing: the proxy routes over the Docker network and never used the host
+port, and `deploy/README.md` says so one bullet after telling the operator not
+to do it. So does any other container on that network. What the binding actually
+closes is direct host-port access, which is a real path worth closing - Docker's
+port publishing writes its own firewall rules, so `8000:8000` was reachable from
+outside whatever `ufw` had been told - and a smaller one than the scenario that
+prompted the work. **The credential is the only control for a domain pointed at
+the backend, and it is off by default.** The correction is recorded rather than
+edited away because the original ranking is exactly the misreading that would
+lead an operator to ship the compose change and set no token.
 
 **The analysis routes can require a shared credential.** `API_ACCESS_TOKEN`,
 unset by default. Set, `POST /api/analyze` and `POST /api/analyze/stream` refuse
@@ -76,7 +91,14 @@ Four details of it are deliberate:
   the variable and not the value, for the same reason `CORSOriginError` is a
   `RuntimeError`: a `ValueError` out of a pydantic validator becomes a
   `ValidationError` that quotes its input, and here the input is the secret.
-- **`/healthz`, `/readyz` and `/` are never gated.** The container healthcheck
+- **Everything outside `/api` is ungated, not only the health endpoints.**
+  The gate is a prefix, so `/healthz`, `/readyz`, `/`, FastAPI's `/docs`,
+  `/redoc` and `/openapi.json`, and the development-only `/mock_summary` all
+  answer a configured deployment without a credential. An earlier draft of this
+  entry, and of the code comments, enumerated only the first three; the review
+  pass caught it. A test now pins the exact set so a router mounted outside
+  `/api` fails rather than shipping ungated in silence. The health pair is the
+  deliberate part: the container healthcheck
   calls readiness from inside the container, where it does not need a
   credential; the interface polls it from a browser, which cannot hold one. What
   the two disclose is whether a process is up and whether weights are in memory
@@ -98,6 +120,41 @@ deployment that sets nothing sees no change - no new status, no changed body, no
 new required header - so this is a contract change conditional on
 configuration, which is why the schema description says when it applies rather
 than asserting every deployment refuses anonymous callers.
+
+## What the review passes changed
+
+The four passes of AGENTS.md section 8 ran before this was proposed for merge.
+Two of their findings changed the code rather than the wording, and both were
+failures of the control itself:
+
+**A mounted application was not gated at all** (security pass, CWE-288). The
+gate compared `scope["path"]`, but Starlette's router matches on the path with
+`root_path` stripped. Served behind a prefix - `--root-path /med-assist`, which
+is FastAPI's own documented recipe for running behind a proxy - a request for
+`/med-assist/api/analyze` did not match the gate's `/api` prefix, passed through
+without a word, and was analysed by the route registered at `/api/analyze`. The
+control was silently absent on exactly the deployment that had added a proxy,
+which is the deployment this feature exists for. `routed_path` now strips the
+prefix the same way the router does, and three tests cover it.
+
+**WebSocket scopes were exempt** (security pass, CWE-306, latent). The early
+return covered every scope that was not `http`, which is necessary for
+`lifespan` and wrong for `websocket`. No route here is one today, so nothing was
+reachable - the problem was that the first `/api` socket anyone added would have
+shipped ungated with no test failing. The gate now refuses a covered WebSocket
+handshake with close code 1008.
+
+The rest were documentation and test-isolation findings: the ungated set above,
+a `read_timeout` in the Caddy example that Caddy rejects at config-adapt time so
+a copied file would not have started, `backend/README.md` still saying the
+configuration holds no secret, the root README's relocation recipe now being
+wrong under the loopback binding, a copied `Caddyfile` not being gitignored
+while holding the operator's bcrypt hash, and a `conftest.py` so a developer's
+own `.env` cannot decide what the suite tests.
+
+The interface gained a `unauthorized` failure branch as a result: a 401 was
+falling through to `transport`, which rendered the backend's fixed English word
+under a French headline and offered a retry that can never succeed.
 
 ## The alternatives that were rejected
 
@@ -172,6 +229,29 @@ binding does nothing about that.
   statuses, not who submitted what - deliberately, since the alternative is a
   log of clinical activity that nobody scoped, sized or agreed to retain, and
   this service keeps nothing by design.
+- **A public domain pointed at the backend service bypasses the loopback
+  binding entirely**, and so does any container on the same Docker network.
+  This is the correction above, repeated here because it belongs in the list of
+  what is still open rather than only in the description of the control.
+- **The binding lives in `docker-compose.yml` and does not travel with the
+  image.** This repository publishes a backend image, and `docker run -p
+  8000:8000` on it reproduces the original exposure with no credential set.
+  `deploy/README.md` shows the `docker run` form that does not, which is all
+  documentation can do about an artifact run outside this repository's control.
+- **The recommended proxy shape has a CSRF exposure that basic auth cannot
+  close.** Once a browser has cached basic credentials for the domain, another
+  site can drive a cross-origin `POST /api/analyze` and the browser will attach
+  them - the proxy authenticates it and adds the backend credential. The
+  attacker cannot read the answer (CORS blocks it, the origin list is explicit)
+  and nothing is stored, so this is compute abuse and documents of their
+  choosing pushed through the deployment, not a confidentiality breach. A
+  `forward_auth` to an identity provider issuing `SameSite=Lax` cookies removes
+  it; the example says so.
+- **The proxy's access log records client IPs and request headers**, not just
+  paths. That makes it a record of who used a clinical tool and when. Caddy
+  redacts `Authorization` only because `log_credentials` defaults to off. The
+  example says both; the retention decision is the operator's and is not made
+  here.
 - **The default deployment is still unauthenticated.** Off-by-default was chosen
   so an upgrade breaks nothing, which means the protection only exists where an
   operator switched it on. A deployment that upgrades and reads no release note

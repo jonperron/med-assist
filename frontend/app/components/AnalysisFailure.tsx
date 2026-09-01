@@ -25,16 +25,23 @@ const HEADLINES: Record<StreamFailure, string> = {
   too_large: 'Cet envoi dépasse ce qui peut être analysé',
   server_error: "L'analyse n'a pas abouti",
   transport: "L'analyse s'est interrompue",
+  unauthorized: "Ce service n'est pas accessible depuis cette interface",
 }
 
 // A batch refused for its size will be refused identically next time, so the
 // retry is a control that does nothing. The clinician's move is to change the
 // selection, which is the other button.
+// A credential refusal is the other one that cannot be retried, and for a
+// firmer reason than size: this interface has no credential to present and no
+// way to obtain one, so the same request will be refused identically for as
+// long as the deployment is configured that way. Retrying is a control that
+// does nothing, and offering it reads as the failure being transient.
 const RETRYABLE: Record<StreamFailure, boolean> = {
   unreadable_batch: true,
   too_large: false,
   server_error: true,
   transport: true,
+  unauthorized: false,
 }
 
 /**

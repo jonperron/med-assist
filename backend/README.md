@@ -22,9 +22,10 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Configuration
 
-The application reads its configuration from the environment. None of it is
-secret: the service stores nothing, so there is no datastore to reach and no
-key to hold.
+The application reads its configuration from the environment. One value is a
+secret - `API_ACCESS_TOKEN`, and only if a deployment sets one. The rest is not:
+the service stores nothing, so there is no datastore to reach and no key to
+hold.
 
 **Environment Variables:**
 
@@ -32,6 +33,7 @@ key to hold.
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
 * `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
 * `NER_INFERENCE_THREADS` and `NER_MAX_CONCURRENT_INFERENCES`: see [Inference runs on the CPU](#inference-runs-on-the-cpu).
+* `API_ACCESS_TOKEN`: A shared credential required on `POST /api/analyze` and `POST /api/analyze/stream`. Unset or blank - the default - leaves them answering any client that can reach the port, which is the behaviour this service has always had. Set, they refuse anything without `Authorization: Bearer <value>`, answering a fixed `401` that says nothing about why. A value under 32 characters stops the process at startup, without quoting the value. `/healthz` and `/readyz` are never gated, and neither is anything else outside the `/api` prefix - `/`, `/docs`, `/redoc` and `/openapi.json` all stay open. It is one secret shared by every caller: it identifies nobody and cannot be revoked for one client. **The browser interface cannot supply it** - the page calls this API directly, so any credential it could hold is readable by every visitor - so setting this without an authenticating proxy in front turns the interface off. See [`deploy/README.md`](../deploy/README.md).
 * `CORS_ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the API, each written as `scheme://host[:port]` with no trailing slash (default: `http://localhost:3000`). Unset or empty keeps that default rather than widening; `*` is refused at startup, because the API answers with credentials and a browser rejects a credentialed response allowed to everyone. Anything that is not an origin - a path, a query, a space in the host, a wildcard, a port that is not a number, an international domain outside its punycode form - stops the process at startup, with the offending entry named by position and never quoted. A single trailing slash and a port the scheme implies (`:443` on https, `:80` on http) are dropped rather than refused, because a browser omits both and a literal comparison against them would match nothing.
 
 **Example:**
