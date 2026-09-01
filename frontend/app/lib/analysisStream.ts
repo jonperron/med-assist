@@ -26,11 +26,16 @@ import { EventStreamParser, ParsedFrameTooLarge } from './serverSentEvents'
 /**
  * Why a streamed analysis ended without a summary.
  *
- * `FailureReason` is what the stream itself can say. `too_large` and
- * `transport` are refusals that never reach an event: a batch the server sized
- * out before reading it, and an answer that did not arrive at all.
+ * `FailureReason` is what the stream itself can say. `too_large`, `transport`
+ * and `unauthorized` are refusals that never reach an event: a batch the server
+ * sized out before reading it, an answer that did not arrive at all, and a
+ * deployment that requires a credential this interface cannot hold.
  */
-export type StreamFailure = FailureReason | 'too_large' | 'transport'
+export type StreamFailure =
+  | FailureReason
+  | 'too_large'
+  | 'transport'
+  | 'unauthorized'
 
 export class AnalysisStreamError extends Error {
   readonly reason: StreamFailure
@@ -141,9 +146,17 @@ async function refusalMessage(response: Response, fallback: string): Promise<str
  * deployment older than the streaming route, a proxy's 405, a 429 - is
  * neither, and blaming a clinician's documents for a routing problem sends
  * them back to a scanner that will not fix it.
+ *
+ * 401 and 403 are their own case. They mean the deployment requires a
+ * credential, and this interface has none to offer and no way to obtain one -
+ * the page cannot hold a secret, which is why a deployment that sets one is
+ * expected to put an authenticating proxy in front instead. Nothing the
+ * clinician does changes the answer, so it must not be reported as their
+ * documents failing, and it must not offer a retry that cannot work.
  */
 function failureOf(status: number): StreamFailure {
   if (status === 400) return 'unreadable_batch'
+  if (status === 401 || status === 403) return 'unauthorized'
   if (status === 413) return 'too_large'
   if (status >= 500) return 'server_error'
   return 'transport'
@@ -241,9 +254,17 @@ export async function streamAnalysis(
   const response = await fetch(url, { method: 'POST', body, signal })
 
   if (!response.ok) {
+    const failure = failureOf(response.status)
+    // The upstream string is not lifted for a credential refusal. The backend's
+    // body is the fixed English word "Unauthorized", and rendering it would put
+    // an untranslated status under this app's own French heading as though the
+    // app had said it. Every other refusal carries wording written for a
+    // clinician, so those still read the body.
     throw new AnalysisStreamError(
-      await refusalMessage(response, fallbackMessage),
-      failureOf(response.status)
+      failure === 'unauthorized'
+        ? fallbackMessage
+        : await refusalMessage(response, fallbackMessage),
+      failure
     )
   }
 
