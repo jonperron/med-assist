@@ -239,14 +239,18 @@ The application uses Hugging Face transformers for Named Entity Recognition. Con
 
 **Environment Variables:**
 
-* `NER_MODEL_NAME`: Name of the Hugging Face model to use for NER
+* `NER_MODEL_NAME`: Path to the local directory holding the model. Required,
+  with no default in `config.py`; the image sets it to `/app/models/`, where
+  the model build stage puts the weights. Not a Hub id - `HF_HUB_OFFLINE` and
+  `TRANSFORMERS_OFFLINE` are set in the image precisely so that one cannot
+  work.
 * `NER_INFERENCE_THREADS`: Threads torch may use for one inference (default: `0`, which keeps torch's own default of one thread per core). Set it to the container's CPU quota when there is one — torch reads the host's core count, not the quota, and spends the difference on contention.
 * `NER_MAX_CONCURRENT_INFERENCES`: How many documents may be inside the model at once (default: `1`). Peak memory is then a function of the largest document rather than of how many arrived together.
 
 **Example:**
 
 ```bash
-export NER_MODEL_NAME="dbmdz/bert-large-cased-finetuned-conll03-english"
+export NER_MODEL_NAME="/app/models/"
 export NER_INFERENCE_THREADS=2
 ```
 
@@ -257,18 +261,73 @@ The served model is not a Hub artifact picked off the shelf: it is
 corpus of French clinical cases. The training project builds it and writes the
 weights, the fast tokenizer and a `metrics.json` into `backend/models/`.
 
-Those files are not in this repository and not in the image. `docker-compose.yml`
-bind-mounts the directory read-only at `/app/models`, which is what
-`NER_MODEL_NAME` points at; `MODEL_DIR` in `.env` moves the host side of that
-mount. A retrained model is therefore a restart rather than a rebuild - and an
-image run without the mount still starts, answering `503` on `/readyz` and on
-the analysis routes rather than failing at build time the way a copied-in model
-did.
+Those files are not in this repository: they are ~420MB and gitignored. They
+reach the image through an image of their own — `backend/Dockerfile.model`,
+`FROM scratch` with the weights as its only layer, built by
+`scripts/build_model_image.sh`. `backend/Dockerfile` names it in
+`ARG MODEL_IMAGE`, consumes it as a build stage before the application code,
+and copies `/models` to `/app/models`, which is what `NER_MODEL_NAME` points at
+and now defaults to in the image.
 
-That project lives in its own repository — the training corpus is clinical data
-and cannot be distributed here, and training wants the CUDA build of `torch`
-while this service pins the CPU build. Its README covers how to obtain the
-corpus and reproduce the model.
+**The registry holding that image must be private, and so must any backend
+image built from it.** The training corpus is not distributable — that settles
+it on its own — and on top of it the possibility that fine-tuned weights carry
+memorised spans of the clinical text they were trained on cannot be ruled out.
+Publishing them is a data-protection problem, not only a licensing one, and it
+cannot be undone.
+
+The backend image copies `/models` out of the model image, so it holds the same
+bytes and is equally not publishable — including to
+`ghcr.io/jonperron/med-assist`, which is attached to a public repository. On
+GHCR a package linked to a repository takes that repository's visibility, and a
+push from CI with `GITHUB_TOKEN` is what links it.
+`scripts/build_model_image.sh` prints a publish sequence that creates the
+package with a weightless placeholder, has you confirm it is private, and only
+then pushes the weights. It deliberately has no push flag.
+
+Two consequences worth stating plainly. The image is self-sufficient again:
+`docker run` with no volume and no environment loads the model and answers
+`{"status": "ready"}`. And a Git clone is enough to build it, which is what
+makes a build on a host that clones the repository — Coolify, and every
+platform like it — reproducible; see the root README.
+
+`docker-compose.dev.yml` still bind-mounts a host directory read-only over
+`/app/models`, so a retrained model is a restart rather than a rebuild and a
+re-publish. It is opt-in and separate from `docker-compose.yml` because that
+mount shadows the baked-in weights unconditionally, including when the
+directory it names does not exist — Docker creates a missing bind source empty
+rather than refusing, and an empty directory shadows them just as well as a
+full one. In that state the service starts and answers `503` on `/readyz` and
+on the analysis routes.
+
+Note the mount defeats the point of baking the weights in while it is in use:
+what is served is no longer what the image digest covers, and nothing in the
+response or the interface says which model answered. It is a development
+convenience, not a deployment option.
+
+The `Dockerfile.model.dockerignore` beside `Dockerfile.model` is load-bearing.
+The build context is `./backend`, whose `.dockerignore` excludes `models/` —
+correct for the application image, and wrong here, because an excluded path
+makes `COPY models /models` fail the build outright — verified: it reports
+`"/models": not found` and names the `.dockerignore` line that caused it, rather
+than quietly producing an empty image. BuildKit prefers a
+`<dockerfile-name>.dockerignore` sitting beside the Dockerfile, so that file
+excludes everything and re-admits only `models`. The build script still asserts
+the resulting image is large enough to hold weights, as a backstop rather than
+as the primary guard — the primary guard is BuildKit refusing to build.
+
+The script also stages an allowlisted set of files rather than the whole
+directory. `MODEL_DIR` may point anywhere, including at a training run's output
+directory, and those hold checkpoints and evaluation prediction dumps — a
+prediction dump over this corpus is clinical text. Neither the file-presence
+check nor the size check would catch that, because both ask only whether there
+is enough, never whether there is too much. An unrecognised entry stops the
+build and is named.
+
+The training project lives in its own repository — the training corpus is
+clinical data and cannot be distributed here, and training wants the CUDA build
+of `torch` while this service pins the CPU build. Its README covers how to
+obtain the corpus and reproduce the model.
 
 The model emits fifteen entity types: the thirteen fine-grained DEFT 2020 types
 (`anatomie`, `sosy`, `examen`, `traitement`, `substance`, `dose`, `mode`,

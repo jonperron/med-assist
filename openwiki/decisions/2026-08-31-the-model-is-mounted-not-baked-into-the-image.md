@@ -1,11 +1,25 @@
 ---
 type: decision
 title: 2026-08-31 - The model is mounted, not baked into the image
-description: The weights move from a COPY in backend/Dockerfile to a read-only bind mount in docker-compose.yml, so the image carries code and the model is data.
+description: Superseded the same day. The weights moved from a COPY in backend/Dockerfile to a read-only bind mount in docker-compose.yml, until a deployment that builds from a Git clone showed the mount had nothing to point at.
 tags: [deployment, docker, model, backend]
 ---
 
 # 2026-08-31 - The model is mounted, not baked into the image
+
+> **Superseded the same day by
+> [[2026-08-31-the-weights-ship-as-their-own-private-image]].** The weights are
+> baked into the backend image again, from a model image rather than from the
+> build context, and the mount survives as an opt-in overlay in
+> `docker-compose.dev.yml`. Read this entry for why they were unbaked and what
+> that cost; read the newer one for what replaced it.
+>
+> Two things below are now false and are corrected in place: the weights are no
+> longer absent from the image, and the accepted integrity risk in "What it
+> costs" is largely closed. The reasoning that led here is left intact, because
+> the two objections it raised - a build that fails on a clone without the
+> weights, and a 420MB layer rebuilt on every source edit - are real, and the
+> newer entry had to answer both rather than dismiss them.
 
 ## What was decided
 
@@ -71,6 +85,15 @@ serving" a question about volume contents rather than about a path on the host.
   the image announces the missing mount, and anyone deploying it outside
   `docker-compose.yml` has to arrange the mount themselves. `.env.example` and
   the root README say so; the image does not.
+
+  **This is what broke the deployment, and it is why this entry was superseded.**
+  Coolify builds from a Git clone. `backend/models/` is gitignored, so the clone
+  has no weights; Docker created the missing bind source as an empty directory
+  rather than refusing; the container started and answered 503 for ever. Every
+  sentence of that was written down here as understood and accepted, and it was
+  still a service that did not work, because the cost was priced as an operator
+  inconvenience rather than as "this cannot be deployed anywhere that does not
+  already have the weights on disk".
 - **A wrong `MODEL_DIR` is silent at the compose layer.** Docker creates a
   missing bind-mount source as an empty directory rather than refusing, so a
   typo produces a started container that reports itself unready rather than an
@@ -83,6 +106,15 @@ serving" a question about volume contents rather than about a path on the host.
   make visible; without it, the same typo showed up only as a refused analysis
   after the clinician had already selected their documents.
 - **The image digest no longer covers the weights, and nothing replaces it.**
+  *Largely closed by
+  [[2026-08-31-the-weights-ship-as-their-own-private-image]]: the backend image
+  digest covers its weights again, and the model image's own digest covers the
+  bytes that were published. What remains is that `docker-compose.dev.yml` can
+  still mount a directory over them, and nothing checks - so the paragraph below
+  describes the overlay's behaviour rather than the default one. The
+  expected-digest manifest it calls for is still unwritten and still wants its
+  own entry.*
+
   This is the real cost, and it is an integrity one rather than a code-execution
   one: transformers is pinned to 5.x on safetensors with `trust_remote_code` at
   its default, so a substituted `config.json` cannot plant an `auto_map` and the

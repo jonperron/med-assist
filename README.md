@@ -39,35 +39,136 @@ It is not intended for use in clinical decision-making and should not replace pr
 ## 🚀 Running Locally
 
 ```bash
-cp .env.example .env      # no secrets to fill in; the defaults run as-is
+cp .env.example .env
+scripts/build_model_image.sh              # -> med-assist-model:local
+# then edit the MODEL_IMAGE line in .env to read:
+#   MODEL_IMAGE=med-assist-model:local
 docker compose up --build
 ```
 
 The interface is served at [http://localhost:3000](http://localhost:3000) and the API at [http://localhost:8000](http://localhost:8000).
 
+Edit the line rather than appending one: `.env.example` already sets
+`MODEL_IMAGE`, and a file with the key twice works only because the parser
+takes the last assignment.
+
+**This needs the weights on disk.** `scripts/build_model_image.sh` reads
+`backend/models/`, which is gitignored, so a fresh clone does not have them and
+the script refuses. Without either the weights or a credential for the private
+model package, the backend image cannot be built at all — this is a change from
+the previous arrangement, where the stack built and started permanently
+unready. The frontend builds and runs on its own; the training project that
+produces the weights lives in a separate private repository, for the reasons in
+[`backend/README.md`](./backend/README.md).
+
 ### The model
 
-The weights are not in this repository and not in the image. They are mounted
-into the backend read-only from `MODEL_DIR`, which defaults to
-`./backend/models` — put `config.json`, `model.safetensors`, `tokenizer.json`
-and `tokenizer_config.json` there, or point `MODEL_DIR` at wherever they
-already are. Swapping in a retrained model is then `docker compose restart
-backend`, with no rebuild.
+The weights are not in this repository — they are ~420MB and gitignored — so
+they reach the backend image through an image of their own. `MODEL_IMAGE` names
+it, `backend/Dockerfile` consumes it as a build stage, and the result is an
+image that carries its own model: `docker run med-assist-backend` with no
+volume and no environment reaches `{"status": "ready"}` and analyses documents.
 
-Start the stack without them and nothing crashes: Docker creates the path
-empty, the backend comes up, and `GET /readyz` and both analysis routes answer
-`503`. The interface says so at the top of the screen and holds the analyse
-button shut, so a missing mount looks like a service that is not available yet
-rather than like documents that were rejected. It rechecks every few seconds
-and re-enables itself — there is nothing to reload. If that warning is on
-screen, `MODEL_DIR` is the first thing to check, and `docker compose logs
-backend` says whether the load failed.
+> **The registry holding that image must be private — and so must any backend
+> image built from it.** The model is DrBERT fine-tuned on the DEFT 2021 corpus
+> of French clinical cases. The corpus is not distributable, which settles it on
+> its own; on top of that, the possibility that fine-tuned weights carry
+> memorised spans of the clinical text they were trained on cannot be ruled out.
+> A public package here is a data-protection incident rather than a licensing
+> footnote, and it cannot be taken back from whoever has already pulled it.
+>
+> The backend image copies `/models` out of the model image, so it contains the
+> same bytes and is equally not publishable. `ghcr.io/jonperron/med-assist` is a
+> package attached to a public repository; nothing may push a weight-carrying
+> backend image to it. See `.github/workflows/docker_build.yml`.
+>
+> On GHCR, a package linked to a repository takes that repository's visibility,
+> and a package is linked automatically when CI pushes it with `GITHUB_TOKEN` or
+> when the image carries an `org.opencontainers.image.source` label. A manually
+> pushed, unlinked user-scoped package is created private — but "probably
+> private" is not a basis for publishing these weights, so
+> `scripts/build_model_image.sh` prints a sequence that creates the package with
+> a weightless placeholder, has you confirm it is private, and only then pushes.
+> It has no push flag.
+
+Locally you need no registry at all. `scripts/build_model_image.sh` reads
+`backend/models/` — or `MODEL_DIR`, wherever the weights actually are — and
+leaves `med-assist-model:local` on the machine; point `MODEL_IMAGE` at it. The
+script refuses a directory that is not a model directory, and refuses to leave
+behind an image too small to contain weights, because the way this build fails
+is by producing an empty image rather than an error.
+
+A build with neither a local tag nor a credential for the private package fails
+on the pull, before anything starts. That is the intended failure: it is a
+build error naming a missing image, not a container that answers `503` for ever
+with nothing to say why.
+
+#### Working on a retrained model
+
+The mount is still there, as an opt-in overlay, so a retrained directory is a
+restart rather than a rebuild and a re-publish:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+`MODEL_DIR` says which directory (default `./backend/models`), and it is mounted
+read-only over `/app/models`, shadowing the baked-in weights. To stop typing the
+two `-f` flags, put `COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml` in
+`.env` — Compose reads it from there. `.env` is gitignored, which is the point
+of the split: the opt-in cannot follow the repository onto a deployment host in
+a clone.
+
+Use it and the weights being served are no longer the ones the image digest
+covers, and nothing on screen distinguishes them — so a stale directory looks
+exactly like a good model. Do not use this overlay on a deployment.
+
+If `MODEL_DIR` is wrong, nothing crashes: Docker creates a missing bind source
+as an empty directory rather than refusing, and an empty directory shadows the
+baked-in weights just as well as a full one. The backend comes up, and
+`GET /readyz` and both analysis routes answer `503`. The interface says so at
+the top of the screen and holds the analyse button shut, so it looks like a
+service that is not available yet rather than like documents that were
+rejected. It rechecks every few seconds and re-enables itself — there is
+nothing to reload. If that warning is on screen, check first whether the dev
+overlay is in play at all; dropping it gets the baked-in model back. Then check
+`MODEL_DIR`, then `docker compose logs backend`.
 
 A second, differently worded notice appears when the interface cannot reach the
 backend at all rather than being told it is not ready. That one leaves the
 button enabled: a deployment that does not route `/readyz` — it sits at the
 root, while analysis sits under `/api` — would otherwise have a working
 analysis path disabled by a probe that is the only broken part.
+
+### Deploying where the build starts from a Git clone
+
+Coolify, and every other platform that deploys by cloning the repository and
+running a build on the host, sees exactly what a `git clone` contains. That is
+what the model image is for. `backend/models/` is gitignored, so a clone has no
+weights; the arrangement this replaced bind-mounted `./backend/models` and
+Docker created the missing path as an empty directory rather than refusing, so
+the deployment came up, failed the load, and answered `503` on `/readyz` for
+ever with nothing in the build log to explain it.
+
+Before the first deploy, once per model version:
+
+1. Build the model image and publish it to a **private** registry —
+   `scripts/build_model_image.sh <version>` prints the sequence, including
+   setting the package visibility before the first push. Read the warning above
+   first; it is not a formality.
+2. Give the deployment host a read-only credential for that package. On Coolify
+   that is a registry credential on the server, so the build can pull it.
+3. Set `MODEL_IMAGE` to the published reference in the deployment's environment.
+
+Then deploy the base `docker-compose.yml` and nothing else — no `MODEL_DIR`, no
+`docker-compose.dev.yml`, no volume. The build pulls the weights, bakes them in,
+and the running service needs no host state at all. A missing or unreadable
+`MODEL_IMAGE` fails the build with a pull error naming the image, which is a
+failure someone can act on.
+
+Retraining means a **new version tag**, never a moved one, and a rebuild. The
+backend image's digest covers its weights only if the tag it was built against
+does not change underneath it.
 
 ### Serving it from somewhere other than localhost
 
@@ -79,6 +180,25 @@ Two variables describe the same connection and have to move together:
 Change one without the other and the API is reachable but every answer is dropped by the browser, which shows up as a network error rather than as a refusal. Unset, `CORS_ALLOWED_ORIGINS` stays on the local frontend origin; it is never widened to `*`, because this API answers with credentials and a browser rejects a credentialed response allowed to everyone. A value that is not an origin — a path, a wildcard, a space, a port that is not a number, an international domain that is not in its punycode form — stops the backend at startup instead of failing silently in the browser later; under Compose that shows up as a container restarting rather than as an unhealthy one, so read its log. Two spellings with one obvious reading are rewritten instead of refused: a single trailing slash is dropped, and so is a port the scheme already implies (`https://host:443` is sent by the browser as `https://host`).
 
 CORS is a browser-side control and nothing else. It does not authenticate anyone: any client that is not a browser can call the API whatever this variable says, and there is no authentication in front of it. A deployment reachable by anyone other than the person running it needs a reverse proxy that authenticates, not a shorter origin list.
+
+### Upgrading from the version that mounted the model
+
+If you have an existing checkout and an existing `.env`, two things change and
+neither announces itself.
+
+Your `.env` predates `MODEL_IMAGE`, so `docker-compose.yml` falls back to the
+private package and the build stops on a pull error naming an image you have
+never heard of. Run `scripts/build_model_image.sh` and add the resulting
+`MODEL_IMAGE=med-assist-model:local` to `.env`.
+
+And the first run after this change must be `docker compose up --build`.
+Without `--build`, Compose reuses the backend image you built before, which has
+no weights in it and no mount to supply them — a service that starts, fails the
+load and answers `503`, which is precisely the failure this change removes.
+
+`MODEL_DIR` is now inert unless you opt into `docker-compose.dev.yml`. It has
+also lost its default: the overlay requires it, so that forgetting it fails the
+command instead of mounting an empty directory over the baked-in weights.
 
 ### Upgrading from a version that stored documents
 
@@ -109,7 +229,7 @@ Concretely, inference is CPU-only and the image carries nothing else:
 - One document is inside the model at a time by default (`NER_MAX_CONCURRENT_INFERENCES`), so the model's peak memory follows the largest document rather than the number of concurrent uploads.
 - Documents longer than the model's 512-token window are read through a sliding window rather than truncated, so the end of a long discharge summary is analysed like the beginning.
 - The model is read once at startup, off the request path. `GET /readyz` answers `503` until it is in memory, and so do the routes that need it, so nothing reports healthy before it can actually analyse a document.
-- The weights are mounted rather than copied into the image, which takes the backend image from 2.47 GB to 1.62 GB and stops a 420 MB layer being rebuilt, re-exported and re-uploaded to the daemon every time a line of `app/` changes.
+- The weights are carried in the image, from a model image of their own. The backend image measures 2.47 GB against the 1.62 GB it measured while they were mounted from the host — a gap wider than the ~420 MB the files occupy on disk, so take the image figures from `docker image inspect` rather than deriving them from the weights. That is the price of an image that runs anywhere without host state, and it is paid once per model version rather than per build: the `COPY --from=model` sits above the dependency and source layers, so only a change of `MODEL_IMAGE` rebuilds it, and nothing re-uploads it to the daemon because it never enters the build context.
 
 And what the stack may take from the host is capped rather than recommended:
 
