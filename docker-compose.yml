@@ -6,6 +6,19 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # Which weights get baked in. The default is a PRIVATE package - see
+        # scripts/build_model_image.sh for why it must stay private - so a
+        # machine without a token for it points this at a locally built tag:
+        #
+        #   scripts/build_model_image.sh        # -> med-assist-model:local
+        #   echo MODEL_IMAGE=med-assist-model:local >> .env
+        #
+        # A build with no credential and no local tag fails loudly on the pull.
+        # That is the intended failure: the previous arrangement mounted an
+        # empty host directory instead and produced a container that answered
+        # 503 for ever with nothing to say why.
+        MODEL_IMAGE: ${MODEL_IMAGE:-ghcr.io/jonperron/med-assist-model:1.0}
     ports:
       - "8000:8000"
     # Multipart parts above 1MB are spooled to a file under TMPDIR before any
@@ -19,19 +32,22 @@ services:
     # nothing here is ever executed - only written and read back.
     tmpfs:
       - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
-    # The weights live on the host and are mounted in, not copied into the
-    # image. They are ~420MB and gitignored, so baking them in rebuilt a layer
-    # of them on every source edit and made a checkout without them fail the
-    # build rather than start. Mounted, the image is code and the model is data:
-    # swapping in a retrained model is a restart, not a rebuild.
+    # There is deliberately no volume mounting the weights here. They are baked
+    # into the image from MODEL_IMAGE above, so this file describes a service
+    # whose model is covered by the image digest and needs nothing from the
+    # host. A bind mount over /app/models would shadow those weights
+    # unconditionally, including on a deployment that has no such directory -
+    # Docker creates a missing bind source as an empty directory rather than
+    # refusing, which is precisely how a Git-clone build ends up serving 503
+    # for ever.
     #
-    # Read-only because nothing here writes to the weights - transformers is
-    # pointed at a local directory with the Hub disabled, so it only reads. A
-    # missing or empty MODEL_DIR is not fatal: Docker creates the host path,
-    # the load fails, and the container answers 503 on /readyz and on the
-    # analysis routes while the interface says the service is unavailable.
-    volumes:
-      - ${MODEL_DIR:-./backend/models}:/app/models:ro
+    # Local work against a retrained directory adds the mount back, explicitly:
+    #
+    #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+    #
+    # or set COMPOSE_FILE in .env, which is gitignored and so cannot follow the
+    # repository onto a deployment host. See docker-compose.dev.yml.
+    #
     # Nothing else bounds this container, and it holds the model resident for
     # the life of the process. Measured: 470 MiB idle, 504 MiB peak across a
     # batch of five long documents. 2g is roughly four times that - headroom
@@ -61,8 +77,10 @@ services:
       - PYTHONUNBUFFERED=1
       - TMPDIR=/tmp
       - NER_MODEL_NAME=/app/models/
-      # The model is mounted locally. These make that structural: a misconfigured
-      # NER_MODEL_NAME fails instead of quietly reaching out to the Hub.
+      # The model is a local directory inside the image. These make that
+      # structural: a misconfigured NER_MODEL_NAME fails instead of quietly
+      # reaching out to the Hub. They are set in backend/Dockerfile too, so the
+      # guarantee survives a `docker run` that never reads this file.
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
       - HF_HUB_DISABLE_TELEMETRY=1

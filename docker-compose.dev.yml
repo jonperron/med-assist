@@ -1,0 +1,39 @@
+# Local development against a model directory on this machine.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# or, to stop typing that, put this in .env - Compose reads COMPOSE_FILE from
+# there before it reads anything else:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
+#
+# .env is gitignored, so the opt-in cannot travel to a deployment host in a
+# clone. That is the point of the split. This file is an overlay and never a
+# whole stack: `docker compose -f docker-compose.dev.yml up` on its own
+# describes a service with no image and no build, and fails.
+#
+# What it buys: a retrained model is a `docker compose restart backend` rather
+# than a rebuild of the backend image and a re-publish of the model image. What
+# it costs: the weights being served are no longer the ones the image digest
+# covers, and nothing on screen says which is which, so a stale directory here
+# looks exactly like a good model. Do not use this file on a deployment.
+services:
+  backend:
+    # Read-only because nothing writes to the weights - transformers is pointed
+    # at a local directory with the Hub disabled, so it only reads.
+    #
+    # This shadows the weights baked into the image. A MODEL_DIR that does not
+    # exist is created empty by Docker rather than refused, and an empty
+    # directory shadows them just as well as a full one: the backend starts,
+    # fails the load, and answers 503 on /readyz and on the analysis routes
+    # while the interface reports the service as unavailable. If that warning
+    # is on screen and this file is in play, check MODEL_DIR first - dropping
+    # this file from the command gets a working service back.
+    #
+    # Required rather than defaulted to ./backend/models, deliberately. A
+    # default would mean that forgetting to set it on a checkout without
+    # weights mounts an empty directory over perfectly good baked-in ones and
+    # produces exactly the silent 503 this whole arrangement was written to
+    # remove. `:?` fails the command with this message instead.
+    volumes:
+      - ${MODEL_DIR:?set MODEL_DIR to the directory holding the weights, or drop this overlay to use the ones baked into the image}:/app/models:ro
