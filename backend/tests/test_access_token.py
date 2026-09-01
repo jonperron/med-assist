@@ -10,6 +10,7 @@ Three things are being pinned here, and only the first is about who gets in:
 
 # pylint: disable=W0621
 
+import json
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
@@ -102,6 +103,15 @@ def bearer(token: str = TOKEN) -> dict[str, str]:
 
 def txt():
     return ("files", ("note.txt", b"contenu", "text/plain"))
+
+
+def stream_events(response):
+    """The `data:` payloads of a finished SSE response, decoded, in order."""
+    return [
+        json.loads(line.removeprefix("data:").strip())
+        for line in response.text.splitlines()
+        if line.startswith("data:")
+    ]
 
 
 # --- Reading the configuration -------------------------------------------
@@ -243,6 +253,27 @@ def test_the_scheme_is_read_case_insensitively(gated_client, scheme):
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize("method", ["get", "head", "put", "delete", "patch"])
+def test_the_gate_does_not_care_which_method_is_used(gated_client, method):
+    # `covers` only ever looks at the path. A method the route does not even
+    # support must still be refused for lack of a credential rather than
+    # answered 404/405 - the latter would let an anonymous caller learn
+    # something about the route before proving who it is.
+    response = getattr(gated_client, method)(ANALYZE)
+
+    assert response.status_code == 401
+
+
+def test_a_non_preflight_options_request_is_still_gated(gated_client):
+    # CORSMiddleware only answers an OPTIONS itself when it carries
+    # Access-Control-Request-Method - the marker of an actual preflight. A bare
+    # OPTIONS, the kind a non-browser client might send, is an ordinary request
+    # to the gate and must not be waved through just because of its method.
+    response = gated_client.options(ANALYZE)
+
+    assert response.status_code == 401
+
+
 # --- What the refusal carries --------------------------------------------
 
 
@@ -262,12 +293,14 @@ def test_the_refusal_is_not_cached(gated_client):
     assert response.headers["Cache-Control"] == "no-store"
 
 
-def test_a_preflight_is_answered_without_a_credential(gated_client):
+@pytest.mark.parametrize("path", [ANALYZE, STREAM])
+def test_a_preflight_is_answered_without_a_credential(gated_client, path):
     # A browser sends no Authorization on a preflight. A gate that saw one
     # would refuse the request whose entire purpose is to ask whether the real
-    # one may carry the header.
+    # one may carry the header. Both analysis routes go through the same
+    # CORSMiddleware, so both are checked rather than assuming they agree.
     response = gated_client.options(
-        ANALYZE,
+        path,
         headers={
             "Origin": ALLOWED_ORIGIN,
             "Access-Control-Request-Method": "POST",
@@ -279,6 +312,20 @@ def test_a_preflight_is_answered_without_a_credential(gated_client):
     assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
 
 
+def test_the_stream_refusal_is_json_before_any_stream_opens(gated_client):
+    # The refusal is written by the same `unauthorized()` JSONResponse the
+    # plain endpoint sends, from middleware that runs before FastAPI ever
+    # builds the route's async generator. Nothing SSE-shaped should reach the
+    # caller: no event-stream content type, no `data:` framing.
+    response = gated_client.post(STREAM)
+
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/json")
+    assert not response.headers["content-type"].startswith("text/event-stream")
+    assert response.json() == {"detail": {"message": UNAUTHORIZED}}
+    assert stream_events(response) == []
+
+
 def test_the_credential_never_reaches_a_log_line(gated_client, caplog):
     with caplog.at_level(logging.DEBUG):
         gated_client.post(ANALYZE, headers=bearer(f"{TOKEN[:-4]}wrong"))
@@ -287,6 +334,32 @@ def test_the_credential_never_reaches_a_log_line(gated_client, caplog):
     # in a log file is a working credential for whoever reads the log.
     assert TOKEN[:-4] not in caplog.text
     assert "wrong" not in caplog.text
+
+
+# --- A second header cannot smuggle a credential past the first ----------
+
+
+def test_a_valid_first_header_is_used_even_with_a_bad_one_after_it(gated_client):
+    # `presented_credential` reads only the first `Authorization` header, which
+    # is also what a proxy in front of this process will have read. This is the
+    # accepting side of that choice.
+    response = gated_client.post(
+        ANALYZE,
+        headers=[("Authorization", f"Bearer {TOKEN}"), ("Authorization", "Bearer z")],
+    )
+
+    assert response.status_code == 422  # past the gate, missing body
+
+
+def test_an_invalid_first_header_is_not_rescued_by_a_valid_one_after_it(gated_client):
+    # The other side of the same choice: a caller (or an intermediary) cannot
+    # get in by appending a correct guess after a wrong first attempt.
+    response = gated_client.post(
+        ANALYZE,
+        headers=[("Authorization", "Bearer z"), ("Authorization", f"Bearer {TOKEN}")],
+    )
+
+    assert response.status_code == 401
 
 
 # --- The gate runs before the body is read -------------------------------
@@ -336,6 +409,17 @@ def test_a_path_outside_the_prefix_is_not_gated(ordered_client):
     assert ordered_client.get("/elsewhere").status_code == 200
 
 
+def test_the_real_app_mounts_the_gate_outside_the_size_ceiling(gated_client):
+    # `ordered_client` above pins the *behaviour* on a minimal app built for the
+    # purpose. This pins the same fact on the application `create_app` actually
+    # builds, so a future reordering of `add_middleware` calls in `app.main`
+    # fails a test here rather than only being noticed as a change in which
+    # status code an oversized anonymous request gets.
+    classes = [middleware.cls for middleware in gated_client.app.user_middleware]
+
+    assert classes.index(RequireAccessToken) < classes.index(LimitRequestSize)
+
+
 # --- End to end, with the model stubbed out ------------------------------
 
 
@@ -350,6 +434,8 @@ def test_an_anonymous_batch_is_refused_without_being_analysed(gated_client):
     response = gated_client.post(ANALYZE, files=[txt()])
 
     assert response.status_code == 401
+    entity_extractor = gated_client.app.dependency_overrides[get_entity_extractor]()
+    entity_extractor.extract_entities.assert_not_called()
 
 
 def test_an_unconfigured_deployment_still_analyses_anonymously(open_client):
@@ -359,3 +445,29 @@ def test_an_unconfigured_deployment_still_analyses_anonymously(open_client):
 
     assert response.status_code == 200
     assert "summary" in response.json()
+
+
+def test_an_authenticated_stream_is_analysed_as_before(gated_client):
+    response = gated_client.post(STREAM, files=[txt()], headers=bearer())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    [result] = [
+        event for event in stream_events(response) if event["stage"] == "result"
+    ]
+    assert "summary" in result["result"]
+
+
+def test_an_anonymous_stream_batch_is_refused_without_being_analysed(gated_client):
+    response = gated_client.post(STREAM, files=[txt()])
+
+    assert response.status_code == 401
+    entity_extractor = gated_client.app.dependency_overrides[get_entity_extractor]()
+    entity_extractor.extract_entities.assert_not_called()
+
+
+def test_an_unconfigured_deployment_still_streams_anonymously(open_client):
+    response = open_client.post(STREAM, files=[txt()])
+
+    assert response.status_code == 200
+    assert [event for event in stream_events(response) if event["stage"] == "result"]
