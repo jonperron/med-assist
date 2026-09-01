@@ -46,6 +46,23 @@ jobs:
             type=semver,pattern={{version}},value=${{ env.TAG_NAME }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG_NAME }}
 
+      # WARNING - READ BEFORE POINTING THIS AT backend/Dockerfile.
+      #
+      # ghcr.io/${{ github.repository }} is a package pushed from CI with
+      # GITHUB_TOKEN, which links it to this repository, and this repository is
+      # public. Since the model became a build stage, a backend image built from
+      # backend/Dockerfile contains the NER weights - DrBERT fine-tuned on a
+      # clinical corpus that is not distributable. Pushing one here publishes
+      # them, irreversibly.
+      #
+      # Today this step fails instead: context is the repository root and there
+      # is no Dockerfile there. That is a bug, not a safeguard, and the obvious
+      # repair - adding `file: backend/Dockerfile` - is the incident. Before
+      # this workflow builds a backend image, ghcr.io/jonperron/med-assist has
+      # to be private, and that needs a decision entry of its own.
+      #
+      # See scripts/build_model_image.sh and
+      # openwiki/decisions/2026-08-31-the-weights-ship-as-their-own-private-image.md
       - uses: docker/build-push-action@v6
         with:
           context: .

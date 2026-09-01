@@ -11,6 +11,7 @@ on:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'scripts/**'
       - '.pre-commit-config.yaml'
       - '.pylintrc'
       - '.github/workflows/backend-lint.yml'
@@ -18,6 +19,7 @@ on:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'scripts/**'
       - '.pre-commit-config.yaml'
       - '.pylintrc'
       - '.github/workflows/backend-lint.yml'

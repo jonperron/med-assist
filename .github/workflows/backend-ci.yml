@@ -5,10 +5,12 @@ on:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'scripts/**'
   pull_request:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - 'scripts/**'
 
 permissions:
   contents: read
