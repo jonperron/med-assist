@@ -51,16 +51,38 @@ required_files=(config.json model.safetensors tokenizer.json tokenizer_config.js
 # whether there is too much.
 #
 # metrics.json is here because the training project writes it beside the weights
-# and it is a page of scores. Anything not on either list stops the build rather
-# than being silently dropped: a file that belongs to the model must be added
-# here deliberately, by someone who has looked at what is in it.
+# and it is a page of scores. Anything not on any of these lists stops the build
+# rather than being silently dropped: a file that belongs to the model must be
+# added here deliberately, by someone who has looked at what is in it.
+#
+# Both tokenizer vocabularies are listed. DrBERT is RoBERTa-family, so a
+# slow-tokenizer save writes vocab.json and merges.txt, not the WordPiece
+# vocab.txt - listing only one of them would refuse a legitimate re-save.
 optional_files=(
   metrics.json
   special_tokens_map.json
+  vocab.json
   vocab.txt
   merges.txt
   added_tokens.json
   preprocessor_config.json
+  sentencepiece.bpe.model
+  tokenizer.model
+)
+
+# Tolerated but never staged. These turn up in any directory fetched from the
+# Hub - `huggingface-cli download --local-dir` leaves .cache/, a git clone
+# leaves .gitattributes and .git/, and a model card is README.md - and none of
+# them belongs in a published image. Kept separate from optional_files because
+# that list has two jobs otherwise: permitted-to-exist and gets-shipped. Telling
+# someone to add .gitattributes to optional_files would ship it.
+ignored_entries=(
+  README.md
+  .gitattributes
+  .gitignore
+  .cache
+  .git
+  .DS_Store
 )
 
 if [[ ! -d "${model_dir}" ]]; then
@@ -69,26 +91,58 @@ if [[ ! -d "${model_dir}" ]]; then
   exit 1
 fi
 
+# Resolve symlinks before anything looks inside. `find` does not descend into a
+# symlinked starting point, so an un-normalised symlinked MODEL_DIR made the
+# scan below emit nothing at all: no entries, no unexpected ones, guard passes
+# silently. Meanwhile `[[ -f ]]` does follow symlinks, so staging proceeded
+# normally - a guard reporting "clean" for a directory it never opened.
+# Symlinking a ~420MB gitignored weights directory is a plausible local setup,
+# so this is reachable rather than theoretical.
+model_dir="$(cd "${model_dir}" && pwd -P)"
+
 missing=()
 for name in "${required_files[@]}"; do
   [[ -f "${model_dir}/${name}" ]] || missing+=("${name}")
 done
 if (( ${#missing[@]} > 0 )); then
   echo "error: ${model_dir} is not a model directory; missing: ${missing[*]}" >&2
+  echo "       Sharded checkpoints are not supported: a model saved above the" >&2
+  echo "       shard threshold writes model-00001-of-0000N.safetensors and an" >&2
+  echo "       index instead of model.safetensors, and would be reported here." >&2
   exit 1
 fi
 
 # Refuse anything unrecognised rather than shipping or silently dropping it.
-allowed=("${required_files[@]}" "${optional_files[@]}")
+# -print0 with `read -d ''` because a filename may contain a newline, which the
+# line-oriented form silently splits into components that can each look
+# allowlisted.
+allowed=("${required_files[@]}" "${optional_files[@]}" "${ignored_entries[@]}")
 unexpected=()
-while IFS= read -r entry; do
-  name="$(basename "${entry}")"
+symlinked=()
+while IFS= read -r -d '' entry; do
+  name="${entry##*/}"
+  # Refuse a symlink rather than follow it. The allowlist validates names, not
+  # contents, so an allowlisted name pointing at a prediction dump would satisfy
+  # every check in this script and ship the target's bytes under a safe name.
+  if [[ -L "${entry}" ]]; then
+    symlinked+=("${name}")
+    continue
+  fi
   known=""
   for candidate in "${allowed[@]}"; do
     [[ "${name}" == "${candidate}" ]] && known=1 && break
   done
   [[ -n "${known}" ]] || unexpected+=("${name}")
-done < <(find "${model_dir}" -mindepth 1 -maxdepth 1 | sort)
+done < <(find "${model_dir}" -mindepth 1 -maxdepth 1 -print0)
+
+if (( ${#symlinked[@]} > 0 )); then
+  echo "error: ${model_dir} holds symlinks, which this script will not follow:" >&2
+  printf '         %s\n' "${symlinked[@]}" >&2
+  echo "       The allowlist checks names, not what they point at, so a" >&2
+  echo "       permitted name aimed at a prediction dump would ship its bytes." >&2
+  echo "       Copy the real files into a directory of their own." >&2
+  exit 1
+fi
 
 if (( ${#unexpected[@]} > 0 )); then
   echo "error: ${model_dir} holds entries this script does not recognise:" >&2
@@ -96,9 +150,11 @@ if (( ${#unexpected[@]} > 0 )); then
   echo "       This image gets published. A training run's output directory" >&2
   echo "       holds checkpoints and prediction dumps, and a prediction dump" >&2
   echo "       over this corpus contains clinical text." >&2
-  echo "       Point MODEL_DIR at a directory holding only the model, or add" >&2
-  echo "       the entry to optional_files in this script once you have looked" >&2
-  echo "       at what is in it." >&2
+  echo "       Point MODEL_DIR at a directory holding only the model. If an" >&2
+  echo "       entry really belongs to the model, add it to optional_files in" >&2
+  echo "       this script - which also ships it - once you have looked at" >&2
+  echo "       what is in it. To tolerate it without shipping it, add it to" >&2
+  echo "       ignored_entries instead." >&2
   exit 1
 fi
 
@@ -115,16 +171,35 @@ fi
 #
 # Hard link where the filesystem allows it, copy where it does not:
 # model.safetensors is ~420MB and staging it should not be a round trip. Set
-# TMPDIR to the filesystem holding the weights to keep it in the link path.
+# TMPDIR to the filesystem holding the weights to keep it in the link path -
+# and note that on most Linux systems /tmp is tmpfs, so the default with the
+# weights on disk takes the copy path and writes ~420MB into RAM. On a small
+# machine that is an OOM rather than a slow build.
 staged="$(mktemp -d)"
-# shellcheck disable=SC2064  # expand staged now, not when the trap fires
-trap "rm -rf '${staged}'" EXIT INT TERM
+build_tag="${image_name}:build-$$"
+
+# The staging directory AND the temporary tag, on every exit path. Cleaning up
+# only the directory left a ~420MB med-assist-model:build-<pid> behind whenever
+# the build was interrupted or the inspect failed - an image under a name nobody
+# would later recognise. The handler ends in `exit` because a bare trap on
+# INT returns to where it was: without it, a signal during the copy loop
+# deleted the staging directory and let the loop go on copying into nothing.
+cleanup() {
+  rm -rf "${staged}"
+  docker image rm "${build_tag}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 mkdir -p "${staged}/models"
 cp "${repo_root}/backend/Dockerfile.model" "${staged}/"
 cp "${repo_root}/backend/Dockerfile.model.dockerignore" "${staged}/"
 
+# required + optional only, never ignored_entries: that list exists to tolerate
+# a model card or a .gitattributes without putting it in a published image.
+stageable=("${required_files[@]}" "${optional_files[@]}")
 staged_names=()
-for name in "${allowed[@]}"; do
+for name in "${stageable[@]}"; do
   [[ -f "${model_dir}/${name}" ]] || continue
   cp -l "${model_dir}/${name}" "${staged}/models/${name}" 2>/dev/null \
     || cp "${model_dir}/${name}" "${staged}/models/${name}"
@@ -138,7 +213,6 @@ echo "  including: ${staged_names[*]}"
 # rerun cannot destroy a good image left by an earlier one. Deleting ${tag} on
 # failure would do exactly that, and the next backend build would then try to
 # pull med-assist-model:local from Docker Hub.
-build_tag="${image_name}:build-$$"
 DOCKER_BUILDKIT=1 docker build \
   --file "${staged}/Dockerfile.model" \
   --tag "${build_tag}" \
@@ -156,12 +230,11 @@ echo "verifying ${build_tag}"
 size_bytes="$(docker image inspect "${build_tag}" --format '{{.Size}}')"
 if (( size_bytes < 100000000 )); then
   echo "error: ${build_tag} is ${size_bytes} bytes - the weights are not in it." >&2
-  docker image rm "${build_tag}" >/dev/null 2>&1 || true
   exit 1
 fi
 
+# Promote, then let the trap drop the temporary tag on the way out.
 docker tag "${build_tag}" "${tag}"
-docker image rm "${build_tag}" >/dev/null 2>&1 || true
 echo "ok: ${tag} is ${size_bytes} bytes"
 
 cat <<EOF
@@ -198,8 +271,12 @@ weights. At no point is the model image the thing that creates the package.
     docker tag ${tag} ghcr.io/jonperron/med-assist-model:${version}
     docker push ghcr.io/jonperron/med-assist-model:${version}
 
-    # 4. Confirm again, and remove the placeholder.
+    # 4. Confirm again, then remove the placeholder.
     gh api /user/packages/container/med-assist-model --jq .visibility
+    gh api /user/packages/container/med-assist-model/versions \
+      --jq '.[] | select(.metadata.container.tags[]? == "bootstrap") | .id'
+    gh api --method DELETE \
+      /user/packages/container/med-assist-model/versions/<id-from-above>
 
 Give the deployment a read-only credential for that package: a token scoped to
 read:packages and nothing more, supplied with

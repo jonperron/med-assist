@@ -43,15 +43,57 @@ REQUIRED_FILES = (
 NARROW_PATH = "/usr/bin:/bin"
 
 
+def write_tripwire_docker_stub(fake_bin_dir: Path, marker: Path) -> None:
+    """Install a `docker` that records being called and fails.
+
+    The guard tests are meant to exit before the script ever runs `docker`.
+    Relying on that leaves the isolation as a property of the code under test
+    rather than of the harness: if a guard regressed below the build line,
+    the test written to catch it would instead invoke the real daemon on this
+    machine and run a build over placeholder files. This turns the argument
+    into an assertion - the marker file is the evidence, and a real `docker`
+    is never reachable because this one shadows it.
+    """
+    docker_stub = fake_bin_dir / "docker"
+    docker_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "${DOCKER_TRIPWIRE}"\n'
+        "exit 1\n"
+    )
+    docker_stub.chmod(0o755)
+    marker.write_text("")
+
+
 def run_script(model_dir: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """Run the script with a `docker` that would record any invocation.
+
+    Callers assert on the returned process; `assert_docker_was_never_called`
+    checks the tripwire.
+    """
+    fake_bin_dir = tmp_path / "fake-bin"
+    fake_bin_dir.mkdir(exist_ok=True)
+    marker = tmp_path / "docker-tripwire"
+    write_tripwire_docker_stub(fake_bin_dir, marker)
     return subprocess.run(
         ["bash", str(SCRIPT), "local"],
-        env={"PATH": NARROW_PATH, "MODEL_DIR": str(model_dir)},
+        env={
+            "PATH": f"{fake_bin_dir}:{NARROW_PATH}",
+            "MODEL_DIR": str(model_dir),
+            "DOCKER_TRIPWIRE": str(marker),
+        },
         cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,
         timeout=10,
+    )
+
+
+def assert_docker_was_never_called(tmp_path: Path) -> None:
+    marker = tmp_path / "docker-tripwire"
+    assert marker.read_text() == "", (
+        "the script reached docker; this guard is supposed to refuse before "
+        f"any build begins. Invocations recorded: {marker.read_text()!r}"
     )
 
 
@@ -100,6 +142,7 @@ def test_a_missing_model_directory_is_refused_before_any_docker_call(tmp_path):
     missing_dir = tmp_path / "does-not-exist"
 
     result = run_script(missing_dir, tmp_path)
+    assert_docker_was_never_called(tmp_path)
 
     assert result.returncode == 1
     assert "no such directory" in result.stderr
@@ -111,6 +154,7 @@ def test_a_directory_missing_every_required_file_is_refused(tmp_path):
     model_dir.mkdir()
 
     result = run_script(model_dir, tmp_path)
+    assert_docker_was_never_called(tmp_path)
 
     assert result.returncode == 1
     assert "is not a model directory; missing:" in result.stderr
@@ -126,6 +170,7 @@ def test_a_directory_missing_one_required_file_names_only_that_one(tmp_path):
             (model_dir / name).write_text("placeholder, not a real model file")
 
     result = run_script(model_dir, tmp_path)
+    assert_docker_was_never_called(tmp_path)
 
     assert result.returncode == 1
     assert "missing: model.safetensors" in result.stderr
@@ -148,6 +193,7 @@ def test_a_directory_with_only_directories_named_like_the_files_still_fails(
             (model_dir / required).write_text("placeholder, not a real model file")
 
     result = run_script(model_dir, tmp_path)
+    assert_docker_was_never_called(tmp_path)
 
     assert result.returncode == 1
     assert f"missing: {name}" in result.stderr
@@ -167,6 +213,7 @@ def test_an_entry_not_on_either_allowlist_is_named_and_refused_before_staging(
     (model_dir / "predictions.json").write_text("placeholder, not real predictions")
 
     result = run_script(model_dir, tmp_path)
+    assert_docker_was_never_called(tmp_path)
 
     assert result.returncode == 1
     assert "holds entries this script does not recognise" in result.stderr
@@ -196,6 +243,7 @@ def test_a_single_unrecognised_file_alongside_only_optional_files_is_still_named
     (model_dir / "eval_predictions.json").write_text("not on either allowlist")
 
     result = run_script(model_dir, tmp_path)
+    assert_docker_was_never_called(tmp_path)
 
     assert result.returncode == 1
     assert "holds entries this script does not recognise" in result.stderr

@@ -94,9 +94,12 @@ volume and no environment reaches `{"status": "ready"}` and analyses documents.
 Locally you need no registry at all. `scripts/build_model_image.sh` reads
 `backend/models/` — or `MODEL_DIR`, wherever the weights actually are — and
 leaves `med-assist-model:local` on the machine; point `MODEL_IMAGE` at it. The
-script refuses a directory that is not a model directory, and refuses to leave
-behind an image too small to contain weights, because the way this build fails
-is by producing an empty image rather than an error.
+script refuses a directory that is not a model directory, refuses one holding
+anything it does not recognise — a training run's checkpoints and prediction
+dumps must not reach a published image — and refuses to leave behind an image
+too small to contain weights. That last one is a backstop: an excluded
+`models/` makes the build fail outright with `"/models": not found`, naming the
+`.dockerignore` line, rather than quietly producing an empty image.
 
 A build with neither a local tag nor a credential for the private package fails
 on the pull, before anything starts. That is the intended failure: it is a
@@ -112,8 +115,10 @@ restart rather than a rebuild and a re-publish:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
-`MODEL_DIR` says which directory (default `./backend/models`), and it is mounted
-read-only over `/app/models`, shadowing the baked-in weights. To stop typing the
+`MODEL_DIR` says which directory. The overlay requires it rather than defaulting
+it — a default is how you mount an empty directory over good weights by
+forgetting a variable — and it is mounted read-only over `/app/models`,
+shadowing the baked-in weights. To stop typing the
 two `-f` flags, put `COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml` in
 `.env` — Compose reads it from there. `.env` is gitignored, which is the point
 of the split: the opt-in cannot follow the repository onto a deployment host in

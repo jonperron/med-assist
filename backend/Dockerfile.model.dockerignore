@@ -6,10 +6,14 @@
 #
 # Note this file REPLACES backend/.dockerignore for this build; it does not add
 # to it. Everything that file denies by name - training/, .env, the caches - is
-# covered here only by the blanket `*`. So the deny lines after `!models` are
-# not redundant: last match wins, and they keep those paths out even if someone
-# later adds a broader `!` exception. This image is published; check any new `!`
-# pattern against backend/.dockerignore's deny list before adding it.
+# covered here only by the blanket `*`, so the deny block at the end restates
+# the two that matter most.
+#
+# Docker applies last match wins, which is exactly why the deny block sits at
+# the bottom: it beats every `!` above it, and it does NOT beat one appended
+# below it - which is where a person naturally adds a pattern. Any new `!` line
+# belongs above the deny block, and must be checked against
+# backend/.dockerignore's deny list first. This image is published.
 #
 # In normal use scripts/build_model_image.sh builds against a staged context
 # holding only allowlisted model files, so `*` has little left to exclude. This
