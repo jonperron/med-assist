@@ -1,14 +1,26 @@
 name: Backend Lint & Format
 
+# This job runs `pre-commit run --all-files`, so its scope is the whole
+# repository while its trigger is not. That mismatch is how a manifest written
+# at the repository root by release-please turned the job red only on branches
+# that happened to touch backend/ - and why a change to the hook configuration
+# itself ran no hooks at all. The paths below are the files that decide what
+# the job does; a change to any of them has to be able to run it.
 on:
   push:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - '.pre-commit-config.yaml'
+      - '.pylintrc'
+      - '.github/workflows/backend-lint.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'backend/**'
+      - '.pre-commit-config.yaml'
+      - '.pylintrc'
+      - '.github/workflows/backend-lint.yml'
 
 permissions:
   contents: read

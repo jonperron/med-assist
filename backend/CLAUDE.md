@@ -17,11 +17,24 @@ uv run pytest -v
 uv run pre-commit run --all-files
 ```
 
-`pre-commit --all-files` collects files with `git ls-files`, which from
-`backend/` returns only what is under `backend/`. The hooks live in the
-repo-root `.pre-commit-config.yaml` and the pylint hook is pinned to
-`backend/app`. Run the same command from the repo root when a change touches
-tests or files outside `backend/app`, since that is a wider file set.
+`--all-files` means the whole repository, wherever you run it from. pre-commit
+resolves the git toplevel before collecting anything, so `cd backend` does not
+narrow it: a run started here will lint, and fail on, a file at the repository
+root. The hooks live in the repo-root `.pre-commit-config.yaml` and the pylint
+hook is pinned to `backend/app`, which is the only part of this that is scoped.
+
+Two consequences worth knowing before you trust a green run:
+
+- A file nobody on your branch touched can turn this red. `end-of-file-fixer`
+  and `trailing-whitespace` police the whole tree, including files written by
+  bots, so the gate can fail for reasons that are not in your diff. Check what
+  the hook names before assuming it is yours.
+- **Those two hooks rewrite files and then exit non-zero.** The first run is
+  red and leaves the fix in your working tree; the second run is green because
+  the first one already edited it. So "pre-commit passed locally" can be a
+  second-run artifact over an unstaged change, while CI - which gets a clean
+  checkout and one run - stays red. If a hook reports `files were modified by
+  this hook`, that is a failure you still have to commit, not a pass.
 
 ## Code organization
 

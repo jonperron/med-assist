@@ -30,4 +30,3 @@ jobs:
     uses: ./.github/workflows/docker_build.yml
     with:
       tag_name: ${{ needs.release-please.outputs.tag_name }}
-  
