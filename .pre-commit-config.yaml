@@ -3,7 +3,14 @@ repos:
     rev: v2.3.0
     hooks:
     -   id: check-yaml
+    # release-please owns .release-please-manifest.json and rewrites it on every
+    # release without a trailing newline. The hook then "fixes" the file, exits
+    # non-zero, and turns the lint job red on every branch until someone commits
+    # a newline the bot removes again at the next release. Excluding it leaves
+    # the file as its owner writes it; the alternative was a newline this repo
+    # would have to restore forever.
     -   id: end-of-file-fixer
+        exclude: ^\.release-please-manifest\.json$
     -   id: trailing-whitespace
 -   repo: https://github.com/pdm-project/pdm
     rev: 2.15.4
