@@ -18,15 +18,20 @@ describe('unsecuredDeployment', () => {
     expect(unsecuredDeployment(raw)).toBe(true)
   })
 
-  it.each(['0', 'false', 'no', 'off'])('reads %s as off', raw => {
-    // The point of an explicit list. Treating any non-empty value as true would
-    // turn `UNSECURED_DEPLOYMENT=false` into a warning on every screen, and an
-    // operator who saw that would reach for deleting the variable rather than
-    // trusting it.
+  it.each(['0', 'false', 'no', 'off', 'OFF'])('reads %s as off', raw => {
+    // The point of the explicit off-list. Treating every non-empty value as on
+    // would turn `UNSECURED_DEPLOYMENT=false` into a warning on every screen,
+    // and an operator who saw that would reach for deleting the variable rather
+    // than trusting it.
     expect(unsecuredDeployment(raw)).toBe(false)
   })
 
-  it('does not read an unrecognised value as on', () => {
-    expect(unsecuredDeployment('maybe')).toBe(false)
+  it.each(['maybe', 'oui', 'y', 'enabled', 'ture'])('reads %s as on', raw => {
+    // A set-but-unrecognised value is an operator who has already decided the
+    // deployment is public and misspelled the switch. Reading it as off would
+    // drop the only warning a clinician gets and restore a badge claiming the
+    // documents stay on their machine, silently. Reading it as on shows a
+    // banner nobody quite asked for. Only one of those is a bad outcome.
+    expect(unsecuredDeployment(raw)).toBe(true)
   })
 })

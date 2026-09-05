@@ -27,6 +27,13 @@ export function UnsecuredDeploymentNotice() {
       // a thing to know before touching anything, and it is on screen from the
       // first paint rather than arriving later.
       role="alert"
+      // Named, like the status regions on these screens: `AnalysisFailure` is
+      // also an unnamed `alert`, and two same-role regions with nothing to tell
+      // them apart are indistinguishable to a screen reader and unselectable in
+      // a test. The role is kept even though it is present at first paint,
+      // where assistive tech may not announce it - the text is read in document
+      // order regardless, and it sits above everything else on the page.
+      aria-label="Avertissement sur cette installation"
       className="flex items-start gap-3 border-b border-failure-edge bg-failure-tint px-6 py-3.5"
     >
       <Icon

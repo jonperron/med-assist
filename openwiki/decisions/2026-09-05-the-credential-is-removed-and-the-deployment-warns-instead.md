@@ -89,6 +89,27 @@ in front.
 **The banner is not a control.** It changes what a clinician does, not what the
 service accepts. A deployment that sets it is honest, not safe.
 
+**An anonymous caller now reaches the upload spool.** The credential gate was
+mounted outside `LimitRequestSize`, so a caller without one was refused on its
+headers and its body was never read. Now every caller reaches the multipart
+parser, and a request up to the 50 MB ceiling is spooled into `TMPDIR` - which
+`docker-compose.yml` backs with a 256 MB tmpfs, so roughly five concurrent
+maximum-size uploads fill it. The origin gate still refuses a browser from an
+unlisted origin before the body is read; nothing refuses a scripted caller. On
+the default deployment the loopback binding decides who that can be; on a
+platform that attaches a domain, nothing does.
+
+**The banner's activation mechanism rests on two build-time behaviours that no
+executable test can observe.** The flag must be read as a literal
+`process.env.UNSECURED_DEPLOYMENT` - a computed key is not rewritten by Next and
+reads undefined in the built server - and `force-dynamic` must stay declared or
+the layout is prerendered with the build container's empty value. Both were
+verified by hand against a built standalone server, and both are guarded by
+source-text assertions in `app/__tests__/layout.test.tsx`, because a vitest
+render cannot tell the working form from the broken one. A build-artifact smoke
+test would cover it properly and is not written; until it is, a change to how
+the flag is read has to be checked against a real build.
+
 **`force-dynamic` on the root layout.** Reading the flag at request time means
 the interface is no longer statically prerendered. The application is a single
 interactive screen, so the cost is one server render per page load, but it is a
@@ -97,8 +118,11 @@ real change to how the frontend is served.
 **This is a breaking change for anyone who had configured the credential.**
 `API_ACCESS_TOKEN` is now ignored. A proxy that injects `Authorization: Bearer`
 keeps working - the header is simply not read any more - so the failure mode is
-a deployment that believes it is protected and is not. `deploy/README.md` says
-so, and `.env.example` no longer mentions the variable.
+a deployment that believes it is protected and is not. Three things address it:
+the backend logs a WARNING at startup while the variable is still set, and both
+`deploy/README.md` and the root README carry an "upgrading from a version that
+required a credential" section saying the header is no longer read and the proxy
+rule must be replaced. `.env.example` no longer mentions the variable.
 
 ## The direction instead
 

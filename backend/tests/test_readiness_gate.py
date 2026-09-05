@@ -30,9 +30,6 @@ def client(monkeypatch, loads):
         raise OSError("no model here")
 
     monkeypatch.setattr(main, "get_entity_extractor", refuse_to_load)
-    # Credentialed: the readiness refusal is what these tests pin, and an
-    # anonymous caller would be refused by the credential gate before the
-    # readiness dependency ever ran.
     with TestClient(create_app(PRODUCTION)) as test_client:
         yield test_client
 

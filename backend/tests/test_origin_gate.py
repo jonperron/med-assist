@@ -113,8 +113,8 @@ def test_the_configured_origin_reaches_the_route(client):
 def test_a_request_carrying_no_origin_reaches_the_route(client):
     # The documented deployment shape. A proxy forwarding a server-side call
     # sends no `Origin`, and so does every scripted caller; refusing those would
-    # refuse the proxy this feature tells operators to put in front. The
-    # credential is what gates them.
+    # refuse the proxy this feature tells operators to put in front. Nothing on
+    # this API gates them - there is no credential.
     assert client.post(ANALYZE).status_code == 422
 
 
@@ -467,10 +467,7 @@ def test_a_padded_origin_value_still_matches():
     assert gate.accepts(scope)
 
 
-# --- What the refusal writes to the log -----------------------------------
-
-
-# --- What the ordering does and does not buy ------------------------------
+# --- What the allow-list does and does not keep private --------------------
 
 
 @pytest.mark.parametrize(

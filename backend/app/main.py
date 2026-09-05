@@ -25,6 +25,16 @@ logger = logging.getLogger(__name__)
 DEVELOPMENT = "development"
 PRODUCTION = "production"
 
+# The credential this service used to require, read here only to say that it is
+# no longer read. A deployment configured against the previous version keeps a
+# value in its environment and, if it followed the old guidance, a proxy rule
+# injecting `Authorization: Bearer` on the way through. Both now do nothing, and
+# nothing else would say so: Compose used to refuse to start without the
+# variable, so its silence was a signal, and now its silence is just silence.
+# That is a control which reads as protective and is not, which is worth three
+# lines to make visible.
+RETIRED_CREDENTIAL_VARIABLE = "API_ACCESS_TOKEN"
+
 
 @asynccontextmanager
 async def load_the_model_before_serving(
@@ -76,6 +86,16 @@ async def load_the_model_before_serving(
         ORIGIN_VARIABLE,
         ", ".join(application.state.allowed_origins) or "(none)",
     )
+
+    if os.getenv(RETIRED_CREDENTIAL_VARIABLE):
+        logger.warning(
+            "%s is set and is no longer read. The analysis routes stopped "
+            "requiring a credential, so anything in front of this service that "
+            "injects an Authorization header is enforcing nothing. Remove the "
+            "variable, and replace that proxy rule with authentication of your "
+            "own before treating this deployment as protected.",
+            RETIRED_CREDENTIAL_VARIABLE,
+        )
 
     application.state.model_loaded = False
     try:

@@ -195,6 +195,28 @@ follow:
   does either. If the instance should not be open to the whole internet, add
   basic auth or a `forward_auth` to your identity provider on the domain.
 
+## Upgrading from a version that required a credential
+
+Between 2026-08-31 and 2026-09-05 this service could require, and then did
+require, a shared credential in `API_ACCESS_TOKEN`. If you configured one, three
+things are now true and none of them announces itself:
+
+- **`API_ACCESS_TOKEN` is ignored.** Nothing reads it. The backend logs a
+  warning at startup if it is still set, and that warning is the only signal
+  you get. Remove the variable from every `.env`, secret store and deployment
+  platform - it is a stale secret, and stale secrets outlive the thing they
+  protected.
+- **A proxy rule injecting `Authorization: Bearer` is now decorative.** The
+  header is not read. If that rule was what you thought stood between the
+  internet and your document intake, nothing stands there now. Replace it with
+  `basic_auth` or `forward_auth` on the proxy itself - the Caddy example does
+  this - before treating the deployment as protected.
+- **Compose no longer refuses to start without it.** The `${API_ACCESS_TOKEN:?}`
+  guard is gone, so a stale `.env` starts silently where it used to fail loudly.
+
+Set `UNSECURED_DEPLOYMENT=true` at the same time, unless your proxy's own
+authentication is the whole audience.
+
 ## Contributing access control
 
 This is the gap, stated plainly so nobody has to discover it: **Med-Assist has

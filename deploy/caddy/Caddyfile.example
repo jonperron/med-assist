@@ -2,8 +2,7 @@
 #
 # Copy to Caddyfile, replace every placeholder, and read deploy/README.md for
 # what this does and does not protect. Nothing in this file is a credential:
-# the password is a hash you generate, and the backend's shared credential is
-# read from the environment and never written here.
+# the password is a bcrypt hash you generate.
 #
 # The shape is one domain, not two. That is what makes the shipped browser
 # interface work behind authentication: the page and the API are the same

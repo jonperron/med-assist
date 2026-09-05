@@ -88,7 +88,47 @@ disk-backed `/tmp` the freed blocks are recoverable from the raw device. Backing
 `TMPDIR` with RAM is therefore a precondition for the strongest reading of the
 sentence, and belongs in any deployment that is not the Compose file.
 
-It is the badge's claim spelled out; if either is reworded, reword both.
+It used to be the badge's claim spelled out, and the two are no longer the same
+claim. The footer sentence is about retention - the documents outlive the request
+nowhere - and that holds on every deployment, open or not. The badge is about
+*where*, and it is now conditional: see below. Reword them independently.
+
+## The unsecured-deployment banner
+
+The API authenticates nobody. On a local run that is unremarkable; on a published
+address it is the most important thing on the screen, so a deployment says so.
+
+`UNSECURED_DEPLOYMENT` is a plain environment variable - deliberately not a
+`NEXT_PUBLIC_` one. Those are inlined into the bundle at build time, so turning
+the warning on would mean rebuilding and republishing the image, which is the
+friction that ends with a public deployment running without it. It is read at
+request time in `app/layout.tsx`, which is why that file declares
+`export const dynamic = 'force-dynamic'`: a prerendered layout would bake the
+build container's value, which is nothing.
+
+Set, it does two things. `app/components/UnsecuredDeploymentNotice.tsx` renders
+above the header on every screen, and `app/components/PrivacyBadge.tsx` renders
+nothing - "Reste sur cette machine" is read as "reste sur la mienne", which on a
+published address is wrong and reassuring at once, one row under a banner saying
+the opposite. The flag reaches the badge through the context in
+`app/lib/deploymentContext.tsx`, since the layout is a server component and the
+badge is not.
+
+Parsing is in `app/lib/deployment.ts` and is deliberately asymmetric: unset and
+blank are off, and once the variable is set only `0`, `false`, `no` and `off`
+turn it off. Every other value, including a misspelling, is on. Setting the
+variable at all means someone decided the deployment is public, and a typo must
+not be why a clinician never sees the warning.
+
+Two things no test can reach, so they are checked by asserting on the source of
+`app/layout.tsx` in `app/__tests__/layout.test.tsx`: that the flag is read as a
+literal `process.env.UNSECURED_DEPLOYMENT` rather than a computed key, and that
+`force-dynamic` is still declared. Both are build-time Next behaviours that a
+vitest render cannot distinguish from the working version, and either one
+silently turns the banner off in every deployment. If you change how the flag is
+read, verify it against a built server - `npm run build`, then
+`UNSECURED_DEPLOYMENT=true node .next/standalone/server.js` - and not only
+against the suite.
 
 ## API types
 

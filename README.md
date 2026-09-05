@@ -108,6 +108,16 @@ API. A deployment reachable by anyone other than the person running it needs a
 reverse proxy that authenticates - see [`deploy/README.md`](./deploy/README.md)
 for the shape that works and for what it still does not cover.
 
+### Upgrading from a version that required a credential
+
+Between 2026-08-31 and 2026-09-05 the API could require, and then did require, a
+shared credential in `API_ACCESS_TOKEN`. It is now ignored: nothing reads it, and
+a proxy rule that injects `Authorization: Bearer` enforces nothing. Remove the
+variable from every `.env` and secret store, and if that rule was your access
+control, replace it with authentication on the proxy itself before treating the
+deployment as protected. The backend logs a warning at startup while the
+variable is still set. [`deploy/README.md`](./deploy/README.md) has the detail.
+
 ### Upgrading from a version that stored documents
 
 Before 2026-08-28 the stack ran a Redis service and kept extracted entities.

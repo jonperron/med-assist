@@ -14,18 +14,25 @@
  * without it. Read at request time, an operator sets one variable and restarts.
  *
  * It is the operator's own configuration, not a caller's input, so it is
- * trusted as such - and it fails towards the warning being shown rather than
- * hidden only where the value is unambiguous.
+ * trusted as such - and once set, it fails towards the warning being shown.
  */
 
 /** The variable an operator sets. Named once so the docs and the code agree. */
 export const UNSECURED_DEPLOYMENT_VARIABLE = 'UNSECURED_DEPLOYMENT'
 
-// What counts as "on". Spelled out rather than treating any non-empty string as
-// true, because `UNSECURED_DEPLOYMENT=false` is a thing an operator writes and
-// reading it as true would be absurd - and `UNSECURED_DEPLOYMENT=off` is a
-// thing they write when they mean it.
-const ENABLED = new Set(['1', 'true', 'yes', 'on'])
+// What counts as "off" once the variable is set to something. Spelled out as a
+// closed list because `UNSECURED_DEPLOYMENT=false` is a thing an operator
+// writes and reading it as true would be absurd.
+//
+// Everything else that is not blank counts as on, and the asymmetry is the
+// point. An unset variable is the local default and means off. A variable an
+// operator *set*, to a value this does not recognise - `oui`, `y`, `enabled`,
+// `ture` - is an operator who has already decided the deployment is public and
+// has misspelled the switch. Reading that as off loses the only warning a
+// clinician gets, restores a badge claiming the documents stay on their
+// machine, and logs nothing. Reading it as on shows a banner somebody did not
+// quite ask for, which is a bad afternoon rather than a bad outcome.
+const DISABLED = new Set(['0', 'false', 'no', 'off'])
 
 /**
  * Read the flag.
@@ -35,5 +42,7 @@ const ENABLED = new Set(['1', 'true', 'yes', 'on'])
  */
 export function unsecuredDeployment(raw: string | undefined): boolean {
   if (raw === undefined) return false
-  return ENABLED.has(raw.trim().toLowerCase())
+  const value = raw.trim().toLowerCase()
+  if (value === '') return false
+  return !DISABLED.has(value)
 }

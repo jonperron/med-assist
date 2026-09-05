@@ -29,7 +29,8 @@ import { EventStreamParser, ParsedFrameTooLarge } from './serverSentEvents'
  * `FailureReason` is what the stream itself can say. `too_large`, `transport`
  * and `unauthorized` are refusals that never reach an event: a batch the server
  * sized out before reading it, an answer that did not arrive at all, and a
- * deployment that requires a credential this interface cannot hold.
+ * request refused before any analysis started - by the backend's origin gate,
+ * or by a proxy in front wanting credentials this page does not have.
  */
 export type StreamFailure =
   | FailureReason

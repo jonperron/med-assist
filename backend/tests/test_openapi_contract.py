@@ -71,6 +71,31 @@ def test_the_error_envelope_carries_a_message(schema):
     assert detail["required"] == ["message"]
 
 
+def test_the_api_documents_no_credential(schema):
+    """
+    The removal of the shared credential, pinned so it cannot come back quietly.
+
+    `test_the_exported_schema_still_describes_the_app` below only checks that
+    the checked-in document matches the application. A gate reintroduced with
+    the document regenerated alongside it satisfies that test and this file
+    would otherwise say nothing - the same reason
+    `REMOVED_STORED_DOCUMENT_ENDPOINTS` in `test_app_factory.py` is a closed
+    list rather than a comment.
+
+    This service authenticates nobody by decision, not by omission. Adding a
+    credential back is a decision entry before it is code, and failing here is
+    how that conversation starts.
+    """
+    assert "securitySchemes" not in schema.get("components", {})
+
+    for endpoint, status, _ in documented_responses(schema):
+        assert status != "401", f"{endpoint} documents a 401"
+
+    for path_item in schema["paths"].values():
+        for operation in path_item.values():
+            assert "security" not in operation
+
+
 def test_the_exported_schema_still_describes_the_app(schema):
     # The frontend's types are generated from the exported document, so a
     # backend change that skips the export is a client that has already drifted.
