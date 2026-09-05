@@ -82,11 +82,13 @@ documents of its choosing. CORS alone did not stop that - it withholds the
 answer from the attacking page, but the request was still analysed.
 
 It constrains browsers and nothing else. A scripted caller writes whatever
-`Origin` it likes, and a request carrying none is let through, because a proxy
-in front sends none and neither does the healthcheck. A browser reporting
-`Sec-Fetch-Site: same-origin` is let through too, which is why the one-domain
-shape below works without you listing your own origin; a page cannot set that
-header.
+`Origin` it likes, and a request carrying neither `Origin` nor `Sec-Fetch-Site`
+is let through, because a proxy in front sends neither and neither does the
+healthcheck. A browser reporting `Sec-Fetch-Site: same-origin` or `none` is let
+through too - before the list is consulted, which is why the one-domain shape
+below works without you listing your own origin; a page cannot set that header.
+The header cuts the other way as well: a request carrying no `Origin` but a
+`Sec-Fetch-Site` naming any other site is refused, `same-site` included.
 
 **Your proxy must forward `Origin` and the `Sec-Fetch-*` headers unmodified.**
 The whole check rests on them arriving as the browser wrote them. A `header_up`
@@ -229,8 +231,13 @@ interface off.
 Contributions that would change this, roughly in the order they would help:
 
 - Sign-up and sign-in, with sessions the interface can actually use.
-- Per-caller rate limiting on the analysis routes. Nothing bounds concurrent
-  work today except the container's CPU limit and 50 MB per request.
+- Per-caller rate limiting on the analysis routes. There is none: every bound
+  that exists today is global rather than per caller, so one caller can take
+  all of it. `NER_MAX_CONCURRENT_INFERENCES` holds the number of documents
+  inside the model at once - 1 by default, per backend process, so more workers
+  multiply it - uvicorn's `--limit-concurrency 8` bounds requests in flight,
+  and `MAX_BATCH_FILES`, the 50 MB ceiling and the container's CPU limit bound
+  the rest.
 - An audit trail somebody has scoped. The deliberate absence of one is why
   there is no record of who submitted what; adding it means deciding what a log
   of clinical activity may contain and how long it is kept, which is a decision
@@ -247,8 +254,10 @@ Even with a proxy, the banner and the loopback binding all in place:
 - Anyone who reaches the container on the Docker network reaches the API, with
   no credential of any kind. A compromised neighbour container on the same host
   is inside the boundary.
-- Nothing here rate-limits. A caller can hold the model busy indefinitely; the
-  only ceilings are 50 MB per request and the container's CPU limit.
+- Nothing here rate-limits *per caller*. One caller can hold the model busy
+  indefinitely, because every ceiling there is is global: 50 MB per request,
+  `MAX_BATCH_FILES` documents in one, `NER_MAX_CONCURRENT_INFERENCES` inside
+  the model at once per backend process, and the container's CPU limit.
 - Nothing here is an audit trail. An access log records paths and statuses, not
   who submitted what, and deliberately so - the alternative is a log of clinical
   activity that nobody scoped, sized or agreed to keep.

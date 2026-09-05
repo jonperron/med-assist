@@ -169,9 +169,15 @@ def test_an_origin_that_only_prefixes_an_allowed_one_is_refused(client):
 # --- The browser's own account, when there is no Origin header ------------
 
 
+@pytest.mark.parametrize("route", [ANALYZE, STREAM])
 @pytest.mark.parametrize("site", ["cross-site", "same-site", "CROSS-SITE"])
-def test_a_browser_reporting_a_foreign_site_is_refused_without_an_origin(client, site):
-    response = client.post(ANALYZE, headers={"Sec-Fetch-Site": site})
+def test_a_browser_reporting_a_foreign_site_is_refused_without_an_origin(
+    client, site, route
+):
+    # Both routes, because both now document this refusal in their 403
+    # description: the schema says a request is unrefused only when it carries
+    # neither header, and a contract stated on two routes wants pinning on two.
+    response = client.post(route, headers={"Sec-Fetch-Site": site})
 
     assert response.status_code == 403
 

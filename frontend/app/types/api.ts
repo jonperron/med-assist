@@ -635,7 +635,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The request came from an origin this deployment does not serve. It is a check on where the request came from, and the only one: this API does not authenticate callers, so a request carrying no Origin - anything that is not a browser - is not refused here. */
+            /** @description The request did not come from a page this deployment serves. Either the browser reported it as started by another site, or it carried an Origin that is not on the deployment's list. A browser reporting the deployment's own page is accepted whatever Origin it sends. It is a check on where a request came from, and the only one: this API does not authenticate callers, so a request carrying neither Origin nor Sec-Fetch-Site at all - a proxy, a healthcheck, any scripted caller - is not refused here. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -713,7 +713,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The request came from an origin this deployment does not serve. It is a check on where the request came from, and the only one: this API does not authenticate callers, so a request carrying no Origin - anything that is not a browser - is not refused here. */
+            /** @description The request did not come from a page this deployment serves. Either the browser reported it as started by another site, or it carried an Origin that is not on the deployment's list. A browser reporting the deployment's own page is accepted whatever Origin it sends. It is a check on where a request came from, and the only one: this API does not authenticate callers, so a request carrying neither Origin nor Sec-Fetch-Site at all - a proxy, a healthcheck, any scripted caller - is not refused here. */
             403: {
                 headers: {
                     [name: string]: unknown;

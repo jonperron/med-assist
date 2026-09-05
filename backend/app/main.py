@@ -210,9 +210,10 @@ def create_app(app_env: str | None = None) -> FastAPI:
     #
     # This is the only gate in front of the analysis routes, and it is not
     # authentication. It constrains browsers - a scripted caller writes whatever
-    # `Origin` it likes, and a request carrying none is let through - so what it
-    # closes is one site driving an upload through a visitor's browser, and
-    # nothing else. Anyone who can reach this port can still submit documents.
+    # `Origin` it likes, and a request carrying neither `Origin` nor
+    # `Sec-Fetch-Site` is let through - so what it closes is one site driving an
+    # upload through a visitor's browser, and nothing else. Anyone who can reach
+    # this port can still submit documents.
     # That is a deliberate posture for an R&D deployment, written down in
     # deploy/README.md and warned about on the page itself.
     #

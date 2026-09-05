@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.core.config import DEFAULT_ALLOWED_ORIGINS
+from app.core.gate import covers
 from app.core.origin import ORIGIN_VARIABLE
 from app.main import DEVELOPMENT, PRODUCTION, create_app
 
@@ -96,11 +97,17 @@ def test_every_route_answers_from_behind_the_origin_gate_or_the_open_list():
     environment, rather than relying on whoever added the route to have also
     remembered to widen `OPEN_PATHS` or `test_everything_outside_the_api_prefix_is_open`
     by hand.
+
+    The prefix is tested with the gate's own `covers` rather than a
+    `startswith`, because the two do not agree: `/apiary` starts with `/api` and
+    is not covered. A route mounted there would satisfy a `startswith` check
+    while sitting outside `RequireKnownOrigin` - this test asserting the policy
+    holds when it does not is worse than not having it.
     """
     for environment in (PRODUCTION, DEVELOPMENT):
         for path in paths(create_app(environment)):
-            assert path in OPEN_PATHS or path.startswith(
-                "/api"
+            assert path in OPEN_PATHS or covers(
+                path
             ), f"{path} in {environment} is neither under /api nor on the open list"
 
 

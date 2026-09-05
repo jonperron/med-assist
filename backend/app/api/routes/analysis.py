@@ -63,11 +63,26 @@ INTERNAL_ERROR = "Internal server error"
 # Nothing here authenticates a caller: this API has no credential, and there is
 # no 401 to document. The origin check is the only gate, and it constrains
 # browsers alone.
+#
+# The wording tracks `RequireKnownOrigin.accepts` branch for branch rather than
+# summarising it, because every summary of that function is wrong in a way that
+# matters to whoever reads this. It is not "an unlisted Origin is refused":
+# `Sec-Fetch-Site` is consulted first, so a browser reporting the deployment's
+# own page is accepted whatever Origin it carries, which is what makes the
+# one-domain proxy shape work. It is not "cross-site is refused": the no-Origin
+# branch is an allow-list of own-site values, so `same-site` and anything
+# unrecognised are refused too. And it is not "anything that is not a browser
+# is let through": a browser too old to send `Sec-Fetch-Site` also lands in the
+# last branch, which `origin.py` calls out as the limit of a header check.
 FORBIDDEN_DESCRIPTION = (
-    "The request came from an origin this deployment does not serve. It is a "
-    "check on where the request came from, and the only one: this API does not "
-    "authenticate callers, so a request carrying no Origin - anything that is "
-    "not a browser - is not refused here."
+    "The request did not come from a page this deployment serves. Either the "
+    "browser reported it as started by another site, or it carried an Origin "
+    "that is not on the deployment's list. A browser reporting the "
+    "deployment's own page is accepted whatever Origin it sends. It is a check "
+    "on where a request came from, and the only one: this API does not "
+    "authenticate callers, so a request carrying neither Origin nor "
+    "Sec-Fetch-Site at all - a proxy, a healthcheck, any scripted caller - is "
+    "not refused here."
 )
 
 # How a refusal is documented on the streaming endpoint. Declaring `model=`
