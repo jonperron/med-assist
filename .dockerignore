@@ -1,0 +1,45 @@
+# The build context is the repository root, and everything in it is sent to the
+# Docker daemon and cached there - whether or not a COPY ever mentions it. The
+# per-service contexts have their own files; this one is the union of both plus
+# everything that only exists at the root.
+
+# The clinical corpus and a multi-gigabyte CUDA environment. First for the same
+# reason it is first in backend/.dockerignore: .gitignore does not apply here,
+# and neither belongs anywhere near an image build.
+backend/training/
+
+# The weights, ~420MB, mounted read-only at runtime rather than copied in. See
+# openwiki/decisions/2026-08-31-the-model-is-mounted-not-baked-into-the-image.md.
+backend/models/
+
+# Working copies of this same repository, one per agent worktree. Left in, the
+# context would carry several full checkouts - including their own node_modules
+# and any weights they were given.
+.claude/
+
+.git/
+.github/
+
+backend/.venv/
+backend/tests/
+backend/scripts/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+frontend/node_modules/
+frontend/.next/
+frontend/coverage/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+npm-debug.log*
+
+# Nothing in the image build reads these, and a stray .env holds the
+# credential. backend/README.md is deliberately not excluded: pyproject.toml
+# declares it as the project readme, so the dependency install fails without it.
+**/.env
+**/.env.*
+deploy/
+openwiki/
