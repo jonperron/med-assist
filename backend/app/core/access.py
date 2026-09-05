@@ -1,5 +1,5 @@
 """
-The optional shared credential in front of the analysis routes.
+The shared credential required in front of the analysis routes.
 
 This service has never authenticated anyone. That was defensible while the only
 way to reach it was `docker compose up` on the machine in front of you; it is
@@ -11,11 +11,20 @@ What this adds is one shared secret, read from `API_ACCESS_TOKEN`, checked on
 the analysis routes and nowhere else. Three things about it are deliberate, and
 the second and third are the honest limits of it:
 
-**It is off unless configured.** An unset variable leaves the application
-exactly as it was, so no existing deployment breaks on an upgrade and the
-default stays the local one. The trade is that an operator who mistypes the
-variable name gets a service that is open and looks configured, which is why
-`create_app` logs which of the two modes it started in.
+**It is required, and the process refuses to start without it.** This gate was
+introduced as off-by-default so that no existing deployment broke on an upgrade.
+That default was the whole security posture of every deployment that did not
+read the release notes: an unconfigured service answered anyone who could reach
+the port while looking, from the outside, exactly like a configured one. There
+is no longer an unconfigured mode to be in by accident. An operator who mistypes
+the variable name now gets a container that stops with a message naming the
+variable, which is the loudest failure available and far cheaper than the quiet
+one it replaces.
+
+The cost is real and is not hidden: `docker compose up` with no `.env` no longer
+starts. That is the point - the alternative is a service that starts and is
+open - but it makes first-run setup a step longer, and `.env.example` and
+`deploy/README.md` carry the one command that generates a value.
 
 **It is not a password for a person.** One secret shared by every caller
 identifies nobody, cannot be revoked for one client, and appears in whatever
@@ -28,9 +37,10 @@ credential on the way through.
 from the page, so any credential it could send is a credential every visitor can
 read - out of the bundle, out of the network tab, out of a response the frontend
 server would have to hand to anyone who asked for it. There is no arrangement
-where a public single-page application holds a secret. Configuring a token
-therefore turns the shipped interface off, and the deployment that wants both
-puts an authenticating proxy in front and has *it* add the header.
+where a public single-page application holds a secret. Since the credential is
+required, the shipped interface is therefore off in *every* deployment that does
+not put an authenticating proxy in front to add the header - which makes that
+proxy the way to get a working interface, not an optional hardening step.
 
 The check is ASGI middleware rather than a route dependency for one reason that
 matters: FastAPI parses a multipart body before it solves any dependency, so a
@@ -40,29 +50,45 @@ request headers and nothing is read.
 """
 
 import hmac
-import logging
 
 from fastapi import status
 from fastapi.responses import JSONResponse
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Scope
 
-logger = logging.getLogger(__name__)
+from app.core.gate import PROTECTED_PREFIX, CoveredRouteGate
 
 # The variable the credential is read from. Named here so the startup log and
 # the refusal message cannot drift from what an operator has to set.
 ACCESS_TOKEN_VARIABLE = "API_ACCESS_TOKEN"
 
-# Where the analysis routes are mounted. The gate covers this prefix and
-# nothing else: liveness, readiness and the root are deliberately open, see
-# `covers`.
-PROTECTED_PREFIX = "/api"
+# `PROTECTED_PREFIX` is re-exported rather than defined here. Both gates cover
+# the same prefix by construction, so it is owned by `gate.py` - two copies
+# could disagree, and the one that lost would be a control silently narrower
+# than the routes it guards.
+__all__ = [
+    "ACCESS_TOKEN_VARIABLE",
+    "BEARER_SCHEME",
+    "MINIMUM_TOKEN_LENGTH",
+    "PROTECTED_PREFIX",
+    "UNAUTHORIZED",
+    "AccessTokenConfiguration",
+    "AccessTokenError",
+    "RequireAccessToken",
+    "configured_access_token",
+]
 
 # The scheme the credential is presented under. Bearer rather than a header of
 # our own so that every proxy, client library and log scrubber already knows to
 # treat the value as a secret.
 BEARER = b"bearer"
+
+# What the OpenAPI document calls that scheme. The gate is middleware, so
+# FastAPI cannot infer a security requirement from it the way it would from a
+# route dependency; the name is declared here, referenced by the analysis routes
+# and defined as a component by `create_app`, so the three cannot drift.
+BEARER_SCHEME = "bearerCredential"
 
 # The one refusal this module sends. Fixed, and identical whether the header
 # was absent, malformed, or held the wrong value: which of those it was is
@@ -75,6 +101,9 @@ UNAUTHORIZED = "Unauthorized"
 # than chosen. 32 characters is `secrets.token_urlsafe(24)`; the message below
 # suggests more.
 MINIMUM_TOKEN_LENGTH = 32
+
+# What the log line says about a refusal. Never the header, in any form.
+NO_CREDENTIAL = "no valid credential was presented"
 
 
 class AccessTokenError(RuntimeError):
@@ -92,7 +121,7 @@ class AccessTokenError(RuntimeError):
 
 class AccessTokenConfiguration(BaseSettings):
     """
-    The credential the analysis routes require, if a deployment sets one.
+    The credential the analysis routes require.
 
     Typed as a plain string with a default so that pydantic itself can never
     fail on it: every validation failure it could raise would carry the secret
@@ -116,8 +145,9 @@ class AccessTokenConfiguration(BaseSettings):
         alias=ACCESS_TOKEN_VARIABLE,
         description=(
             "Shared credential required on the analysis routes, presented as "
-            "an Authorization: Bearer header. Unset or blank leaves the routes "
-            "open to anyone who can reach the port."
+            "an Authorization: Bearer header. Unset or blank stops the process "
+            "at startup: there is no mode in which these routes answer a caller "
+            "that presented nothing."
         ),
     )
 
@@ -140,25 +170,45 @@ class AccessTokenConfiguration(BaseSettings):
         return raw.strip()
 
 
+def generate_it_with() -> str:
+    """The one command both refusals below end on, so they cannot disagree."""
+    return 'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+
+
 def configured_access_token() -> str:
     """
-    Read the credential, or refuse a value that would not be one.
+    Read the credential, or stop the process.
 
-    Whitespace is stripped and a blank value reads as unset: a variable
-    passed through an empty Compose default is a deployment that did not
-    configure a credential, not one that configured the empty string.
+    Whitespace is stripped and a blank value reads as unset: a variable passed
+    through an empty Compose default is a deployment that did not configure a
+    credential, not one that configured the empty string. Both are refused
+    identically, and neither starts a server.
 
-    :return: The credential, or an empty string when none is configured.
-    :raises AccessTokenError: If a value is set but is too short to be a secret.
+    Refusing here rather than defaulting to an open service is the trade this
+    module's docstring describes: a deployment that has not been configured
+    fails loudly at startup instead of quietly answering everyone.
+
+    :return: The credential.
+    :raises AccessTokenError: If no value is set, or the value is too short to
+        be a secret.
     """
     token = AccessTokenConfiguration().token
-    if token and len(token) < MINIMUM_TOKEN_LENGTH:
+    if not token:
+        raise AccessTokenError(
+            f"{ACCESS_TOKEN_VARIABLE} is not set. The analysis routes ingest "
+            "clinical documents and this credential is what keeps them from "
+            "answering anyone who can reach the port, so there is no default "
+            "and no unconfigured mode. Generate one and put it in the "
+            f"environment: {generate_it_with()}. The browser interface in this "
+            "stack cannot present it - see deploy/README.md for the proxy that "
+            "can."
+        )
+    if len(token) < MINIMUM_TOKEN_LENGTH:
         raise AccessTokenError(
             f"{ACCESS_TOKEN_VARIABLE} must be at least {MINIMUM_TOKEN_LENGTH} "
             "characters. It is the only thing between the analysis routes and "
             "everyone who can reach the port, so generate it rather than "
-            'choosing it: python -c "import secrets; '
-            'print(secrets.token_urlsafe(32))". The value is left out of this '
+            f"choosing it: {generate_it_with()}. The value is left out of this "
             "message because it is a secret."
         )
     return token
@@ -203,14 +253,15 @@ def presented_credential(scope: Scope) -> bytes | None:
     return None
 
 
-class RequireAccessToken:
+class RequireAccessToken(CoveredRouteGate):
     """
     Refuse a request to the analysis routes that does not carry the credential.
 
-    Mounted only when one is configured, so an unconfigured deployment does not
-    pay for a check that would always pass.
+    Always mounted: `configured_access_token` stops the process rather than
+    return nothing, so there is no build of the application in which this gate
+    is absent.
 
-    Three paths through it are deliberate:
+    Two things about its placement are deliberate:
 
     - **Everything outside `/api` is open, not only the health endpoints.** The
       gate is a prefix, so `/healthz`, `/readyz`, `/`, FastAPI's `/docs`,
@@ -229,47 +280,20 @@ class RequireAccessToken:
       and because a future router mounted outside `/api` would be ungated with
       nothing failing - `test_access_token.py` pins the current set so that
       addition breaks a test.
-    - A CORS preflight never reaches here. `CORSMiddleware` is mounted outside
-      this one and answers `OPTIONS` itself, which it has to: a browser sends no
-      `Authorization` on a preflight, so a gate that saw one would refuse the
-      request that exists to ask whether the real one may be sent.
-    - The refusal is written straight to `send`, like the size ceiling's 413.
-      That is why CORS belongs outside this middleware and caching control
-      outside that - the 401 picks up the allow-origin header on the way out,
-      and `no-store` with it.
+    - **It is mounted outside `RequireKnownOrigin`**, so it runs first. A caller
+      that presents nothing is refused with 401 whatever origin it claimed, so
+      the analysis routes do not report on the origin allow-list to an anonymous
+      caller watching a 403 turn into a 401. That is narrower than "the list is
+      private": the CORS preflight, which is answered outside both gates and
+      without a credential, already confirms a guessed origin. See
+      `RequireKnownOrigin`.
     """
 
     def __init__(self, app: ASGIApp, token: str) -> None:
-        self.app = app
+        super().__init__(app)
         # Held as bytes because that is what the header is, and comparing bytes
         # avoids a decode of attacker-controlled input on every request.
         self.expected = token.encode("utf-8")
-
-    def routed_path(self, scope: Scope) -> str:
-        """
-        The path the router will match on, which is not always `scope["path"]`.
-
-        An application mounted behind a prefix carries that prefix in
-        `root_path`, and Starlette's router strips it before matching: served
-        under `--root-path /med-assist`, a request for `/med-assist/api/analyze`
-        reaches the route registered as `/api/analyze`. A gate comparing the
-        raw path would not recognise it, would call through without a word, and
-        the route would analyse the batch - the whole control silently absent on
-        exactly the deployment that added a proxy, which is the deployment this
-        feature exists for. So the prefix is stripped here the same way.
-
-        :param scope: The ASGI connection scope.
-        :return: The path with any mount prefix removed.
-        """
-        path = scope.get("path", "")
-        root_path = scope.get("root_path", "")
-        if root_path and path.startswith(root_path):
-            return path[len(root_path) :] or "/"
-        return path
-
-    def covers(self, path: str) -> bool:
-        """Whether the gate applies to a routed path."""
-        return path == PROTECTED_PREFIX or path.startswith(f"{PROTECTED_PREFIX}/")
 
     def accepts(self, scope: Scope) -> bool:
         """
@@ -280,46 +304,17 @@ class RequireAccessToken:
         the length of the presented value is still observable - but the
         credential is long and random, which is what makes the remaining signal
         useless.
+
+        :param scope: The ASGI connection scope.
+        :return: True when the presented credential is the configured one.
         """
         credential = presented_credential(scope)
         if credential is None:
             return False
         return hmac.compare_digest(credential, self.expected)
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        # `websocket` is covered as well as `http`, though no route in this
-        # application is one today. An exemption for every scope that is not
-        # HTTP would mean the first `/api` WebSocket anyone adds ships ungated,
-        # with no test failing and nothing here to warn its author. `lifespan`
-        # and anything else still passes through: it carries no path.
-        if scope["type"] not in ("http", "websocket"):
-            await self.app(scope, receive, send)
-            return
+    def refusal(self) -> JSONResponse:
+        return unauthorized()
 
-        if not self.covers(self.routed_path(scope)):
-            await self.app(scope, receive, send)
-            return
-
-        if self.accepts(scope):
-            await self.app(scope, receive, send)
-            return
-
-        # The path is safe to log: no route here mints or accepts an identifier
-        # for a document, so it names nothing. The header is not logged, in any
-        # form - a rejected credential is still a credential, and a near miss in
-        # a log file is a working one for whoever reads the log.
-        logger.warning(
-            "Refused a request to %s that carried no valid credential",
-            self.routed_path(scope),
-        )
-
-        if scope["type"] == "websocket":
-            # The handshake is refused before it is accepted. The connect
-            # message is received first because a server is entitled to expect
-            # the application to read it, and 1008 is the policy-violation code
-            # - there is no 401 on a socket that was never opened.
-            await receive()
-            await send({"type": "websocket.close", "code": 1008})
-            return
-
-        await unauthorized()(scope, receive, send)
+    def refusal_reason(self) -> str:
+        return NO_CREDENTIAL

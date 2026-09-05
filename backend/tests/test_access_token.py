@@ -1,9 +1,11 @@
 """
-The optional shared credential in front of the analysis routes.
+The shared credential required in front of the analysis routes.
 
-Three things are being pinned here, and only the first is about who gets in:
+Four things are being pinned here, and only the first two are about who gets in:
 
 - the gate refuses an anonymous caller on the analysis routes and nobody else,
+- there is no configuration in which it is absent: a deployment that sets no
+  credential does not start,
 - it refuses on the request headers, before a byte of the body is read,
 - and it never puts the credential anywhere - not in a message, not in a log.
 """
@@ -28,6 +30,7 @@ from app.core.access import (
     configured_access_token,
 )
 from app.core.dependencies import get_entity_extractor, get_text_extractor
+from app.core.gate import covers
 from app.core.middleware import REQUEST_TOO_LARGE, LimitRequestSize
 from app.interfaces.service_interfaces import (
     EntityExtractionServiceInterface,
@@ -35,11 +38,13 @@ from app.interfaces.service_interfaces import (
 )
 from app.main import PRODUCTION, create_app
 from app.schemas.extraction import EntityDetail
+from tests.conftest import SUITE_TOKEN
 
-# A credential of the shape an operator would generate, long enough to pass the
-# minimum. It is a test fixture and not a secret anywhere: nothing outside this
-# file reads it, and no deployment config in this repository names a value.
-TOKEN = "test-credential-0123456789abcdefghijklmn"
+# The suite's credential, generated in `conftest.py` and imported rather than
+# written down again here. Two copies of a value long enough to be accepted by
+# `configured_access_token` are two chances for one of them to be pasted into a
+# `.env`, and AGENTS.md section 9 says no token is hardcoded in a test.
+TOKEN = SUITE_TOKEN
 
 ANALYZE = "/api/analyze"
 STREAM = "/api/analyze/stream"
@@ -51,7 +56,13 @@ ALLOWED_ORIGIN = "http://localhost:3000"
 
 @pytest.fixture
 def unset_token(monkeypatch):
-    """No credential in the environment, whatever the machine running this has."""
+    """
+    No credential in the environment, whatever the machine running this has.
+
+    `conftest.py` sets one for the whole suite, because `create_app` refuses to
+    build without it. This undoes that for the few tests whose subject is the
+    refusal itself.
+    """
     monkeypatch.delenv(ACCESS_TOKEN_VARIABLE, raising=False)
 
 
@@ -88,12 +99,6 @@ def stubbed(app: FastAPI) -> FastAPI:
 
 
 @pytest.fixture
-def open_client(unset_token):
-    """The application as an unconfigured deployment runs it: no gate."""
-    return TestClient(stubbed(create_app(PRODUCTION)))
-
-
-@pytest.fixture
 def gated_client(set_token):
     return TestClient(stubbed(create_app(PRODUCTION)))
 
@@ -118,18 +123,37 @@ def stream_events(response):
 # --- Reading the configuration -------------------------------------------
 
 
-def test_no_variable_configures_no_credential(unset_token):
-    assert configured_access_token() == ""
+def test_no_variable_stops_the_process(unset_token):
+    # There is no unconfigured mode. A deployment that sets nothing used to get
+    # an open service that looked identical to a locked-down one from the
+    # outside; now it gets a process that does not start.
+    with pytest.raises(AccessTokenError):
+        configured_access_token()
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
-def test_a_blank_variable_reads_as_unconfigured(monkeypatch, blank):
-    # A Compose passthrough with nothing behind it arrives as the empty string,
-    # and that is a deployment that did not configure a credential rather than
-    # one that configured the empty one.
+def test_a_blank_variable_stops_the_process(monkeypatch, blank):
+    # A Compose passthrough with nothing behind it arrives as the empty string.
+    # That is a deployment that did not configure a credential, and it is
+    # refused exactly as an absent variable is - not accepted as the empty one.
     monkeypatch.setenv(ACCESS_TOKEN_VARIABLE, blank)
 
-    assert configured_access_token() == ""
+    with pytest.raises(AccessTokenError):
+        configured_access_token()
+
+
+def test_the_missing_credential_refusal_names_the_variable(unset_token):
+    # The operator has to be able to act on it, and the variable name is the
+    # only thing in this area that is safe to put in a message.
+    with pytest.raises(AccessTokenError) as raised:
+        configured_access_token()
+
+    assert ACCESS_TOKEN_VARIABLE in str(raised.value)
+
+
+def test_a_deployment_without_a_credential_does_not_start(unset_token):
+    with pytest.raises(AccessTokenError):
+        create_app(PRODUCTION)
 
 
 def test_surrounding_whitespace_is_not_part_of_the_credential(monkeypatch):
@@ -165,31 +189,21 @@ def test_the_minimum_length_itself_is_accepted(monkeypatch):
     assert configured_access_token() == exact
 
 
-def test_a_deployment_without_a_credential_is_told_so(unset_token, caplog):
-    with caplog.at_level(logging.WARNING, logger="app.main"):
-        create_app(PRODUCTION)
-
-    # The mitigation for the one way this feature fails open: a mistyped
-    # variable name leaves the routes answering anyone, and looks identical to
-    # a deployment that locked them down.
-    assert ACCESS_TOKEN_VARIABLE in caplog.text
-
-
 def test_a_configured_deployment_says_the_browser_cannot_use_it(set_token, caplog):
+    # Entered as a context manager so the lifespan runs, which is where the
+    # posture line is written. `caplog` attaches its own handler, so this sees
+    # the record whether or not a real deployment's logging configuration would
+    # - see the lifespan's docstring for that limit. What is pinned here is the
+    # content: it names the proxy, and it does not name the credential.
     with caplog.at_level(logging.INFO, logger="app.main"):
-        create_app(PRODUCTION)
+        with TestClient(stubbed(create_app(PRODUCTION))):
+            pass
 
     assert TOKEN not in caplog.text
     assert "proxy" in caplog.text
 
 
 # --- What the gate covers ------------------------------------------------
-
-
-def test_without_a_credential_configured_nothing_is_refused(open_client):
-    # 422 rather than 401: the body is missing, which is the answer this request
-    # got before the gate existed and has to keep getting.
-    assert open_client.post(ANALYZE).status_code == 422
 
 
 @pytest.mark.parametrize("path", [ANALYZE, STREAM])
@@ -439,15 +453,6 @@ def test_an_anonymous_batch_is_refused_without_being_analysed(gated_client):
     entity_extractor.extract_entities.assert_not_called()
 
 
-def test_an_unconfigured_deployment_still_analyses_anonymously(open_client):
-    # The contract as it stands today. A deployment that sets nothing must see
-    # no change at all from this feature existing.
-    response = open_client.post(ANALYZE, files=[txt()])
-
-    assert response.status_code == 200
-    assert "summary" in response.json()
-
-
 def test_an_authenticated_stream_is_analysed_as_before(gated_client):
     response = gated_client.post(STREAM, files=[txt()], headers=bearer())
 
@@ -465,13 +470,6 @@ def test_an_anonymous_stream_batch_is_refused_without_being_analysed(gated_clien
     assert response.status_code == 401
     entity_extractor = gated_client.app.dependency_overrides[get_entity_extractor]()
     entity_extractor.extract_entities.assert_not_called()
-
-
-def test_an_unconfigured_deployment_still_streams_anonymously(open_client):
-    response = open_client.post(STREAM, files=[txt()])
-
-    assert response.status_code == 200
-    assert [event for event in stream_events(response) if event["stage"] == "result"]
 
 
 # --- The gate matches the path the router matches ------------------------
@@ -564,24 +562,22 @@ UNGATED_PATHS = {
 
 
 def test_the_ungated_paths_are_exactly_the_documented_set(set_token):
+    # `covers` is shared by both gates, so this pins the reach of the origin
+    # gate at the same time as the credential one.
     application = create_app(PRODUCTION)
-    gate = RequireAccessToken(application, token=TOKEN)
 
-    ungated = {
-        route.path for route in application.routes if not gate.covers(route.path)
-    }
+    ungated = {route.path for route in application.routes if not covers(route.path)}
 
     assert ungated == UNGATED_PATHS
 
 
 def test_every_analysis_route_is_gated(set_token):
     application = create_app(PRODUCTION)
-    gate = RequireAccessToken(application, token=TOKEN)
 
     analysis = [route.path for route in application.routes if "analyze" in route.path]
 
     assert analysis
-    assert all(gate.covers(path) for path in analysis)
+    assert all(covers(path) for path in analysis)
 
 
 def test_the_schema_endpoints_answer_a_gated_deployment_anonymously(gated_client):

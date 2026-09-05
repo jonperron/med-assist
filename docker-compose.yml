@@ -96,13 +96,23 @@ services:
       # have to. A malformed value fails the container at startup rather than
       # leaving every call to fail in the browser.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
-      # The shared credential the analysis routes require, if there is one.
-      # Empty by default, which is the same as unset: the routes answer anyone
-      # who can reach the port, exactly as they always have. Setting it refuses
-      # every caller that does not present it - including the browser interface
-      # in this same stack, which cannot hold a secret. Only a deployment whose
-      # proxy adds the header should set it. See .env.example.
-      - API_ACCESS_TOKEN=${API_ACCESS_TOKEN:-}
+      # The shared credential the analysis routes require. There is no default
+      # and no unconfigured mode: `:?` makes Compose refuse to start the stack
+      # when the variable is missing or empty, and the backend refuses to start
+      # even if it somehow arrives empty anyway.
+      #
+      # Two refusals for one rule because they fail in different places and only
+      # the first is cheap: Compose names the variable before an image is pulled,
+      # the backend catches the case where something else composed the
+      # environment. Neither can be satisfied by a value under 32 characters.
+      #
+      # Setting it refuses every caller that does not present it - including the
+      # browser interface in this same stack, which cannot hold a secret. That
+      # is why a deployment serving that interface needs a proxy in front to add
+      # the header. See .env.example and deploy/README.md.
+      - API_ACCESS_TOKEN=${API_ACCESS_TOKEN:?set it in .env - generate one with
+        'python -c "import secrets; print(secrets.token_urlsafe(32))"'.
+        The bundled browser interface cannot present it; see deploy/README.md}
     # Ready means the weights are in memory, not merely that the port is open.
     # The model loads at startup and takes seconds on a CPU, hence start_period.
     healthcheck:

@@ -60,6 +60,20 @@ med-assist.example.org {
 			# here. Read from the proxy's environment - do not inline a value.
 			header_up Authorization "Bearer {env.API_ACCESS_TOKEN}"
 
+			# Authorization is the ONLY request header replaced here, and that
+			# is deliberate. The backend also refuses a request whose `Origin`
+			# is not one it serves, which is what stops another site driving an
+			# upload through a logged-in clinician's browser - your cached Basic
+			# credentials are ambient and would otherwise authenticate the
+			# forgery. That check reads `Origin` and the `Sec-Fetch-*` headers
+			# exactly as the browser wrote them.
+			#
+			# So do not add `header_up -Origin`, `header_up Origin ...`, or a
+			# WAF rule that normalises either. Stripping `Origin` does not
+			# tighten anything: the backend treats an absent one as a
+			# server-side call and lets it through, so the CSRF control turns
+			# off with nothing in any log to say it did.
+
 			# POST /api/analyze/stream answers Server-Sent Events. Without
 			# this, Caddy buffers them and the progress the clinician is
 			# watching arrives in one lump at the end, which is the whole

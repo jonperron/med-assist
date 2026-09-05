@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.sse import EventSourceResponse
 from pydantic import ValidationError
 
+from app.core.access import BEARER_SCHEME
 from app.core.dependencies import (
     get_entity_extractor,
     get_text_extractor,
@@ -55,14 +56,31 @@ BATCH_DESCRIPTION = (
 # The generic failure, worded as the 500 body the non-streaming route sends.
 INTERNAL_ERROR = "Internal server error"
 
-# How the credential gate is documented on both analysis endpoints. It is
-# middleware, so FastAPI cannot see it and would otherwise leave a deployment's
-# 401 out of the schema entirely; and it is conditional, so the description says
-# when it applies rather than asserting that every deployment refuses an
-# anonymous caller.
+# How the two gates are documented on both analysis endpoints. Both are
+# middleware, so FastAPI cannot see either and would otherwise leave them out of
+# the schema entirely - and a generated client that does not know these statuses
+# exist reports them as an unexpected failure.
+#
+# Neither is conditional any more. Every deployment requires a credential,
+# because the process does not start without one, and every deployment enforces
+# its origin allow-list.
 UNAUTHORIZED_DESCRIPTION = (
-    "No valid credential. Only a deployment that configures a shared credential "
-    "answers this; one that does not never refuses for this reason."
+    "No valid credential was presented. Every deployment requires one: the "
+    "service refuses to start without it. Present it as Authorization: Bearer."
+)
+
+# Both gates are middleware, so FastAPI cannot infer a security requirement from
+# a dependency the way it does for a route that declares one. Declared by hand so
+# that a generated client knows the credential exists and how to present it; the
+# scheme itself is added to the document by `create_app`.
+REQUIRES_THE_CREDENTIAL: dict[str, object] = {"security": [{BEARER_SCHEME: []}]}
+
+FORBIDDEN_DESCRIPTION = (
+    "The request came from an origin this deployment does not serve. Only a "
+    "caller that already presented a valid credential sees this: a request "
+    "without one is answered 401 whatever origin it claims. Presenting a "
+    "different credential does not change it - this is a check on where the "
+    "request came from, not on who made it."
 )
 
 # How a refusal is documented on the streaming endpoint. Declaring `model=`
@@ -167,9 +185,11 @@ def describe(document: ReadDocument) -> AnalyzedDocument:
     "/analyze",
     response_model=AnalysisResponse,
     dependencies=[Depends(require_the_model)],
+    openapi_extra=REQUIRES_THE_CREDENTIAL,
     responses={
         400: {"model": ErrorResponse, "description": "Invalid or unreadable document"},
         401: {"model": ErrorResponse, "description": UNAUTHORIZED_DESCRIPTION},
+        403: {"model": ErrorResponse, "description": FORBIDDEN_DESCRIPTION},
         413: {
             "model": ErrorResponse,
             "description": "A file is too large, or the batch holds too many files",
@@ -258,11 +278,12 @@ async def analyze(
     # STREAMED_EVENT_PAYLOAD then points the stream's `data` field at.
     response_model=AnalysisEvent,
     response_description="One event of the stream, its `data` an AnalysisEvent",
-    openapi_extra=STREAMED_EVENT_PAYLOAD,
+    openapi_extra=STREAMED_EVENT_PAYLOAD | REQUIRES_THE_CREDENTIAL,
     dependencies=[Depends(require_the_model)],
     responses={
         400: {"description": "Invalid document", **JSON_REFUSAL},
         401: {"description": UNAUTHORIZED_DESCRIPTION, **JSON_REFUSAL},
+        403: {"description": FORBIDDEN_DESCRIPTION, **JSON_REFUSAL},
         413: {
             "description": "A file is too large, or the batch holds too many files",
             **JSON_REFUSAL,

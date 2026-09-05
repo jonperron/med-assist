@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.main import DEVELOPMENT, PRODUCTION, create_app
+from tests.conftest import bearer_headers
 
 MOCK_PATH = "/mock_summary"
 
@@ -53,7 +54,9 @@ def test_a_stored_document_request_answers_not_found(monkeypatch):
     # other TestClient-backed tests in this module stub it.
     monkeypatch.setattr(main, "get_entity_extractor", lambda: object())
 
-    with TestClient(create_app(PRODUCTION)) as client:
+    # Credentialed, so that a removed route answers 404 rather than the 401
+    # the gate would send first. What is being pinned is that the route is gone.
+    with TestClient(create_app(PRODUCTION), headers=bearer_headers()) as client:
         file_id = "123e4567-e89b-12d3-a456-426614174000"
 
         assert client.post("/api/upload_document/").status_code == 404
