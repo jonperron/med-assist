@@ -40,9 +40,10 @@ professional medical advice or diagnosis.
 This is a local-processing guarantee, not a compliance claim. The extracted
 entities are health data and remain personal data under GDPR, **the API is
 unauthenticated**, and clinical text is adversarial: read a summary before you
-rely on it. [`backend/README.md`](./backend/README.md) states the scope and the
-known gaps; [`frontend/README.md`](./frontend/README.md) covers the policy and
-what it does not stop.
+rely on it. [`backend/README.md`](./backend/README.md) states the scope and
+[`frontend/README.md`](./frontend/README.md) the policy;
+[`openwiki/decisions/`](./openwiki/decisions/) holds the known gaps and what
+each boundary does not stop.
 
 ---
 
