@@ -100,7 +100,13 @@ docker run \
 The weights are not in it, for the same reason they are not in the compose
 build, and the `--tmpfs` is not decoration: without it uploaded documents are
 spooled to the container's writable layer rather than to memory.
-[`deploy/README.md`](./deploy/README.md) has the rest.
+
+The interface in it is built to look for the API at `http://localhost:8000`, and
+that address is resolved by the browser rather than by the container — so the
+published image serves a browser on the machine running Docker, and nothing
+else. Reaching it from another machine is a rebuild with your own
+`NEXT_PUBLIC_API_URL`, not a published port; the next section has both variables
+and [`deploy/README.md`](./deploy/README.md) has the rest.
 
 ### Serving it from somewhere other than localhost
 

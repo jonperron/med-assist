@@ -57,10 +57,17 @@ It was rejected because the frontend half of it is close to useless.
 published frontend image is permanently pinned to whatever URL CI built it with
 - `http://localhost:8000`, the only defensible default - and every deployment
 whose API is anywhere else has to rebuild it anyway. Publishing an image whose
-one build-time constant is wrong for its audience is worse than not publishing
-it. In a single container that same default is simply correct: both processes
-are there, and a browser given both published ports does reach the API at
-`http://localhost:8000`.
+one build-time constant is wrong for its whole audience is worse than not
+publishing it.
+
+The single container does not remove that pin. It narrows who the default is
+right for from nobody to somebody: the browser is on the machine running Docker,
+where `localhost:8000` is both ends of one connection, and that is the
+deployment this project is built for. It is right for no other reader.
+`NEXT_PUBLIC_API_URL` is an address the *browser* resolves, so opening the
+interface from a second machine names that machine's own port 8000 and every
+analysis fails as a network error, however the container's ports are published.
+See "What it costs" below.
 
 Building only the backend was the other candidate, and matches how
 `deploy/README.md` already talks about "the published image". It was rejected
@@ -98,6 +105,24 @@ route - and the model-load failure is deliberately logged without its cause, so
 there is nothing to read. This was hit while testing the image and is written
 down in `deploy/README.md` rather than fixed in code: the alternative is running
 the release image as root, which is a worse trade for a published artifact.
+
+**The published tag is a local deployment and cannot be reconfigured into any
+other.** `NEXT_PUBLIC_API_URL` is frozen when the image is built, so a
+deployment reached from another machine builds its own image with `--build-arg`
+and moves `CORS_ALLOWED_ORIGINS` with it - a published tag plus environment
+variables will not get there. The published artifact is therefore useful for
+running a tagged version locally without a checkout, and is not the thing you
+deploy behind a domain.
+
+The alternative was a same-origin proxy: have the interface call its own origin
+and let the Next.js server forward `/api` to `127.0.0.1:8000`, which would make
+one image work from anywhere. It was rejected here as out of proportion to the
+change - it moves every browser call in the application onto a new path, changes
+what the CSP has to allow, and puts the origin check in front of a proxy that
+sends no `Origin` at all, none of which belongs in a fix for a release workflow
+that was looking for a `Dockerfile` that did not exist. It is the right shape
+for a deployment story, and is worth its own entry if the project ever wants
+one.
 
 **Size.** 1.85 GB, carrying the torch CPU wheels and a Node runtime. Splitting
 would not have made the sum smaller, only the parts.

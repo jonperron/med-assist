@@ -4,9 +4,11 @@
 # and frontend/Dockerfile, one container each, because that is the shape that
 # takes a memory limit, a tmpfs and a healthcheck per service. This file exists
 # because a release publishes one artifact that someone runs with `docker run`,
-# and splitting that across two packages made the interface's own default wrong:
-# NEXT_PUBLIC_API_URL is inlined into the bundle at build time, and in one
-# container the browser really does reach the API at http://localhost:8000.
+# and splitting that across two packages made the interface's own default wrong
+# for its whole audience: NEXT_PUBLIC_API_URL is inlined into the bundle at
+# build time, so a published frontend image is pinned to one address forever.
+# One container narrows who that default is right for to the one deployment
+# this project supports - a browser on the Docker host - rather than nobody.
 #
 # See openwiki/decisions/2026-09-05-the-release-image-is-one-container.md for
 # what this costs.
@@ -27,11 +29,16 @@ RUN npm ci
 
 COPY frontend/ ./
 
-# NEXT_PUBLIC_* values are inlined into the client bundle at build time. The
-# default is right for this image rather than merely conventional: both
-# processes are in one container, so a browser given both published ports on
-# the same host reaches the API where the bundle says it is. A deployment
-# behind a proxy still has to rebuild with its own domain - see deploy/README.md.
+# NEXT_PUBLIC_* values are inlined into the client bundle at build time, so this
+# is the one address the published image can ever ask a browser for.
+#
+# It is resolved by the browser, not by the container: it names the reader's own
+# machine, and publishing port 8000 on a public interface does not change that.
+# The image therefore serves a browser on the Docker host - the deployment this
+# project is built for, where localhost is both ends of the connection - and no
+# other. A deployment reached from anywhere else rebuilds with its own value and
+# moves CORS_ALLOWED_ORIGINS to match; the build arg is here so that rebuild is
+# a --build-arg rather than a patch. See deploy/README.md.
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 

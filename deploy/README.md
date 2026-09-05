@@ -91,6 +91,35 @@ container that starts, serves the interface, and answers `503` everywhere with
 nothing in the log to say why. Either make them group- or world-readable, or add
 `--user "$(id -u):$(id -g)"`.
 
+**The published image only serves a browser on the Docker host.** The two
+published ports above are bound to loopback because that is the deployment this
+image is for, and the interface inside it cannot serve any other one as built:
+`NEXT_PUBLIC_API_URL` is inlined into the client bundle when the image is built,
+and the release build has no address to use but `http://localhost:8000`. That
+address is resolved by the *browser*, not by the container, so publishing port
+8000 on a public interface does not make it work from another machine - it
+resolves to the reader's own computer, and every analysis fails as a network
+error while `curl http://<host>:8000/readyz` from that same computer answers
+normally. Co-locating the two processes makes the default correct for a browser
+on the Docker host and for nothing else.
+
+The value is frozen at build time, so the image cannot be reconfigured into a
+remote deployment; that deployment builds its own:
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=https://med-assist.example.org \
+  -t med-assist:1.0.0-example .
+```
+
+and moves `CORS_ALLOWED_ORIGINS` with it, as
+[the root README](../README.md#serving-it-from-somewhere-other-than-localhost)
+describes. That rebuild is not a cost this image adds: a separately published
+frontend image would be pinned to a build-time address in exactly the same way.
+What is published here is the local case, correct by default, and everything
+else on this page - the banner, the proxy, the origin check - applies to the
+rebuild rather than to the tag.
+
 **The analysis routes check where the request came from.** A request whose
 `Origin` is not in `CORS_ALLOWED_ORIGINS` is refused with a fixed `403` before
 its body is read. What this closes is one specific thing: another site driving
