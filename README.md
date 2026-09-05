@@ -71,6 +71,29 @@ says the service is unavailable rather than blaming the documents. It rechecks
 every few seconds and clears itself. If that warning is on screen, check
 `MODEL_DIR` first, then `docker compose logs backend`.
 
+### The published image
+
+Every release publishes one image, `ghcr.io/jonperron/med-assist:<version>`,
+holding the API and the interface in a single container. It is the artifact for
+running a tagged version without a checkout; `docker compose up` above still
+builds the two services separately, and that is what a working copy uses.
+
+```bash
+docker run \
+  -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
+  --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  -v "$PWD/backend/models:/app/models:ro" \
+  -e API_ACCESS_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" \
+  ghcr.io/jonperron/med-assist:<version>
+```
+
+The weights are not in it, for the same reason they are not in the compose
+build, and the `--tmpfs` is not decoration: without it uploaded documents are
+spooled to the container's writable layer rather than to memory.
+[`deploy/README.md`](./deploy/README.md) has the rest, including why the
+interface needs a proxy in front of it to reach an API that now requires a
+credential.
+
 ### Serving it from somewhere other than localhost
 
 Two variables describe the same connection and have to move together:

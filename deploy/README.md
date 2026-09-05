@@ -47,12 +47,29 @@ scanning. That is a real path and a smaller one.
 directly and it does not apply: `docker run -p 8000:8000` puts the API back on
 every interface. The credential does travel with the image - the process will
 not start without it, so an image run this way cannot be open by omission the
-way it once could - but the port exposure is yours to reproduce. Publish it the
-same way Compose does:
+way it once could - but the port exposure is yours to reproduce. So is the
+tmpfs, and that one is easier to miss: a multipart part above 1MB is spooled to
+a file under `TMPDIR` before any route code runs, so without the mount below
+clinical documents are written to the container's writable layer instead of to
+memory. Reproduce both the way Compose does:
 
 ```bash
-docker run -p 127.0.0.1:8000:8000 -e API_ACCESS_TOKEN=... <image>
+docker run \
+  -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
+  --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  -v /path/to/weights:/app/models:ro \
+  -e API_ACCESS_TOKEN=... \
+  ghcr.io/jonperron/med-assist:<version>
 ```
+
+Two ports because the published image is one container running both the API and
+the interface - see
+[`openwiki/decisions/2026-09-05-the-release-image-is-one-container.md`](../openwiki/decisions/2026-09-05-the-release-image-is-one-container.md).
+The processes run as uid 1001, so the weights have to be readable by it: a
+directory whose files are `chmod 600` and owned by your account produces a
+container that starts, serves the interface, and answers `503` everywhere with
+nothing in the log to say why. Either make them group- or world-readable, or add
+`--user "$(id -u):$(id -g)"`.
 
 **The analysis routes require a shared credential.** `POST /api/analyze` and
 `POST /api/analyze/stream` refuse anything that does not carry
