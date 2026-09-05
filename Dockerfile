@@ -61,6 +61,14 @@ COPY backend/app ./app
 # already here. Pulling the full Node image in as a second base would carry npm
 # and a package manager's worth of tooling for a process that never installs
 # anything.
+#
+# The binary is the whole dependency on linux/amd64, where it links only
+# libstdc++, libgcc_s, libm, libpthread and libc - all of them already in this
+# stage. It is not the whole dependency everywhere: node:24-trixie-slim also
+# installs libatomic1, which the Node build needs on ARM. A `platforms:` line
+# in .github/workflows/docker_build.yml is therefore not the only edit an
+# arm64 image would take - this stage would need that package too, and the
+# failure without it is `node` refusing to start at all.
 COPY --from=node:24-trixie-slim /usr/local/bin/node /usr/local/bin/node
 
 # `output: "standalone"` in next.config.ts emits a server plus the modules it
