@@ -635,6 +635,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description A file is too large, or the batch holds too many files */
             413: {
                 headers: {
@@ -697,6 +715,24 @@ export interface operations {
             };
             /** @description Invalid document */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

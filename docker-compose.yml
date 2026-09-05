@@ -6,8 +6,23 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    # Bound to loopback, not to every interface. `8000:8000` published an
+    # unauthenticated endpoint that ingests clinical documents on every address
+    # the host answers on, which is fine on a laptop and is a hole on a server:
+    # a platform that attaches a domain to this stack reaches the container over
+    # the Docker network and never needed the host port, while anyone scanning
+    # the host's public address did.
+    #
+    # A browser on the same machine still reaches http://localhost:8000, so a
+    # local `docker compose up` is unchanged. A browser on another machine no
+    # longer reaches it at all - that is the point, and it is what makes a
+    # non-localhost deployment go through a proxy. See deploy/README.md.
+    #
+    # BACKEND_BIND_ADDRESS exists so that undoing this is a deliberate act with
+    # a name rather than an edit to this file. 0.0.0.0 puts an API that answers
+    # anyone back on the public interface unless API_ACCESS_TOKEN is set.
     ports:
-      - "8000:8000"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     # Multipart parts above 1MB are spooled to a file under TMPDIR before any
     # route code runs. A RAM-backed /tmp keeps uploaded documents off the
     # container's writable layer, including on the stateless analysis path.
@@ -81,6 +96,23 @@ services:
       # have to. A malformed value fails the container at startup rather than
       # leaving every call to fail in the browser.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # The shared credential the analysis routes require. There is no default
+      # and no unconfigured mode: `:?` makes Compose refuse to start the stack
+      # when the variable is missing or empty, and the backend refuses to start
+      # even if it somehow arrives empty anyway.
+      #
+      # Two refusals for one rule because they fail in different places and only
+      # the first is cheap: Compose names the variable before an image is pulled,
+      # the backend catches the case where something else composed the
+      # environment. Neither can be satisfied by a value under 32 characters.
+      #
+      # Setting it refuses every caller that does not present it - including the
+      # browser interface in this same stack, which cannot hold a secret. That
+      # is why a deployment serving that interface needs a proxy in front to add
+      # the header. See .env.example and deploy/README.md.
+      - API_ACCESS_TOKEN=${API_ACCESS_TOKEN:?set it in .env - generate one with
+        'python -c "import secrets; print(secrets.token_urlsafe(32))"'.
+        The bundled browser interface cannot present it; see deploy/README.md}
     # Ready means the weights are in memory, not merely that the port is open.
     # The model loads at startup and takes seconds on a CPU, hence start_period.
     healthcheck:

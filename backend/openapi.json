@@ -679,6 +679,13 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "bearerCredential": {
+        "description": "The deployment's shared credential. Required on the analysis routes: the service refuses to start without one configured. It identifies no one - it is one secret shared by every caller - and the browser interface in this stack cannot present it, so a deployment serving that interface puts an authenticating proxy in front to add the header.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -738,6 +745,26 @@
             },
             "description": "Invalid or unreadable document"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it."
+          },
           "413": {
             "content": {
               "application/json": {
@@ -779,6 +806,11 @@
             "description": "The model is not loaded yet"
           }
         },
+        "security": [
+          {
+            "bearerCredential": []
+          }
+        ],
         "summary": "Analyze",
         "tags": [
           "Stateless Analysis"
@@ -842,6 +874,26 @@
             },
             "description": "Invalid document"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it."
+          },
           "413": {
             "content": {
               "application/json": {
@@ -883,6 +935,11 @@
             "description": "The model is not loaded yet"
           }
         },
+        "security": [
+          {
+            "bearerCredential": []
+          }
+        ],
         "summary": "Analyze Stream",
         "tags": [
           "Stateless Analysis"
