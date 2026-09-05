@@ -40,19 +40,21 @@ professional medical advice or diagnosis.
 This is a local-processing guarantee, not a compliance claim. The extracted
 entities are health data and remain personal data under GDPR, and clinical text
 is adversarial: read a summary before you rely on it.
+[`backend/README.md`](./backend/README.md) states the scope and
+[`frontend/README.md`](./frontend/README.md) the policy;
+[`openwiki/decisions/`](./openwiki/decisions/) holds the known gaps and what
+each boundary does not stop.
 
 **Med-Assist is meant to run on your own machine, and it authenticates nobody.**
 There are no accounts, no login and no credential of any kind: anyone who can
-reach the API can submit documents to it. That is a deliberate trade for a
-research project whose product is the model, and it is why the deployment this
-repository supports is a local one. Published at a public address it is a
+reach the API can submit documents to it. Published at a public address it is a
 demonstration - set `UNSECURED_DEPLOYMENT=true` so every screen says so, put an
 authenticating proxy in front, and do not point clinicians at it with real
-documents. [`deploy/README.md`](./deploy/README.md) is the page to read first,
-and access control is
-[open to contribution](#-contributing) rather than a setting you have missed. [`backend/README.md`](./backend/README.md) states the scope and the
-known gaps; [`frontend/README.md`](./frontend/README.md) covers the policy and
-what it does not stop.
+documents. [`deploy/README.md`](./deploy/README.md) is the page to read first;
+the trade and its cost are in
+[the decision entry](./openwiki/decisions/2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md),
+and access control is [open to contribution](#-contributing) rather than a
+setting you have missed.
 
 ---
 
