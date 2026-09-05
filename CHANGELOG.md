@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.0](https://github.com/jonperron/med-assist/compare/0.1.0...1.0.0) (2026-09-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **security:** API_ACCESS_TOKEN is required, so `docker compose up` with no .env no longer starts, and the bundled browser interface stops working in every deployment that has no authenticating proxy in front to inject the header. The page calls the API directly and provably cannot hold a secret, so the proxy documented in deploy/README.md is now how a working interface is obtained rather than an optional hardening step.
+
+### Features
+
+* **security:** require the credential and check the request origin ([#88](https://github.com/jonperron/med-assist/issues/88)) ([49666cd](https://github.com/jonperron/med-assist/commit/49666cdcf21b78ca8c1db249eb82ab4ca9963bbb))
+
+
+### Bug Fixes
+
+* **ci:** stop the release manifest turning the lint job red ([#83](https://github.com/jonperron/med-assist/issues/83)) ([9a63be9](https://github.com/jonperron/med-assist/commit/9a63be99d6065aa797508c119cd8e9782ccd539b))
+
+
+### Documentation
+
+* cut the root README to what a newcomer needs ([#86](https://github.com/jonperron/med-assist/issues/86)) ([2192a7f](https://github.com/jonperron/med-assist/commit/2192a7ffa8954d5a6ef6f0051ce8e50ac8c22a13))
+* move the reasoning out of the READMEs into the wiki ([#89](https://github.com/jonperron/med-assist/issues/89)) ([d2f4517](https://github.com/jonperron/med-assist/commit/d2f4517c7cc1b4b718cf23f1fa773a5c973aaed0))
+
 ## 0.1.0 (2026-08-31)
 
 
