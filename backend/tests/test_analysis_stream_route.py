@@ -36,7 +36,6 @@ from app.main import PRODUCTION, create_app
 from app.schemas.errors import UNREADABLE_DOCUMENT, ErrorDetail
 from app.schemas.extraction import EntityDetail
 from app.use_cases.validate_file import MAX_BATCH_FILES
-from tests.conftest import bearer_headers
 
 TEXT = "Le homme de 67 ans a de la fièvre"
 
@@ -487,7 +486,7 @@ class TestMiddlewareInteraction:
         app.dependency_overrides[get_entity_extractor] = lambda: mock_entity_extractor
         # The real application gates this route, and these tests are about what
         # the middleware around it does rather than about the gate.
-        return TestClient(app, headers=bearer_headers())
+        return TestClient(app)
 
     def test_a_streamed_result_is_marked_uncacheable(self, full_app_client):
         response = full_app_client.post(STREAM, files=[txt()])

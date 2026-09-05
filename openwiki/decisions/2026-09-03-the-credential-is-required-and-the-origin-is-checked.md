@@ -7,6 +7,13 @@ tags: [backend, deployment, security, authentication, csrf]
 
 # 2026-09-03 - The credential is required, and the request's origin is checked
 
+> **Superseded on 2026-09-05.** The shared credential described here was
+> removed - see
+> [2026-09-05 - The credential is removed and the deployment warns instead](./2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md).
+> The loopback binding and the origin check survive; everything below about
+> `API_ACCESS_TOKEN` is history.
+
+
 ## The problem this is answering
 
 The 2026-08-31 entry introduced `API_ACCESS_TOKEN` off by default and listed, in

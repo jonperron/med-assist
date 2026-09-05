@@ -27,10 +27,11 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Configuration
 
-The application reads its configuration from the environment. One value is a
-secret - `API_ACCESS_TOKEN`, and every deployment has to set one: the process
-refuses to start without it. The rest is not secret: the service stores nothing,
-so there is no datastore to reach and no key to hold.
+The application reads its configuration from the environment. None of it is
+secret: the service stores nothing and authenticates nobody, so there is no
+datastore to reach and no key to hold. Anyone who can reach the port can use the
+analysis routes - see [`deploy/README.md`](../deploy/README.md) before serving
+this anywhere but your own machine.
 
 **Environment Variables:**
 
@@ -38,15 +39,6 @@ so there is no datastore to reach and no key to hold.
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
 * `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
 * `NER_INFERENCE_THREADS` and `NER_MAX_CONCURRENT_INFERENCES`: see [Inference runs on the CPU](#inference-runs-on-the-cpu).
-* `API_ACCESS_TOKEN`: A shared credential required on `POST /api/analyze` and
-  `POST /api/analyze/stream`. **Required.** Unset, blank, or shorter than 32
-  characters stops the process at startup, naming the variable and never quoting
-  the value. The routes refuse anything without `Authorization: Bearer <value>`,
-  answering a fixed `401`. `/healthz` and `/readyz` are never gated, and neither
-  is anything outside the `/api` prefix - `/`, `/docs`, `/redoc` and
-  `/openapi.json` stay open. **The browser interface cannot supply it**, so
-  setting this without an authenticating proxy in front turns the interface off;
-  see [`deploy/README.md`](../deploy/README.md).
 * `CORS_ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the
   API, each written as `scheme://host[:port]` with no trailing slash (default:
   `http://localhost:3000`). The list is enforced server-side as well as sent to
@@ -60,10 +52,15 @@ so there is no datastore to reach and no key to hold.
   never quoting it. A single trailing slash and a port the scheme implies
   (`:443` on https, `:80` on http) are dropped rather than refused.
 
-Why the credential is mandatory, why it is one shared secret that identifies
-nobody, and why the origin is checked server-side:
-[the API can require a credential, and its port is loopback](../openwiki/decisions/2026-08-31-the-api-can-require-a-credential-and-its-port-is-loopback.md),
-[the credential is required, and the request's origin is checked](../openwiki/decisions/2026-09-03-the-credential-is-required-and-the-origin-is-checked.md),
+`API_ACCESS_TOKEN` is no longer read. It is not in this list because nothing
+consumes it; a deployment that still sets it gets a warning at startup saying
+so, and an upgrading operator should read
+[`deploy/README.md`](../deploy/README.md) before treating a proxy rule that
+injects the header as access control.
+
+Why this API authenticates nobody, and why the origin is nonetheless checked
+server-side:
+[the credential is removed and the deployment warns instead](../openwiki/decisions/2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md)
 and [the allowed CORS origins come from the environment](../openwiki/decisions/2026-08-28-cors-origins-come-from-the-environment.md).
 
 **Example:**

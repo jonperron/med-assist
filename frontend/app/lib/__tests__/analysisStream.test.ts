@@ -128,10 +128,10 @@ describe('streamAnalysis', () => {
     })
   })
 
-  it('calls a credential refusal its own reason, not a transport failure', async () => {
-    // A deployment that sets API_ACCESS_TOKEN refuses this interface, which
-    // cannot hold a credential. Reporting that as `transport` offered a retry
-    // that can never succeed.
+  it('calls an authentication refusal its own reason, not a transport failure', async () => {
+    // A proxy in front of the deployment can want credentials this page has
+    // none of. Reporting that as `transport` offered a retry that can never
+    // succeed.
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
@@ -141,7 +141,7 @@ describe('streamAnalysis', () => {
     await expect(run()).rejects.toMatchObject({ reason: 'unauthorized' })
   })
 
-  it('does not render the backend English word for a credential refusal', async () => {
+  it('does not render the upstream English word for such a refusal', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
@@ -152,8 +152,8 @@ describe('streamAnalysis', () => {
   })
 
   it('treats a 403 the same way as a 401', async () => {
-    // A proxy in front can answer 403 where the application would answer 401,
-    // and the clinician's position is identical either way.
+    // 403 is the one the application itself sends: the origin gate refusing the
+    // origin this page was served from. The clinician's position is identical.
     fetchMock.mockResolvedValue({
       ok: false,
       status: 403,

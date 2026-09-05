@@ -20,7 +20,7 @@ services:
     #
     # BACKEND_BIND_ADDRESS exists so that undoing this is a deliberate act with
     # a name rather than an edit to this file. 0.0.0.0 puts an API that answers
-    # anyone back on the public interface unless API_ACCESS_TOKEN is set.
+    # anyone, with no credential of any kind, back on the public interface.
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     # Multipart parts above 1MB are spooled to a file under TMPDIR before any
@@ -96,23 +96,10 @@ services:
       # have to. A malformed value fails the container at startup rather than
       # leaving every call to fail in the browser.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
-      # The shared credential the analysis routes require. There is no default
-      # and no unconfigured mode: `:?` makes Compose refuse to start the stack
-      # when the variable is missing or empty, and the backend refuses to start
-      # even if it somehow arrives empty anyway.
-      #
-      # Two refusals for one rule because they fail in different places and only
-      # the first is cheap: Compose names the variable before an image is pulled,
-      # the backend catches the case where something else composed the
-      # environment. Neither can be satisfied by a value under 32 characters.
-      #
-      # Setting it refuses every caller that does not present it - including the
-      # browser interface in this same stack, which cannot hold a secret. That
-      # is why a deployment serving that interface needs a proxy in front to add
-      # the header. See .env.example and deploy/README.md.
-      - API_ACCESS_TOKEN=${API_ACCESS_TOKEN:?set it in .env - generate one with
-        'python -c "import secrets; print(secrets.token_urlsafe(32))"'.
-        The bundled browser interface cannot present it; see deploy/README.md}
+      # There is no credential here and the API authenticates nobody. Anyone who
+      # can reach port 8000 can submit documents and spend this host's CPU, and
+      # the loopback binding above is what decides who that is. See
+      # deploy/README.md before attaching a domain to this stack.
     # Ready means the weights are in memory, not merely that the port is open.
     # The model loads at startup and takes seconds on a CPU, hence start_period.
     healthcheck:
@@ -140,6 +127,12 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000" # Exposes Next.js standalone server on host port 3000
+    environment:
+      # Puts the "do not submit real documents" banner on every screen. Read at
+      # request time rather than baked into the bundle, so turning it on is this
+      # variable and a restart - no rebuild. Set it on any deployment reachable
+      # by someone other than the person running it; see .env.example.
+      - UNSECURED_DEPLOYMENT=${UNSECURED_DEPLOYMENT:-}
     depends_on:
       - backend
     restart: unless-stopped

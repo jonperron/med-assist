@@ -16,7 +16,6 @@ from app.main import PRODUCTION, create_app
 from app.schemas.errors import ErrorDetail
 from app.schemas.extraction import EntityDetail
 from app.use_cases.validate_file import MAX_BATCH_FILES
-from tests.conftest import bearer_headers
 
 TEXT = "Le homme de 67 ans a de la fièvre"
 TXT_FILE = ("note.txt", b"Le homme de 67 ans a de la fievre", "text/plain")
@@ -580,7 +579,7 @@ class TestMiddlewareInteraction:
         app.dependency_overrides[get_entity_extractor] = lambda: mock_entity_extractor
         # The real application gates this route, and these tests are about the
         # size ceiling behind the gate rather than about the gate.
-        return TestClient(app, headers=bearer_headers())
+        return TestClient(app)
 
     def test_a_normal_request_still_works_behind_the_middleware(self, full_app_client):
         response = full_app_client.post("/api/analyze", files=[txt()])

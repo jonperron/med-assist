@@ -1,21 +1,21 @@
 """
-What the gates in front of the analysis routes have in common.
+What a gate in front of the analysis routes is made of.
 
-There are two of them - `RequireAccessToken` and `RequireKnownOrigin` - and
-they differ only in the question they ask. Everything around that question is
-identical and is here: which paths a gate covers, how the path is recovered
-from an ASGI scope, which scope types are checked at all, and how a refusal is
-delivered on an HTTP request versus a WebSocket handshake.
+There is one today - `RequireKnownOrigin` - and there was a second, the shared
+credential, until it was removed. This module holds everything that is not the
+question a gate asks: which paths it covers, how the path is recovered from an
+ASGI scope, which scope types are checked at all, and how a refusal is delivered
+on an HTTP request versus a WebSocket handshake.
 
-That sharing is not tidiness. `routed_path` encodes a rule that is easy to get
-wrong and silent when it is: Starlette's router matches on the path with
-`root_path` stripped, so an application served behind `--root-path /med-assist`
-routes `/med-assist/api/analyze` to the route registered as `/api/analyze`. A
-gate that compared `scope["path"]` would not recognise it, would call through
-without a word, and the route would run - the control absent on exactly the
-deployment that put a proxy in front, which is the deployment the controls
-exist for. That was a real finding against the first gate. Writing the rule a
-second time for the second gate is how it comes back, so it is written once.
+Kept separate from its one subclass because `routed_path` encodes a rule that is
+easy to get wrong and silent when it is: Starlette's router matches on the path
+with `root_path` stripped, so an application served behind `--root-path
+/med-assist` routes `/med-assist/api/analyze` to the route registered as
+`/api/analyze`. A gate that compared `scope["path"]` would not recognise it,
+would call through without a word, and the route would run - the control absent
+on exactly the deployment that put a proxy in front, which is the deployment the
+controls exist for. That was a real finding against the first gate, and writing
+the rule a second time is how it comes back.
 """
 
 import logging
@@ -26,9 +26,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 logger = logging.getLogger(__name__)
 
 # Where the analysis routes are mounted. A gate covers this prefix and nothing
-# else: liveness, readiness, the root and the schema endpoints are deliberately
-# open. `test_access_token.py` pins the exact set so that a router mounted
-# outside `/api` cannot ship ungated with nothing failing.
+# else: liveness, readiness, the root and the schema endpoints are outside it.
+# `test_origin_gate.py` pins the exact set so that a router mounted outside
+# `/api` cannot ship ungated with nothing failing.
 PROTECTED_PREFIX = "/api"
 
 # The scope types a gate inspects. `websocket` is covered as well as `http`
@@ -129,19 +129,18 @@ class CoveredRouteGate:
     deliberate:
 
     - **A CORS preflight never reaches a gate.** `CORSMiddleware` is mounted
-      outside both of them and answers `OPTIONS` itself, which it has to: a
-      browser sends neither `Authorization` nor a body on a preflight, so a gate
-      that judged one would refuse the request that exists to ask whether the
-      real one may be sent.
+      outside it and answers `OPTIONS` itself, which it has to: a browser sends
+      no body on a preflight, so a gate that judged one would refuse the request
+      that exists to ask whether the real one may be sent.
     - **The refusal is written straight to `send`**, like the size ceiling's
       413, rather than returned through the router. That is why CORS belongs
-      outside these gates and caching control outside that: the refusal picks up
-      the allow-origin header on the way out, and `no-store` with it. Without
-      the first, a browser sees an opaque network error instead of a status the
+      outside a gate and caching control outside that: the refusal picks up the
+      allow-origin header on the way out, and `no-store` with it. Without the
+      first, a browser sees an opaque network error instead of a status the
       interface can report.
-    - **Nothing reads the body.** Both questions are answered from the request
-      headers, which is the whole reason these are ASGI middleware rather than
-      route dependencies: FastAPI parses a multipart body before it solves any
+    - **Nothing reads the body.** The question is answered from the request
+      headers, which is the whole reason this is ASGI middleware rather than a
+      route dependency: FastAPI parses a multipart body before it solves any
       dependency, so a dependency would refuse the caller only after the server
       had spooled up to the whole 50MB ceiling into `TMPDIR`. A refused document
       is never written to disk.
@@ -199,9 +198,9 @@ class CoveredRouteGate:
         # refusal's contribution to a rotating log an attacker would otherwise
         # roll real records out of.
         #
-        # What the request carried is still never logged - not the credential,
-        # not the origin. A rejected credential is still a credential, and a
-        # near miss in a log file is a working one for whoever reads the log.
+        # What the request carried is still never logged - in particular not
+        # the origin, which is attacker-controlled text like the path and would
+        # need the same escaping to be safe.
         logger.warning(
             "Refused a request to %s: %s", loggable(path), self.refusal_reason()
         )

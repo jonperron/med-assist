@@ -40,9 +40,10 @@ the interface leaves a container that is still `Up`, still passing a port
 check, and serving nothing on 3000.
 
 Verified locally against the real weights: the image builds at 1.85 GB, reaches
-`{"status":"ready"}` 20 seconds after start, refuses `POST /api/analyze` with
-`401` when no credential is presented, and answers a summary when one is.
-Killing the Next.js process exits the container with 137.
+`{"status":"ready"}` 20 seconds after start, serves the interface on 3000, and
+answers `POST /api/analyze` with a summary for synthetic text. Killing the
+Next.js process exits the container with 137, and a `docker stop` at any point
+after start exits 143 without waiting for Docker's SIGKILL.
 
 ## The alternative that was rejected
 

@@ -635,16 +635,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it. */
+            /** @description The request did not come from a page this deployment serves. Either the browser reported it as started by another site, or it carried an Origin that is not on the deployment's list. A browser reporting the deployment's own page is accepted whatever Origin it sends. It is a check on where a request came from, and the only one: this API does not authenticate callers, so a request carrying neither Origin nor Sec-Fetch-Site at all - a proxy, a healthcheck, any scripted caller - is not refused here. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -722,16 +713,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it. */
+            /** @description The request did not come from a page this deployment serves. Either the browser reported it as started by another site, or it carried an Origin that is not on the deployment's list. A browser reporting the deployment's own page is accepted whatever Origin it sends. It is a check on where a request came from, and the only one: this API does not authenticate callers, so a request carrying neither Origin nor Sec-Fetch-Site at all - a proxy, a healthcheck, any scripted caller - is not refused here. */
             403: {
                 headers: {
                     [name: string]: unknown;

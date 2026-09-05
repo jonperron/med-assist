@@ -19,7 +19,6 @@ from app.core.config import (
 )
 from app.core.middleware import MAX_REQUEST_SIZE_BYTES
 from app.main import PRODUCTION, create_app
-from tests.conftest import bearer_headers
 
 VARIABLE = "CORS_ALLOWED_ORIGINS"
 
@@ -317,7 +316,7 @@ def test_a_refused_oversized_request_still_carries_the_allow_header(
     origin = "https://med-assist.example.org"
     monkeypatch.setenv(VARIABLE, origin)
 
-    with TestClient(create_app(PRODUCTION), headers=bearer_headers()) as client:
+    with TestClient(create_app(PRODUCTION)) as client:
         response = client.post(
             "/api/analyze",
             content=b"x",

@@ -7,6 +7,13 @@ tags: [backend, deployment, security, authentication, coolify]
 
 # 2026-08-31 - The API can require a credential, and its port is loopback
 
+> **Superseded on 2026-09-05.** The shared credential described here was
+> removed - see
+> [2026-09-05 - The credential is removed and the deployment warns instead](./2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md).
+> The loopback binding and the origin check survive; everything below about
+> `API_ACCESS_TOKEN` is history.
+
+
 ## The problem this is answering
 
 `POST /api/analyze` and `POST /api/analyze/stream` accept clinical documents

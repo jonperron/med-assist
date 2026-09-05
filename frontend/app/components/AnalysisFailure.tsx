@@ -31,11 +31,12 @@ const HEADLINES: Record<StreamFailure, string> = {
 // A batch refused for its size will be refused identically next time, so the
 // retry is a control that does nothing. The clinician's move is to change the
 // selection, which is the other button.
-// A credential refusal is the other one that cannot be retried, and for a
-// firmer reason than size: this interface has no credential to present and no
-// way to obtain one, so the same request will be refused identically for as
-// long as the deployment is configured that way. Retrying is a control that
-// does nothing, and offering it reads as the failure being transient.
+// An `unauthorized` refusal is the other one that cannot be retried, and for a
+// firmer reason than size. It is the backend's origin gate refusing the origin
+// this page was served from - a deployment whose two URL variables disagree -
+// or a proxy in front wanting credentials this page has none of. Neither
+// changes between one attempt and the next, so retrying is a control that does
+// nothing, and offering it reads as the failure being transient.
 const RETRYABLE: Record<StreamFailure, boolean> = {
   unreadable_batch: true,
   too_large: false,

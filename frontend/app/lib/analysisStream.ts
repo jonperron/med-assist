@@ -29,7 +29,8 @@ import { EventStreamParser, ParsedFrameTooLarge } from './serverSentEvents'
  * `FailureReason` is what the stream itself can say. `too_large`, `transport`
  * and `unauthorized` are refusals that never reach an event: a batch the server
  * sized out before reading it, an answer that did not arrive at all, and a
- * deployment that requires a credential this interface cannot hold.
+ * request refused before any analysis started - by the backend's origin gate,
+ * or by a proxy in front wanting credentials this page does not have.
  */
 export type StreamFailure =
   | FailureReason
@@ -147,10 +148,10 @@ async function refusalMessage(response: Response, fallback: string): Promise<str
  * neither, and blaming a clinician's documents for a routing problem sends
  * them back to a scanner that will not fix it.
  *
- * 401 and 403 are their own case. They mean the deployment requires a
- * credential, and this interface has none to offer and no way to obtain one -
- * the page cannot hold a secret, which is why a deployment that sets one is
- * expected to put an authenticating proxy in front instead. Nothing the
+ * 401 and 403 are their own case. A 403 is the backend refusing the origin this
+ * page was served from - a deployment whose `CORS_ALLOWED_ORIGINS` and
+ * `NEXT_PUBLIC_API_URL` disagree, most often - and a 401 comes from a proxy in
+ * front that wants credentials this page has none of. Either way nothing the
  * clinician does changes the answer, so it must not be reported as their
  * documents failing, and it must not offer a retry that cannot work.
  */
@@ -255,11 +256,11 @@ export async function streamAnalysis(
 
   if (!response.ok) {
     const failure = failureOf(response.status)
-    // The upstream string is not lifted for a credential refusal. The backend's
-    // body is the fixed English word "Unauthorized", and rendering it would put
-    // an untranslated status under this app's own French heading as though the
-    // app had said it. Every other refusal carries wording written for a
-    // clinician, so those still read the body.
+    // The upstream string is not lifted for a refusal of this kind. The body is
+    // a fixed English word - the backend's "Forbidden", or whatever a proxy
+    // sends - and rendering it would put an untranslated status under this
+    // app's own French heading as though the app had said it. Every other
+    // refusal carries wording written for a clinician, so those read the body.
     throw new AnalysisStreamError(
       failure === 'unauthorized'
         ? fallbackMessage

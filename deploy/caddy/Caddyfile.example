@@ -2,8 +2,7 @@
 #
 # Copy to Caddyfile, replace every placeholder, and read deploy/README.md for
 # what this does and does not protect. Nothing in this file is a credential:
-# the password is a hash you generate, and the backend's shared credential is
-# read from the environment and never written here.
+# the password is a bcrypt hash you generate.
 #
 # The shape is one domain, not two. That is what makes the shipped browser
 # interface work behind authentication: the page and the API are the same
@@ -12,24 +11,20 @@
 # would prompt on the page and then fail every fetch, because a browser does
 # not volunteer credentials on a cross-origin request.
 #
-# Two things this file cannot do for you, and both fail confusingly:
+# One thing this file cannot do for you: `backend:8000` and `frontend:3000` are
+# Docker service names. They resolve only if Caddy runs on the same Compose
+# network - as a service in docker-compose.yml, or an external container
+# attached to that network. Otherwise every request fails DNS resolution.
 #
-# 1. `backend:8000` and `frontend:3000` are Docker service names. They resolve
-#    only if Caddy runs on the same Compose network - as a service in
-#    docker-compose.yml, or an external container attached to that network.
-#    Otherwise every request fails DNS resolution.
-# 2. `{env.API_ACCESS_TOKEN}` is read from CADDY's environment, not the
-#    backend's. The application's .env reaches the backend container; it does
-#    not reach a proxy that Compose does not start. If the variable is missing
-#    here, every request arrives at the backend as a bare `Bearer ` and is
-#    refused - a blanket 401 that looks like a wrong token rather than an
-#    absent one. It fails closed, but it fails opaquely.
+# The other thing to be clear about is what is behind this proxy. The
+# application authenticates nobody: the `basic_auth` block below is the only
+# thing between the internet and an endpoint that ingests clinical documents,
+# and anything that reaches the containers around this proxy is inside.
 #
 # Set alongside it, in the application's .env:
 #   NEXT_PUBLIC_API_URL=https://med-assist.example.org   (needs a frontend rebuild)
 #   CORS_ALLOWED_ORIGINS=https://med-assist.example.org
-#   API_ACCESS_TOKEN=<generated, see .env.example>
-# and the same API_ACCESS_TOKEN in the proxy's own environment.
+#   UNSECURED_DEPLOYMENT=true   (unless these users are the whole audience)
 
 med-assist.example.org {
 	# Authenticates the person. This is the control that actually keeps
@@ -54,16 +49,10 @@ med-assist.example.org {
 
 	handle @backend {
 		reverse_proxy backend:8000 {
-			# Replaces the browser's Basic credentials with the backend's own,
-			# so the person's password never reaches the application and the
-			# application still refuses anything that did not come through
-			# here. Read from the proxy's environment - do not inline a value.
-			header_up Authorization "Bearer {env.API_ACCESS_TOKEN}"
-
-			# Authorization is the ONLY request header replaced here, and that
-			# is deliberate. The backend also refuses a request whose `Origin`
-			# is not one it serves, which is what stops another site driving an
-			# upload through a logged-in clinician's browser - your cached Basic
+			# No request header is rewritten here, and that is deliberate.
+			# The backend refuses a request whose `Origin` is not one it
+			# serves, which is what stops another site driving an upload
+			# through a logged-in clinician's browser - your cached Basic
 			# credentials are ambient and would otherwise authenticate the
 			# forgery. That check reads `Origin` and the `Sec-Fetch-*` headers
 			# exactly as the browser wrote them.
@@ -104,8 +93,8 @@ med-assist.example.org {
 	# The access log records the request line, the status, the client IP and
 	# the request headers - not just paths. `Authorization` and `Cookie` are
 	# redacted because `log_credentials` defaults to off: never turn it on, or
-	# this file collects the clinician's password and the backend's credential
-	# in plaintext, on disk, unrotated.
+	# this file collects the clinician's password in plaintext, on disk,
+	# unrotated.
 	#
 	# No route here mints or accepts an identifier for a document, so a path
 	# names nothing - keep it that way if you ever add a query parameter. The
