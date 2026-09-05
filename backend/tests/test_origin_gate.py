@@ -20,7 +20,6 @@ from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.core.access import ACCESS_TOKEN_VARIABLE
 from app.core.config import DEFAULT_ALLOWED_ORIGINS
 from app.core.dependencies import get_entity_extractor, get_text_extractor
 from app.core.middleware import MAX_REQUEST_SIZE_BYTES
@@ -31,7 +30,6 @@ from app.interfaces.service_interfaces import (
 )
 from app.main import PRODUCTION, create_app
 from app.schemas.extraction import EntityDetail
-from tests.conftest import SUITE_TOKEN, bearer_headers
 
 ANALYZE = "/api/analyze"
 STREAM = "/api/analyze/stream"
@@ -72,8 +70,8 @@ def stubbed(app: FastAPI) -> FastAPI:
 
 @pytest.fixture
 def client():
-    """The real application, with a client that presents the credential."""
-    return TestClient(stubbed(create_app(PRODUCTION)), headers=bearer_headers())
+    """The real application, with the extractors stubbed out."""
+    return TestClient(stubbed(create_app(PRODUCTION)))
 
 
 def txt():
@@ -125,9 +123,7 @@ def test_the_allow_list_is_the_configured_one_not_a_literal(monkeypatch):
     # control and the enforced one cannot drift apart.
     deployed = "https://med-assist.example.org"
     monkeypatch.setenv(ORIGIN_VARIABLE, deployed)
-    client_under_test = TestClient(
-        stubbed(create_app(PRODUCTION)), headers=bearer_headers()
-    )
+    client_under_test = TestClient(stubbed(create_app(PRODUCTION)))
 
     assert (
         client_under_test.post(ANALYZE, headers={"Origin": deployed}).status_code == 422
@@ -143,9 +139,7 @@ def test_an_origin_normalised_at_startup_still_matches(monkeypatch):
     # sends. If it did not, an operator writing the implicit port would get a
     # list that matches nothing and a service that refuses its own frontend.
     monkeypatch.setenv(ORIGIN_VARIABLE, "https://Med-Assist.example.org:443/")
-    client_under_test = TestClient(
-        stubbed(create_app(PRODUCTION)), headers=bearer_headers()
-    )
+    client_under_test = TestClient(stubbed(create_app(PRODUCTION)))
 
     response = client_under_test.post(
         ANALYZE, headers={"Origin": "https://med-assist.example.org"}
@@ -202,9 +196,7 @@ def test_a_same_origin_request_is_accepted_whatever_the_allow_list_says(
     header name, so a page cannot forge it and accepting it costs nothing.
     """
     monkeypatch.setenv(ORIGIN_VARIABLE, "https://elsewhere.example")
-    client_under_test = TestClient(
-        stubbed(create_app(PRODUCTION)), headers=bearer_headers()
-    )
+    client_under_test = TestClient(stubbed(create_app(PRODUCTION)))
 
     response = client_under_test.post(
         ANALYZE,
@@ -265,8 +257,8 @@ def test_the_refusal_is_not_cached(client):
 
 
 def test_the_refusal_does_not_carry_an_authenticate_header(client):
-    # 403, not 401. The caller's identity is not in question and presenting a
-    # credential would not change the answer, so there is nothing to challenge.
+    # 403, not 401. This API authenticates nobody, so there is no credential to
+    # challenge a caller for and nothing it could present to change the answer.
     response = client.post(ANALYZE, headers={"Origin": FOREIGN_ORIGIN})
 
     assert "www-authenticate" not in response.headers
@@ -287,7 +279,7 @@ def test_only_the_first_origin_header_is_read():
     # every proxy in front of this process will have done; trying each in turn
     # would let a caller append an accepted value to a refused request.
     application = stubbed(create_app(PRODUCTION))
-    client_under_test = TestClient(application, headers=bearer_headers())
+    client_under_test = TestClient(application)
 
     response = client_under_test.post(
         ANALYZE,
@@ -300,22 +292,11 @@ def test_only_the_first_origin_header_is_read():
 # --- Where the gate sits in the stack -------------------------------------
 
 
-def test_a_missing_credential_is_refused_before_the_origin_is_judged():
-    # The ordering that keeps the allow-list private. If the origin gate ran
-    # first, an anonymous caller could read a deployment's allow-list by
-    # watching a 403 turn into a 401.
-    client_under_test = TestClient(stubbed(create_app(PRODUCTION)))
-
-    response = client_under_test.post(ANALYZE, headers={"Origin": FOREIGN_ORIGIN})
-
-    assert response.status_code == 401
-
-
 def test_a_preflight_is_answered_without_reaching_the_gate(client):
-    # CORSMiddleware is mounted outside both gates and answers OPTIONS itself,
-    # which it has to: a browser sends no credential on a preflight, so a gate
-    # that judged one would refuse the request that exists to ask whether the
-    # real one may be sent.
+    # CORSMiddleware is mounted outside the gate and answers OPTIONS itself,
+    # which it has to: a preflight carries no body and is the request that
+    # exists to ask whether the real one may be sent, so a gate that judged one
+    # would refuse the question.
     response = client.options(
         ANALYZE,
         headers={
@@ -331,7 +312,7 @@ def test_a_preflight_is_answered_without_reaching_the_gate(client):
 @pytest.mark.parametrize("path", ["/healthz", "/readyz"])
 def test_the_health_endpoints_ignore_the_origin(client, path):
     # The interface's availability poll runs in a browser and sends an origin;
-    # the container healthcheck sends none. Neither is gated, on either control.
+    # the container healthcheck sends none. Neither is gated.
     response = client.get(path, headers={"Origin": FOREIGN_ORIGIN})
 
     assert response.status_code in (200, 503)
@@ -342,14 +323,13 @@ def test_the_root_is_not_gated(client):
 
 
 def test_a_mounted_application_is_still_gated():
-    # The same bypass the credential gate had: Starlette strips `root_path`
-    # before matching, so a gate comparing the raw path would not recognise a
-    # request served behind `--root-path` and would call through silently. Both
-    # gates read the path through the one shared helper for this reason.
+    # Starlette strips `root_path` before matching, so a gate comparing the raw
+    # path would not recognise a request served behind `--root-path` and would
+    # call through silently. The gate reads the path through the shared helper
+    # in `gate.py` for this reason.
     client_under_test = TestClient(
         stubbed(create_app(PRODUCTION)),
         root_path="/med-assist",
-        headers=bearer_headers(),
     )
 
     response = client_under_test.post(
@@ -402,18 +382,25 @@ def test_a_websocket_from_the_configured_origin_connects():
         assert connection.receive_text() == "through"
 
 
-# --- The suite's own assumption -------------------------------------------
+# --- What is deliberately not gated ---------------------------------------
 
 
-def test_the_suite_runs_with_a_credential_configured(monkeypatch):
-    # `conftest.py` sets one for every test because `create_app` refuses to
-    # build without it. This is the assertion that says so out loud, so that a
-    # change to the fixture does not quietly turn every other test in this file
-    # into a test of the credential gate instead of the origin gate.
-    import os  # pylint: disable=C0415
+@pytest.mark.parametrize(
+    "path", ["/healthz", "/readyz", "/", "/docs", "/redoc", "/openapi.json"]
+)
+def test_everything_outside_the_api_prefix_is_open(client, path):
+    """
+    The exact set of paths no gate covers, pinned so an addition is deliberate.
 
-    assert os.environ[ACCESS_TOKEN_VARIABLE] == SUITE_TOKEN
-    assert bearer_headers()["Authorization"] == f"Bearer {SUITE_TOKEN}"
+    The gate is a prefix, so a router mounted outside `/api` would ship ungated
+    with nothing failing. This is the test that fails instead. The set is wider
+    than "the health endpoints" and is meant to be: the schema endpoints are
+    open too, and a deployment that does not want its API described to strangers
+    keeps them off its proxy.
+    """
+    response = client.get(path, headers={"Origin": FOREIGN_ORIGIN})
+
+    assert response.status_code != 403
 
 
 # --- Gaps the review pass found -------------------------------------------
@@ -428,7 +415,7 @@ def test_an_oversized_foreign_body_is_refused_before_it_is_measured(client):
     ceiling runs *inside* the origin gate, so a 413 here would mean the body had
     been read far enough to be measured. 403 means the request was refused on
     its headers with nothing read - the claim `origin.py` and the decision entry
-    both make. It mirrors the credential gate's equivalent test.
+    both make.
     """
     response = client.post(
         ANALYZE,
@@ -489,17 +476,15 @@ def test_a_padded_origin_value_still_matches():
 @pytest.mark.parametrize(
     "origin,expected", [(ALLOWED_ORIGIN, 200), (FOREIGN_ORIGIN, 400)]
 )
-def test_the_preflight_reports_on_the_allow_list_without_a_credential(origin, expected):
+def test_the_preflight_reports_on_the_allow_list(origin, expected):
     """
-    The limit of the gate ordering, asserted so the claim stays accurate.
+    The allow-list is not a secret, asserted so the claim stays accurate.
 
-    An anonymous caller gets 401 on the analysis routes whatever origin it
-    claims, which is why the credential gate is mounted outside the origin gate.
-    That does not make the allow-list private: `CORSMiddleware` answers
-    preflights itself, outside both gates, and its answer depends on the origin
-    and on nothing else. Anyone who can reach the port can confirm a guess.
+    `CORSMiddleware` answers preflights itself, outside the gate, and its answer
+    depends on the origin and on nothing else. Anyone who can reach the port can
+    confirm a guess that way.
 
-    This is pinned rather than fixed. Moving CORS inside the gates would refuse
+    This is pinned rather than fixed. Moving CORS inside the gate would refuse
     the preflight that exists to ask whether the real request may be sent, which
     breaks every browser. The documentation says the list is public instead.
     """

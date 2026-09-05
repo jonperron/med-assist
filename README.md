@@ -38,9 +38,19 @@ professional medical advice or diagnosis.
   configured API origin, which closes every silent channel out of it.
 
 This is a local-processing guarantee, not a compliance claim. The extracted
-entities are health data and remain personal data under GDPR, **the API is
-unauthenticated**, and clinical text is adversarial: read a summary before you
-rely on it. [`backend/README.md`](./backend/README.md) states the scope and the
+entities are health data and remain personal data under GDPR, and clinical text
+is adversarial: read a summary before you rely on it.
+
+**Med-Assist is meant to run on your own machine, and it authenticates nobody.**
+There are no accounts, no login and no credential of any kind: anyone who can
+reach the API can submit documents to it. That is a deliberate trade for a
+research project whose product is the model, and it is why the deployment this
+repository supports is a local one. Published at a public address it is a
+demonstration - set `UNSECURED_DEPLOYMENT=true` so every screen says so, put an
+authenticating proxy in front, and do not point clinicians at it with real
+documents. [`deploy/README.md`](./deploy/README.md) is the page to read first,
+and access control is
+[open to contribution](#-contributing) rather than a setting you have missed. [`backend/README.md`](./backend/README.md) states the scope and the
 known gaps; [`frontend/README.md`](./frontend/README.md) covers the policy and
 what it does not stop.
 
@@ -85,10 +95,18 @@ A value that is not an origin stops the backend at startup instead of failing
 silently in the browser later. The exact validation rules are in
 [`openwiki/decisions/`](./openwiki/decisions/).
 
-**CORS is not authentication.** Any client that is not a browser ignores it
-entirely, and nothing else guards the API. A deployment reachable by anyone
-other than the person running it needs a reverse proxy that authenticates, not
-a shorter origin list.
+A third variable applies to any deployment other than your own machine:
+
+- `UNSECURED_DEPLOYMENT` — set it to `true` and every screen carries a banner
+  saying this installation is open, anyone can reach it, and documents sent
+  through it may be read by a third party. It is read at request time, so
+  turning it on is a restart rather than a rebuild.
+
+**CORS is not authentication, and neither is the banner.** Any client that is
+not a browser ignores CORS entirely, and nothing in the application guards the
+API. A deployment reachable by anyone other than the person running it needs a
+reverse proxy that authenticates - see [`deploy/README.md`](./deploy/README.md)
+for the shape that works and for what it still does not cover.
 
 ### Upgrading from a version that stored documents
 
@@ -144,6 +162,16 @@ The measurements behind each bound, and why each one is set where it is, are in
 ## 🤝 Contributing
 
 We welcome community contributions!
+
+**Access control is the open gap, and it is a good place to start.** Med-Assist
+has no accounts, no login, no sessions, no per-caller rate limiting and no audit
+trail, because it was written to run on one machine for the person running it.
+Anything that changes that is welcome: sign-up and sign-in with sessions the
+interface can use, rate limiting on the analysis routes, or an audit trail
+somebody has scoped. Open an issue first - the service persists nothing today,
+and an account system is the first thing that would change that, so it needs a
+decision entry before it needs code.
+[`deploy/README.md`](./deploy/README.md) has the detail.
 
 ---
 

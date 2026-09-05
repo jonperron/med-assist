@@ -13,7 +13,6 @@ from fastapi.testclient import TestClient
 from app import main
 from app.core.readiness import MODEL_NOT_LOADED
 from app.main import PRODUCTION, create_app
-from tests.conftest import bearer_headers
 
 TXT_FILE = ("note.txt", b"Le patient a de la fievre", "text/plain")
 
@@ -34,7 +33,7 @@ def client(monkeypatch, loads):
     # Credentialed: the readiness refusal is what these tests pin, and an
     # anonymous caller would be refused by the credential gate before the
     # readiness dependency ever ran.
-    with TestClient(create_app(PRODUCTION), headers=bearer_headers()) as test_client:
+    with TestClient(create_app(PRODUCTION)) as test_client:
         yield test_client
 
 

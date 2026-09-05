@@ -12,28 +12,9 @@ Run it from the backend directory:
 """
 
 import json
-import os
 from pathlib import Path
 
-# Imported before the placeholder is set: reading the constant does not build
-# an application, and naming the variable here rather than spelling it out means
-# a rename breaks this loudly instead of silently exporting nothing.
-from app.core.access import ACCESS_TOKEN_VARIABLE
-
-# Set before `app.main` is imported, and that ordering is the point: the module
-# builds an application at import for `uvicorn app.main:app` to serve, and
-# `create_app` refuses to build one without a credential. This script serves
-# nothing and listens on no port - it writes a JSON document and exits - so it
-# supplies a placeholder rather than requiring whoever regenerates the schema to
-# hold a deployment's secret.
-#
-# `setdefault`, so a developer who already has one in their environment keeps
-# it. The value never reaches the schema: the credential is checked in
-# middleware, which FastAPI does not describe.
-SCHEMA_EXPORT_PLACEHOLDER = "schema-export-placeholder-not-a-deployment-value"
-os.environ.setdefault(ACCESS_TOKEN_VARIABLE, SCHEMA_EXPORT_PLACEHOLDER)
-
-from app.main import PRODUCTION, create_app  # noqa: E402  pylint: disable=C0413
+from app.main import PRODUCTION, create_app
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "openapi.json"
 

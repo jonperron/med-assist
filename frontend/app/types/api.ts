@@ -635,16 +635,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it. */
+            /** @description The request came from an origin this deployment does not serve. It is a check on where the request came from, and the only one: this API does not authenticate callers, so a request carrying no Origin - anything that is not a browser - is not refused here. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -722,16 +713,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description No valid credential was presented. Every deployment requires one: the service refuses to start without it. Present it as Authorization: Bearer. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The request came from an origin this deployment does not serve. Only a caller that already presented a valid credential sees this: a request without one is answered 401 whatever origin it claims. Presenting a different credential does not change it - this is a check on where the request came from, not on who made it. */
+            /** @description The request came from an origin this deployment does not serve. It is a check on where the request came from, and the only one: this API does not authenticate callers, so a request carrying no Origin - anything that is not a browser - is not refused here. */
             403: {
                 headers: {
                     [name: string]: unknown;
