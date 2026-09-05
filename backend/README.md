@@ -11,6 +11,11 @@ This is the backend for the Med-Assist application, built with FastAPI and uv.
 * Stateless analysis in a single request, storing nothing
 * RESTful API with automatic OpenAPI documentation
 
+This file says what the service does and how to run it. **Why it does it that
+way - what was rejected, and what each choice costs - is in
+[`openwiki/decisions/`](../openwiki/decisions/), one page per decision.** Each
+section below links to the entries behind it.
+
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
@@ -33,8 +38,33 @@ so there is no datastore to reach and no key to hold.
 * `APP_ENV`: Environment mode for the backend. Defaults to `production`. Set to `development` to enable development-only features such as mock endpoints; they are never mounted unless you opt in explicitly.
 * `MAX_BATCH_FILES`: Largest number of documents accepted in one request (default: `20`). The per-file size ceiling bounds bytes, not inference time, so lower this on a small deployment.
 * `NER_INFERENCE_THREADS` and `NER_MAX_CONCURRENT_INFERENCES`: see [Inference runs on the CPU](#inference-runs-on-the-cpu).
-* `API_ACCESS_TOKEN`: A shared credential required on `POST /api/analyze` and `POST /api/analyze/stream`. **Required.** Unset or blank stops the process at startup, naming the variable; there is no configuration in which these routes answer a caller that presented nothing. They refuse anything without `Authorization: Bearer <value>`, answering a fixed `401` that says nothing about why. A value under 32 characters also stops the process at startup, without quoting the value. `/healthz` and `/readyz` are never gated, and neither is anything else outside the `/api` prefix - `/`, `/docs`, `/redoc` and `/openapi.json` all stay open. It is one secret shared by every caller: it identifies nobody and cannot be revoked for one client. **The browser interface cannot supply it** - the page calls this API directly, so any credential it could hold is readable by every visitor - so setting this without an authenticating proxy in front turns the interface off. See [`deploy/README.md`](../deploy/README.md).
-* `CORS_ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the API, each written as `scheme://host[:port]` with no trailing slash (default: `http://localhost:3000`). This list is enforced server-side as well as sent to browsers: a request to `/api` carrying an `Origin` outside it is refused with a fixed `403` before its body is read, which is what stops another site driving an upload through a visitor's browser. A request carrying no `Origin` is let through, because the proxy in front and the healthcheck both send none - the credential is what gates those. When there is no `Origin` but there is a `Sec-Fetch-Site` header, the browser's own account of where the request came from is used instead. Unset or empty keeps that default rather than widening; `*` is refused at startup, because the API answers with credentials and a browser rejects a credentialed response allowed to everyone. Anything that is not an origin - a path, a query, a space in the host, a wildcard, a port that is not a number, an international domain outside its punycode form - stops the process at startup, with the offending entry named by position and never quoted. A single trailing slash and a port the scheme implies (`:443` on https, `:80` on http) are dropped rather than refused, because a browser omits both and a literal comparison against them would match nothing.
+* `API_ACCESS_TOKEN`: A shared credential required on `POST /api/analyze` and
+  `POST /api/analyze/stream`. **Required.** Unset, blank, or shorter than 32
+  characters stops the process at startup, naming the variable and never quoting
+  the value. The routes refuse anything without `Authorization: Bearer <value>`,
+  answering a fixed `401`. `/healthz` and `/readyz` are never gated, and neither
+  is anything outside the `/api` prefix - `/`, `/docs`, `/redoc` and
+  `/openapi.json` stay open. **The browser interface cannot supply it**, so
+  setting this without an authenticating proxy in front turns the interface off;
+  see [`deploy/README.md`](../deploy/README.md).
+* `CORS_ALLOWED_ORIGINS`: Comma-separated browser origins allowed to call the
+  API, each written as `scheme://host[:port]` with no trailing slash (default:
+  `http://localhost:3000`). The list is enforced server-side as well as sent to
+  browsers: a request to `/api` carrying an `Origin` outside it is refused with a
+  fixed `403` before its body is read. A request carrying no `Origin` is let
+  through; when there is none but a `Sec-Fetch-Site` header is present, that is
+  used instead. Unset or empty keeps the default rather than widening. `*` is
+  refused at startup, as is anything that is not an origin - a path, a query, a
+  space in the host, a wildcard, a port that is not a number, an international
+  domain outside its punycode form - naming the offending entry by position and
+  never quoting it. A single trailing slash and a port the scheme implies
+  (`:443` on https, `:80` on http) are dropped rather than refused.
+
+Why the credential is mandatory, why it is one shared secret that identifies
+nobody, and why the origin is checked server-side:
+[the API can require a credential, and its port is loopback](../openwiki/decisions/2026-08-31-the-api-can-require-a-credential-and-its-port-is-loopback.md),
+[the credential is required, and the request's origin is checked](../openwiki/decisions/2026-09-03-the-credential-is-required-and-the-origin-is-checked.md),
+and [the allowed CORS origins come from the environment](../openwiki/decisions/2026-08-28-cors-origins-come-from-the-environment.md).
 
 **Example:**
 
@@ -42,7 +72,6 @@ so there is no datastore to reach and no key to hold.
 export NER_MODEL_NAME="/app/models/"
 export APP_ENV=production
 ```
-
 
 ### What is stored
 
@@ -55,13 +84,10 @@ one:
 * `POST /api/analyze/stream` does the same work and stores no more, reporting each
   document as it is read so a caller can show progress. Nothing is held between
   events: the batch is one request from start to finish.
-* The document text is never echoed back. The summary is the product, and returning
-  the text would widen what leaves the server for no gain.
-* Entity `start`/`end` offsets do not leave the server. They index the text the
-  document yielded, which the API does not return, so they were unusable to a
-  caller; `EntityDetail` excludes them from serialisation, which keeps them out of
-  the response body and out of `openapi.json` while the summarizer still reads them
-  to pair an examination with its value.
+* The document text is never echoed back, and entity `start`/`end` offsets do not
+  leave the server: `EntityDetail` excludes them from serialisation, which keeps
+  them out of the response body and out of `openapi.json` while the summarizer
+  still reads them to pair an examination with its value.
 * Uploaded files above 1 MB are spooled to `TMPDIR` by the HTTP server before any route
   code runs. `docker-compose.yml` mounts a `tmpfs` at `/tmp` so those parts never reach
   the container's writable layer; a bare `uvicorn` run does not, and will write them to
@@ -76,72 +102,68 @@ one:
 
 A document is therefore analysed once per request. There is no analyse-once,
 read-later flow: summarising the same document again means submitting it again,
-at the cost of a fresh inference. The endpoints that once stored documents were
-removed on 2026-08-28 - see the decision entry in `openwiki/decisions/`.
+at the cost of a fresh inference.
 
+Behind this:
+[the API stores nothing, and Redis is gone](../openwiki/decisions/2026-08-28-the-api-stores-nothing-and-redis-is-gone.md),
+[entity offsets do not leave the server](../openwiki/decisions/2026-08-28-entity-offsets-do-not-leave-the-server.md),
+and [the request ceiling and the container are both bounded](../openwiki/decisions/2026-08-28-the-request-ceiling-and-the-container-are-both-bounded.md).
 
 ### Summaries
 
 `POST /api/analyze` takes one or more documents and answers a `summary`: the
 readable product the rest of the pipeline exists for.
 
-Several documents in one request are taken to be **about the same patient**, which
-is what makes merging them meaningful. A finding named in three of them is reported
-once, and findings are ordered by how many documents support them. Each finding
-carries the indices of the documents it was found in, so a caller can name the source
-beside it — the index is into the request's own file order, and this path never needs
-a filename to travel: no endpoint issues an id, and none echoes a filename back.
+Several documents in one request are taken to be **about the same patient**. A
+finding named in three of them is reported once, and findings are ordered by how
+many documents support them. Each finding carries the indices of the documents it
+was found in - the index is into the request's own file order, and this path never
+needs a filename: no endpoint issues an id, and none echoes a filename back.
 
 The summary is assembled, not generated. Every word in it is either a fixed heading
 or a span the model marked in the submitted documents, so it cannot state anything
-the documents did not — and no text leaves the process for a language model.
+the documents did not - and no text leaves the process for a language model.
 
-What shapes it, in `app/services/summarizer.py`:
+What `app/services/summarizer.py` produces:
 
 * Five sections, in reading order: pathologies, signs and symptoms, examinations,
-  treatments, localisations. `temporal`, `measurements` and `other` are deliberately
-  left out — a bare list of durations or loose values carries no clinical meaning
-  once separated from its sentence. They stay in the `documents` payload.
-* A measurement does reach the summary when it can be attached to the examination it
-  sits beside: "Troponine I" and "1,10 ng/mL" become one finding under Examens. The
-  attachment is positional — the value must start within `MEASUREMENT_GAP` characters
-  of the end of the test's span, and only the nearest test before it can claim it —
-  because past that distance, which number belongs to which test is a guess, and that
-  guess is what keeps loose values out in the first place. A value nothing claims
-  stays out. `poids` and `taille` are never paired: they sit in the same category but
-  are patient attributes rather than results, and belong no more in an exported
-  summary than the demographic line already there.
-* An opening demographic line built from the model's `age` and `genre` labels. The
-  first mention of each wins, so a relative's age quoted further down does not
-  overwrite the patient's.
-* Deduplication that folds case, accents, inner spacing and edge punctuation, keeping
-  the longest surface form seen — the model truncates outer mentions, so the longest
-  is the most complete one (see the decision log on the local wiki).
-* A confidence floor of `MIN_CONFIDENCE`. This is the only use the model's score has,
-  and it is never displayed: a percentage next to a clinical finding invites a reader
-  to weigh it, which is not a judgement a token classifier's softmax supports.
+  treatments, localisations. `temporal`, `measurements` and `other` are left out
+  of the summary and stay in the `documents` payload.
+* A measurement reaches the summary only when it can be attached to the
+  examination it sits beside: "Troponine I" and "1,10 ng/mL" become one finding
+  under Examens. The value must start within `MEASUREMENT_GAP` characters of the
+  end of the test's span, and only the nearest test before it can claim it. A
+  value nothing claims stays out, and `poids` and `taille` are never paired.
+* An opening demographic line built from the model's `age` and `genre` labels.
+  The first mention of each wins.
+* Deduplication that folds case, accents, inner spacing and edge punctuation,
+  reporting the first surface form seen.
+* A confidence floor of `MIN_CONFIDENCE`. This is the only use the model's score
+  has, and it is never displayed.
 
-`POST /api/analyze` does not echo the document text back. The summary is the product,
-and returning the text would widen what leaves the server for no gain.
+Behind this:
+[the summary keeps five categories and drops three](../openwiki/decisions/2026-08-26-the-summary-keeps-five-categories-and-drops-three.md)
+and [a measurement is paired with the test beside it, or dropped](../openwiki/decisions/2026-08-27-a-measurement-is-paired-with-the-test-beside-it.md).
 
 ### Partial summaries
 
 A document of a supported type that yields no text — a scan, or a file the parser
-cannot open — no longer costs the batch its summary. The request answers `200`, the
+cannot open — does not cost the batch its summary. The request answers `200`, the
 other documents are summarised, and `documents[i].read` is `false` for the one that
 failed, with `unreadable_reason` naming why. `summary.document_count` then counts what
 was read, not what was sent.
 
-The whole batch is refused with `400` only when nothing at all could be read, since
-there is no summary to degrade to. Either way the refusal and the partial answer name
-the failed document by its **position**, never by its filename: `documents` is in
-submission order, and the caller already holds the names it posted.
+The whole batch is refused with `400` only when nothing at all could be read. Either
+way the refusal and the partial answer name the failed document by its **position**,
+never by its filename: `documents` is in submission order, and the caller already
+holds the names it posted. Behind this:
+[an unreadable document costs its position, not the batch](../openwiki/decisions/2026-08-27-an-unreadable-document-costs-its-position-not-the-batch.md).
 
 ### Watching a batch being read
 
-A batch of four documents takes about half a minute on a CPU, and one spinner over the
-lot says nothing about whether it is progressing. `POST /api/analyze/stream` takes the
-same body and does the same work, sending Server-Sent Events as it goes:
+A batch of four documents takes about half a minute on a CPU.
+`POST /api/analyze/stream` takes the same body and does the same work, sending
+Server-Sent Events as it goes:
 
 * `batch` — how many documents were accepted. This is what a "2 of 4" counter divides by.
 * `document` — one per document, in submission order, as each is read: its `index`, and
@@ -156,6 +178,11 @@ same body and does the same work, sending Server-Sent Events as it goes:
 Each event's `data` is one JSON object tagged by `stage`, so a client narrows on the tag
 rather than guessing. The endpoint is a `POST` because it carries the documents, so a
 browser reads it with `fetch` and a `ReadableStream`; `EventSource` only issues `GET`.
+
+Validation and the model-readiness check run as dependencies, before the stream
+opens, so a rejected file type, an oversized batch and an unloaded model answer
+`400`, `413` and `503` as JSON with no events at all. Only a failure that cannot
+be known until documents are being read arrives as an `error` event.
 
 Three things a client has to get right:
 
@@ -173,67 +200,40 @@ Three things a client has to get right:
   media type, and an SSE payload is described by `itemSchema`. The union itself is
   generated, and is what a client narrows on `stage`.
 
-Two properties are worth stating, because both are easy to lose:
-
-* **Progress carries no clinical content.** A `document` event is a position, a boolean
-  and a reason code. Nothing the model marked, and no filename, travels before the
-  `result` event - which carries exactly what the other endpoint would have sent, and
-  nothing more.
-* **A refusal is still a status code.** Validation and the model-readiness check run as
-  dependencies, before the stream opens, so a rejected file type, an oversized batch and
-  an unloaded model answer `400`, `413` and `503` as JSON with no events at all. Only a
-  failure that cannot be known until documents are being read - a batch nothing could be
-  read from, or a server fault - arrives as an `error` event, because by then the
-  response is already committed at `200`.
-
-Nothing is stored on this path either. There is no job id, nothing to poll and nothing
-to come back for, which is the reason it is a stream rather than a job: a pollable job
-would have to hold a patient's summary on the server between requests.
+Nothing is stored on this path either: no job id, nothing to poll, nothing to come
+back for. Behind this:
+[progress is a stream, because a job would have to be stored](../openwiki/decisions/2026-08-27-progress-is-a-stream-because-a-job-would-have-to-be-stored.md)
+and, on the client side,
+[the stream is the only analysis path the client takes](../openwiki/decisions/2026-08-27-stream-is-the-only-analysis-path-the-client-takes.md).
 
 ### Document dates
 
-A date is how a clinician places a document: a letter from last week and a letter from
-2019 mean different things, and a stack of documents about one patient is read along the
-time it covers. `documents[i].document_date` carries the date each document itself
-carries, and `summary.date_range` the stretch from the earliest to the latest of them.
-Both are `null` when nothing could be dated, which is a common answer and not an error.
+`documents[i].document_date` carries the date each document itself carries, and
+`summary.date_range` the stretch from the earliest to the latest of them. Both are
+`null` when nothing could be dated, which is a common answer and not an error.
 
-The date is read from the document's text by `app/services/document_date.py` — not from
-the file's timestamp, which dates a 2019 letter to the day it was downloaded, and not
-from the `temporal` entities, which are every date-like span found anywhere in the text.
-Picking the document's own date out of that is a judgement, and a date that is wrong
-moves the document on the timeline the clinician is reading without saying so. Every
-rule below therefore prefers no date to a guess:
+The date is read from the document's text by `app/services/document_date.py` — not
+from the file's timestamp, and not from the `temporal` entities. The rules:
 
-* Only the head of the document is read (`HEAD_CHARACTERS`). A letter is dated in its
-  letterhead; a date deep in the body belongs to what the document reports.
+* Only the head of the document is read (`HEAD_CHARACTERS`).
 * Only a complete calendar date counts — day, month and a four-digit year, on the
-  calendar. A two-digit year is refused rather than given a century.
-* Numeric dates are read day-first, the convention the documents are written in.
-  `03/13/2024` is refused rather than swapped.
-* The first complete date in the head wins. In "Hospitalisation du 2 mars 2024 au 5
-  mars 2024" that is the start of what the document reports. A range written the elided
-  way — "du 2 au 5 mars 2024" — holds only one complete date, its last, so the document
-  is placed at the end of the stay rather than at the start.
-* A date a birth marker points at — "Née le 12/05/1948", "Date de naissance" — is
-  skipped. It would be wrong by decades, and a date of birth is a patient identifier,
-  not document metadata. The lookback survives the layouts a header arrives in — padded
-  columns, a label and its value on two lines, tabs, "D.D.N." — and stops at the
-  previous date in the text, so a birth date does not suppress the real date behind it.
-  It is a list of markers, though: a birth date introduced by wording it does not know
-  is published as the document's date.
+  calendar. A two-digit year is refused.
+* Numeric dates are read day-first. `03/13/2024` is refused rather than swapped.
+* The first complete date in the head wins.
+* A date a birth marker points at — "Née le 12/05/1948", "Date de naissance",
+  "D.D.N." — is skipped. The lookback stops at the previous date in the text.
 * A date in the future, or older than `EARLIEST_YEAR`, is skipped.
 
-Nothing about this widens what is stored: `POST /api/analyze` still stores nothing, and
-the date is read from the text and returned while the text itself is dropped as before.
-The date is never rendered into the summary's wording — it is metadata beside it.
+Nothing about this widens what is stored, and the date is never rendered into the
+summary's wording — it is metadata beside it. Why each rule prefers no date to a
+guess, and what that costs:
+[a document is dated from its head, or not at all](../openwiki/decisions/2026-08-27-a-document-is-dated-from-its-head-or-not-at-all.md).
 
 ### Logging
 
-No identifier is minted for a submitted document, so none is logged. Clinical filenames
-routinely carry patient names, and parser errors quote the bytes that failed to parse, so
-error paths log the exception type and, where one applies, the document's position in the
-batch — never the filename, the message or a traceback.
+No identifier is minted for a submitted document, so none is logged. Error paths log
+the exception type and, where one applies, the document's position in the batch —
+never the filename, the parser's message or a traceback.
 
 ### NER Model Configuration
 
@@ -254,66 +254,60 @@ export NER_INFERENCE_THREADS=2
 
 ### Where the model comes from
 
-The served model is not a Hub artifact picked off the shelf: it is
-`Dr-BERT/DrBERT-7GB` fine-tuned for token classification on the DEFT 2021
-corpus of French clinical cases. The training project builds it and writes the
-weights, the fast tokenizer and a `metrics.json` into `backend/models/`.
+The served model is `Dr-BERT/DrBERT-7GB` fine-tuned for token classification on
+the DEFT 2021 corpus of French clinical cases. The training project builds it and
+writes the weights, the fast tokenizer and a `metrics.json` into
+`backend/models/`; it lives in its own repository, whose README covers how to
+obtain the corpus and reproduce the model.
 
 Those files are not in this repository and not in the image. `docker-compose.yml`
 bind-mounts the directory read-only at `/app/models`, which is what
 `NER_MODEL_NAME` points at; `MODEL_DIR` in `.env` moves the host side of that
-mount. A retrained model is therefore a restart rather than a rebuild - and an
-image run without the mount still starts, answering `503` on `/readyz` and on
-the analysis routes rather than failing at build time the way a copied-in model
-did.
-
-That project lives in its own repository — the training corpus is clinical data
-and cannot be distributed here, and training wants the CUDA build of `torch`
-while this service pins the CPU build. Its README covers how to obtain the
-corpus and reproduce the model.
+mount. A retrained model is therefore a restart rather than a rebuild, and an
+image run without the mount still starts, answering `503` on `/readyz` and on the
+analysis routes.
 
 The model emits fifteen entity types: the thirteen fine-grained DEFT 2020 types
 (`anatomie`, `sosy`, `examen`, `traitement`, `substance`, `dose`, `mode`,
 `frequence`, `duree`, `moment`, `date`, `pathologie`, `valeur`) plus `age` and
 `genre`. Every one of them is categorised by
 `app/services/entity_extractor/label_mappings/fr.json`; a label the mapping does
-not know is reported at startup and lands in `other`.
+not know is reported at startup and lands in `other`. `age` and `genre` belong to
+`patient_info`, which is what the summary's opening line is built from.
 
-`age` and `genre` matter beyond their category. They belong to `patient_info`,
-which is what the summary's opening line is built from — so the model supplies
-the patient's age and sex itself rather than leaving them to a pattern match.
+Behind this:
+[the training project lives in its own repository](../openwiki/decisions/2026-08-26-the-training-project-lives-in-its-own-repository.md)
+and [the model is mounted, not baked into the image](../openwiki/decisions/2026-08-31-the-model-is-mounted-not-baked-into-the-image.md).
 
 ### Inference runs on the CPU
 
 The service never uses a GPU, and three things hold that to be true rather than
 assume it:
 
-* `pyproject.toml` pins `torch` to the PyTorch CPU wheel index. The default PyPI
-  `torch` resolves to the CUDA build on Linux and pulls the whole `nvidia-*` wheel
-  set with it; the pin takes the installed environment from 4.6 GB to 1.2 GB.
-  Check what a resolution actually gives you with `uv tree --package torch`.
-* The pipeline is built with `device="cpu"`, so a host that happens to carry an
-  accelerator does not start copying clinical text onto it.
-* Inference runs on a worker thread behind a semaphore, so a long document does
-  not hold the event loop and concurrent uploads do not multiply the model's
-  peak memory. Note the queue itself is unbounded: requests waiting for the slot
-  hold their extracted text in memory, and there is no acquisition timeout.
-  Above one, the setting shares a single transformers pipeline across threads,
-  which transformers does not document as safe — prefer more worker processes.
+* `pyproject.toml` pins `torch` to the PyTorch CPU wheel index. Check what a
+  resolution actually gives you with `uv tree --package torch`.
+* The pipeline is built with `device="cpu"`.
+* Inference runs on a worker thread behind a semaphore
+  (`NER_MAX_CONCURRENT_INFERENCES`), so a long document does not hold the event
+  loop and concurrent uploads do not multiply the model's peak memory.
+
+Note the queue in front of that semaphore is unbounded and has no acquisition
+timeout, and a value above one shares a single transformers pipeline across
+threads — prefer more worker processes. The measurements and the trade-offs are
+in
+[inference is CPU-only, and one document at a time](../openwiki/decisions/2026-08-18-inference-is-cpu-only-and-one-document-at-a-time.md).
 
 ### Long documents are read whole
 
-A transformer reads a fixed window — 512 tokens for this model — and the
-pipeline drops whatever does not fit without saying so, which loses the tail of
-a real discharge summary while the response still looks complete. The extractor
-passes the pipeline a `stride` of a quarter of that window, so it slides the
-window across the whole document and reconciles the overlapping spans itself. A
-quarter-window overlap keeps an entity lying across a boundary whole in one of
-the two chunks it appears in.
+A transformer reads a fixed window — 512 tokens for this model — and the pipeline
+drops whatever does not fit without saying so. The extractor passes the pipeline a
+`stride` of a quarter of that window, so it slides the window across the whole
+document and reconciles the overlapping spans itself.
 
-The stride needs a fast tokenizer and a declared window. When either is missing
-the old behaviour applies, and the extractor logs a warning at load time saying
-so — truncation cannot be seen in the response.
+The stride needs a fast tokenizer and a declared window. When either is missing the
+old behaviour applies — truncation, which cannot be seen in the response — and the
+extractor logs a warning at load time saying so. Behind this:
+[long documents are read with a sliding window](../openwiki/decisions/2026-08-18-long-documents-are-read-with-a-sliding-window.md).
 
 ### Startup and health
 
@@ -330,12 +324,11 @@ queued.
 * A model that fails to load leaves the service up and permanently unready. The
   exception type is logged; the model path is not.
 * The routes that need the model — `/api/analyze` and `/api/analyze/stream` —
-  answer `503` while it is unloaded, so a failed load costs one refusal per
-  request rather than a fresh multi-second load attempt each time
-  (`functools.lru_cache` does not memoise an exception).
+  answer `503` while it is unloaded.
 
 `docker-compose.yml` gives the backend a healthcheck on `/readyz` with a
-`start_period` long enough to cover the load.
+`start_period` long enough to cover the load. Behind this:
+[the model loads once, and a failed load stays unready](../openwiki/decisions/2026-08-31-the-model-loads-once-and-a-failed-load-stays-unready.md).
 
 ### Installation
 
@@ -394,6 +387,11 @@ This repository uses `pre-commit` to enforce code quality and style. Before comm
 ```bash
 uv run pre-commit install
 ```
+
+Every choice between two defensible options gets a page in
+[`openwiki/decisions/`](../openwiki/decisions/) — state the alternative that was
+rejected and what the choice costs, not only what was chosen. Do not add that
+reasoning back into this file.
 
 If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
 
