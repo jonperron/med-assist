@@ -145,9 +145,14 @@ export function apiOrigin(apiUrl?: string): string {
  * assumed:
  *
  * - `script-src` carries `'unsafe-inline'` because Next serialises the React
- *   payload into inline `<script>` elements in the prerendered HTML. Removing
- *   it needs a per-request nonce, which needs middleware, which would make
- *   every route dynamic. `'unsafe-eval'` is not granted in production.
+ *   payload into inline `<script>` elements in the rendered HTML. Removing it
+ *   needs a per-request nonce, which needs middleware. That used to cost making
+ *   every route dynamic, which is why it was not done - and that cost is now
+ *   already paid: `app/layout.tsx` declares `force-dynamic` so the deployment
+ *   warning can be read from the environment at request time. Tightening this
+ *   is a real option again, and the reason it has not been taken is that
+ *   nobody has done the work, not that the price is too high.
+ *   `'unsafe-eval'` is not granted in production.
  * - `style-src` carries `'unsafe-inline'` because the error and not-found
  *   routes ship a `<style>` element and inline `style` attributes, and the
  *   reading progress bar sets its width through an inline style at runtime.

@@ -9,10 +9,10 @@ documents are parsed, the model is invoked, and the deployment pays for the
 work. The attacker never sees the summary - CORS does hold that line, and the
 service stores nothing - but it decided what this deployment analysed. Where an
 authenticating proxy sits in front, that is sharper still: the visitor's cached
-credentials are ambient, so the proxy accepts the forged request and adds the
-backend's credential on the way through. The credential gate cannot see the
-difference, because as far as it is concerned the request came through the
-front door.
+credentials are ambient, so the proxy accepts the forged request and forwards
+it exactly as it would forward one the visitor typed the address of. Nothing
+behind the proxy can see the difference, because as far as the backend is
+concerned the request came through the front door.
 
 This gate closes that. The `Origin` header is compared against the same list
 `CORSMiddleware` was configured with, on the server, before the body is read.
@@ -25,9 +25,8 @@ Two limits, stated rather than implied:
 and a page cannot forge it, which is the whole basis of this control; a client
 that is not a browser writes whatever it likes there. So this gate constrains
 *browsers* - which is exactly the CSRF case it exists for - and constrains a
-scripted caller not at all. What constrains that caller is the credential in
-`access.py`. The two gates answer different questions and neither replaces the
-other.
+scripted caller not at all. Nothing on this API does: there is no credential,
+and a scripted caller that can reach the port can already submit documents.
 
 **A request carrying no `Origin` at all is allowed through.** That is not a
 loophole left open by accident: the documented deployment shape puts a proxy in
@@ -110,20 +109,21 @@ class RequireKnownOrigin(CoveredRouteGate):
     """
     Refuse a request to the analysis routes that another site drove.
 
-    Mounted always, and inside the credential gate rather than outside it, so
-    that this gate's verdict on the analysis routes is only observable to a
-    caller that already presented the credential. Reversing the two would let an
-    anonymous caller read the deployment's allow-list off these routes by
-    watching a 403 become a 401.
+    Mounted always, and it is the only gate in front of the analysis routes - the
+    credential that used to sit alongside it is gone. **The allow-list is not
+    private, and nothing here tries to make it so.** It never fully was:
+    `CORSMiddleware` sits outside this gate - it has to, because it answers
+    preflights itself - and it answers an `OPTIONS` preflight naming an origin
+    with 200 or 400 according to whether that origin is allowed. So the list was
+    always confirmable, one guess at a time, by anyone who can reach the port.
 
-    That ordering does not make the allow-list private, and it is worth being
-    exact about what it buys rather than claiming more. `CORSMiddleware` sits
-    outside both gates - it has to, because it answers preflights itself - and
-    it answers an `OPTIONS` preflight naming an origin with 200 or 400 according
-    to whether that origin is allowed, asking for no credential. So the list is
-    already confirmable, one guess at a time, by anyone who can reach the port.
-    What the ordering prevents is the *analysis routes* becoming a second such
-    oracle, which is worth having and is not the same as secrecy.
+    While the credential was mounted outside this gate, the analysis routes at
+    least did not answer the same question a second time: an anonymous caller
+    saw 401 whatever origin it claimed. That is gone with the credential, and
+    the routes are now the second oracle the ordering used to prevent - a caller
+    can tell an allowed origin from a refused one by 403 against 422. Nothing is
+    lost that the preflight was not already giving away, and `deploy/README.md`
+    says to treat `CORS_ALLOWED_ORIGINS` as public.
 
     The comparison is byte-for-byte against origins normalised at startup by
     `normalise_origin`, which is what makes it safe to be exact. A browser sends
@@ -179,8 +179,9 @@ class RequireKnownOrigin(CoveredRouteGate):
             return False
 
         # No `Origin`, no `Sec-Fetch-Site`: not a browser request. The proxy,
-        # the healthcheck and every scripted caller land here, and the
-        # credential is what gates them. See the module docstring.
+        # the healthcheck and every scripted caller land here, and nothing on
+        # this API gates them - there is no credential. See the module
+        # docstring.
         return True
 
     def refusal(self) -> JSONResponse:

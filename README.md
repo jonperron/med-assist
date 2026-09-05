@@ -38,12 +38,23 @@ professional medical advice or diagnosis.
   configured API origin, which closes every silent channel out of it.
 
 This is a local-processing guarantee, not a compliance claim. The extracted
-entities are health data and remain personal data under GDPR, **the API is
-unauthenticated**, and clinical text is adversarial: read a summary before you
-rely on it. [`backend/README.md`](./backend/README.md) states the scope and
+entities are health data and remain personal data under GDPR, and clinical text
+is adversarial: read a summary before you rely on it.
+[`backend/README.md`](./backend/README.md) states the scope and
 [`frontend/README.md`](./frontend/README.md) the policy;
 [`openwiki/decisions/`](./openwiki/decisions/) holds the known gaps and what
 each boundary does not stop.
+
+**Med-Assist is meant to run on your own machine, and it authenticates nobody.**
+There are no accounts, no login and no credential of any kind: anyone who can
+reach the API can submit documents to it. Published at a public address it is a
+demonstration - set `UNSECURED_DEPLOYMENT=true` so every screen says so, put an
+authenticating proxy in front, and do not point clinicians at it with real
+documents. [`deploy/README.md`](./deploy/README.md) is the page to read first;
+the trade and its cost are in
+[the decision entry](./openwiki/decisions/2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md),
+and access control is [open to contribution](#-contributing) rather than a
+setting you have missed.
 
 ---
 
@@ -86,10 +97,28 @@ A value that is not an origin stops the backend at startup instead of failing
 silently in the browser later. The exact validation rules are in
 [`openwiki/decisions/`](./openwiki/decisions/).
 
-**CORS is not authentication.** Any client that is not a browser ignores it
-entirely, and nothing else guards the API. A deployment reachable by anyone
-other than the person running it needs a reverse proxy that authenticates, not
-a shorter origin list.
+A third variable applies to any deployment other than your own machine:
+
+- `UNSECURED_DEPLOYMENT` — set it to `true` and every screen carries a banner
+  saying this installation is open, anyone can reach it, and documents sent
+  through it may be read by a third party. It is read at request time, so
+  turning it on is a restart rather than a rebuild.
+
+**CORS is not authentication, and neither is the banner.** Any client that is
+not a browser ignores CORS entirely, and nothing in the application guards the
+API. A deployment reachable by anyone other than the person running it needs a
+reverse proxy that authenticates - see [`deploy/README.md`](./deploy/README.md)
+for the shape that works and for what it still does not cover.
+
+### Upgrading from a version that required a credential
+
+Between 2026-08-31 and 2026-09-05 the API could require, and then did require, a
+shared credential in `API_ACCESS_TOKEN`. It is now ignored: nothing reads it, and
+a proxy rule that injects `Authorization: Bearer` enforces nothing. Remove the
+variable from every `.env` and secret store, and if that rule was your access
+control, replace it with authentication on the proxy itself before treating the
+deployment as protected. The backend logs a warning at startup while the
+variable is still set. [`deploy/README.md`](./deploy/README.md) has the detail.
 
 ### Upgrading from a version that stored documents
 
@@ -145,6 +174,16 @@ The measurements behind each bound, and why each one is set where it is, are in
 ## 🤝 Contributing
 
 We welcome community contributions!
+
+**Access control is the open gap, and it is a good place to start.** Med-Assist
+has no accounts, no login, no sessions, no per-caller rate limiting and no audit
+trail, because it was written to run on one machine for the person running it.
+Anything that changes that is welcome: sign-up and sign-in with sessions the
+interface can use, rate limiting on the analysis routes, or an audit trail
+somebody has scoped. Open an issue first - the service persists nothing today,
+and an account system is the first thing that would change that, so it needs a
+decision entry before it needs code.
+[`deploy/README.md`](./deploy/README.md) has the detail.
 
 ---
 

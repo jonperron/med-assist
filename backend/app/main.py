@@ -14,11 +14,6 @@ from app.api import (
     health_router,
     mock_router,
 )
-from app.core.access import (
-    BEARER_SCHEME,
-    RequireAccessToken,
-    configured_access_token,
-)
 from app.core.config import CORSConfiguration
 from app.core.dependencies import get_entity_extractor
 from app.core.middleware import LimitRequestSize, forbid_caching
@@ -29,6 +24,16 @@ logger = logging.getLogger(__name__)
 
 DEVELOPMENT = "development"
 PRODUCTION = "production"
+
+# The credential this service used to require, read here only to say that it is
+# no longer read. A deployment configured against the previous version keeps a
+# value in its environment and, if it followed the old guidance, a proxy rule
+# injecting `Authorization: Bearer` on the way through. Both now do nothing, and
+# nothing else would say so: Compose used to refuse to start without the
+# variable, so its silence was a signal, and now its silence is just silence.
+# That is a control which reads as protective and is not, which is worth three
+# lines to make visible.
+RETIRED_CREDENTIAL_VARIABLE = "API_ACCESS_TOKEN"
 
 
 @asynccontextmanager
@@ -59,10 +64,7 @@ async def load_the_model_before_serving(
     own `uvicorn*` loggers only, so records from `app.*` fall through to
     `logging.lastResort`, which drops anything below WARNING. That is a real
     limit and it is written down rather than papered over by promoting an
-    ordinary startup fact to a warning. Nothing security-relevant rests on it:
-    the fail-open case this line used to mitigate - a mistyped variable leaving
-    the routes open - cannot happen now that a missing credential stops the
-    process.
+    ordinary startup fact to a warning.
     """
     # The allow-list is named because a refusal cannot be. The 403 body is
     # fixed and the refusal log deliberately omits the origin that was
@@ -70,14 +72,30 @@ async def load_the_model_before_serving(
     # operator whose deployment refuses its own interface can see neither side
     # of the comparison. These origins are the operator's own configuration,
     # not anything a caller supplied, so they are safe to write down.
-    logger.info(
-        "The analysis routes require a bearer credential, and an origin in "
-        "%s or a browser reporting a same-origin request. Configured origins: "
-        "%s. The browser interface cannot supply the credential; put an "
-        "authenticating proxy in front.",
+    #
+    # The sentence about authentication is the honest description of this
+    # service and is meant to be read as a warning: nothing here identifies a
+    # caller. Anyone who can reach the port can submit documents and spend this
+    # host's CPU. See deploy/README.md for what that means before a domain is
+    # attached to it.
+    logger.warning(
+        "The analysis routes authenticate nobody. Anyone who can reach this "
+        "port can submit documents. The only check is the origin allow-list in "
+        "%s, which constrains browsers and nothing else. Configured origins: "
+        "%s.",
         ORIGIN_VARIABLE,
         ", ".join(application.state.allowed_origins) or "(none)",
     )
+
+    if os.getenv(RETIRED_CREDENTIAL_VARIABLE):
+        logger.warning(
+            "%s is set and is no longer read. The analysis routes stopped "
+            "requiring a credential, so anything in front of this service that "
+            "injects an Authorization header is enforcing nothing. Remove the "
+            "variable, and replace that proxy rule with authentication of your "
+            "own before treating this deployment as protected.",
+            RETIRED_CREDENTIAL_VARIABLE,
+        )
 
     application.state.model_loaded = False
     try:
@@ -134,49 +152,6 @@ async def malformed_requests_stay_generic(
     )
 
 
-def describe_the_credential(application: FastAPI) -> None:
-    """
-    Put the bearer scheme in the document the analysis routes already reference.
-
-    The routes declare `security: [{bearerCredential: []}]` through
-    `openapi_extra`, because the credential is checked in middleware and FastAPI
-    can only infer a requirement from a route dependency. A requirement naming a
-    scheme the document does not define is a dangling reference: a generated
-    client sees the two statuses and still has no generated way to send the
-    header. This defines it.
-
-    It wraps `application.openapi` rather than rebuilding the document, so
-    nothing here has to know how FastAPI assembles one. The wrapper is lazy -
-    the schema is only built if something asks for it - and FastAPI caches the
-    result in `openapi_schema`, so the addition is made once.
-
-    :param application: The application whose schema gains the scheme.
-    """
-    generate = application.openapi
-
-    def openapi_with_the_credential() -> dict:
-        if application.openapi_schema:
-            return application.openapi_schema
-        schema = generate()
-        schema.setdefault("components", {})["securitySchemes"] = {
-            BEARER_SCHEME: {
-                "type": "http",
-                "scheme": "bearer",
-                "description": (
-                    "The deployment's shared credential. Required on the "
-                    "analysis routes: the service refuses to start without one "
-                    "configured. It identifies no one - it is one secret shared "
-                    "by every caller - and the browser interface in this stack "
-                    "cannot present it, so a deployment serving that interface "
-                    "puts an authenticating proxy in front to add the header."
-                ),
-            }
-        }
-        return schema
-
-    application.openapi = openapi_with_the_credential  # type: ignore[method-assign]
-
-
 def create_app(app_env: str | None = None) -> FastAPI:
     """
     Build the application.
@@ -198,11 +173,10 @@ def create_app(app_env: str | None = None) -> FastAPI:
         RequestValidationError, malformed_requests_stay_generic
     )
 
-    # Both raise rather than fall back to something permissive, and both raise
-    # here rather than on the first request: a deployment that is misconfigured
-    # fails while it is starting, where an operator is watching, instead of
-    # answering callers it should have refused.
-    access_token = configured_access_token()
+    # Raises rather than falling back to something permissive, and raises here
+    # rather than on the first request: a deployment that is misconfigured fails
+    # while it is starting, where an operator is watching, instead of answering
+    # callers it should have refused.
     allowed_origins = CORSConfiguration().allowed_origins
     # Held on the application so the lifespan can name them in the startup log
     # without reading the environment a second time, which a test that patches
@@ -210,8 +184,7 @@ def create_app(app_env: str | None = None) -> FastAPI:
     application.state.allowed_origins = allowed_origins
 
     # The last one registered runs first, so the stack is forbid_caching, then
-    # CORS, then the credential gate, then the origin gate, then the size
-    # ceiling, then the router.
+    # CORS, then the origin gate, then the size ceiling, then the router.
     #
     # The order of the middle two is load-bearing. LimitRequestSize writes its
     # 413 straight to `send` rather than returning through the router, so a
@@ -230,24 +203,25 @@ def create_app(app_env: str | None = None) -> FastAPI:
     # which a browser refuses on a credentialed response anyway.
     application.add_middleware(LimitRequestSize)
 
-    # Both gates are registered after the ceiling so that they run before it: a
-    # caller that fails either is refused on its headers, and the body it was
-    # sending is never read, let alone spooled to TMPDIR and measured. A refused
-    # document never touches the filesystem.
+    # Registered after the ceiling so that it runs before it: a caller from an
+    # origin this deployment does not serve is refused on its headers, and the
+    # body it was sending is never read, let alone spooled to TMPDIR and
+    # measured. A refused document never touches the filesystem.
     #
-    # The origin gate is registered first, so it runs second. That order is the
-    # security-relevant half: a caller presenting no credential is refused with
-    # 401 whatever origin it claimed, so an anonymous caller cannot read the
-    # allow-list by watching a 403 turn into a 401 on the analysis routes. The
-    # reverse order refuses the same requests and leaks the list while doing it.
+    # This is the only gate in front of the analysis routes, and it is not
+    # authentication. It constrains browsers - a scripted caller writes whatever
+    # `Origin` it likes, and a request carrying neither `Origin` nor
+    # `Sec-Fetch-Site` is let through - so what it closes is one site driving an
+    # upload through a visitor's browser, and nothing else. Anyone who can reach
+    # this port can still submit documents.
+    # That is a deliberate posture for an R&D deployment, written down in
+    # deploy/README.md and warned about on the page itself.
     #
-    # It does not make the allow-list private, and nothing here can. CORS is
-    # mounted outside both gates because it has to answer preflights itself, and
-    # an `OPTIONS` preflight naming an origin is answered 200 or 400 according
-    # to that origin, with no credential involved. Anyone who can reach the port
-    # can confirm a guess that way. See the decision entry's residual risk.
+    # The allow-list is not private either. CORS is mounted outside the gate
+    # because it has to answer preflights itself, and an `OPTIONS` preflight
+    # naming an origin is answered 200 or 400 according to that origin. Anyone
+    # who can reach the port can confirm a guess that way.
     application.add_middleware(RequireKnownOrigin, allowed_origins=allowed_origins)
-    application.add_middleware(RequireAccessToken, token=access_token)
 
     application.add_middleware(
         CORSMiddleware,
@@ -265,8 +239,6 @@ def create_app(app_env: str | None = None) -> FastAPI:
     )
     if environment == DEVELOPMENT:
         application.include_router(mock_router)
-
-    describe_the_credential(application)
 
     @application.get("/")
     async def root():

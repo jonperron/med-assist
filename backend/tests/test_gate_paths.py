@@ -1,9 +1,9 @@
 """
-The one rule both gates depend on: which path the router will match.
+The one rule the gate depends on: which path the router will match.
 
 `routed_path` decides whether a request is inside the guarded prefix, so a
 disagreement between it and Starlette's own stripping is not a cosmetic bug -
-it is a request the router sends to an analysis route and the gates decline to
+it is a request the router sends to an analysis route and the gate declines to
 judge. That has already happened once in this codebase, on a different mount
 prefix, and the fix was to write the rule down in one place.
 
@@ -55,7 +55,7 @@ def test_the_gate_reads_the_path_the_router_reads(root_path, path):
 def test_a_prefix_that_is_not_a_segment_boundary_stays_gated(root_path, path):
     # The regression this file exists for, stated as the security property
     # rather than as an equality: whatever the mount prefix, a request the
-    # router will send to an analysis route is one the gates cover.
+    # router will send to an analysis route is one the gate covers.
     scope = {"type": "http", "path": path, "root_path": root_path}
 
     assert covers(routed_path(scope))

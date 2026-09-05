@@ -71,11 +71,39 @@ bundler has already substituted; the manifest itself never reaches the bundle.
 `vitest.config.ts` defines the same value from the same file. **Bumping a
 release therefore means bumping `package.json` and nothing else.**
 
-The privacy sentence is the badge's claim spelled out; if either is reworded,
-reword both. Why it says temporary storage rather than "never touches a disk",
-why the issue link is the one off-origin navigation on offer, and what the
-version injection costs:
+The privacy sentence and the badge are no longer the same claim, so reword them
+independently: the sentence is about retention and holds on every deployment,
+the badge is about *where* and is shown only when the deployment is not open.
+Why the sentence says temporary storage rather than "never touches a disk", why
+the issue link is the one off-origin navigation on offer, and what the version
+injection costs:
 [the footer states the version, the address and what is kept](../openwiki/decisions/2026-08-31-the-footer-states-the-version-the-address-and-what-is-kept.md).
+
+## The unsecured-deployment banner
+
+`UNSECURED_DEPLOYMENT` is a plain environment variable, deliberately not a
+`NEXT_PUBLIC_` one, read at request time in `app/layout.tsx` - which is why that
+file declares `export const dynamic = 'force-dynamic'`. Set, it renders
+`app/components/UnsecuredDeploymentNotice.tsx` above the header on every screen
+and renders `app/components/PrivacyBadge.tsx` as nothing; the value reaches the
+badge through `app/lib/deploymentContext.tsx`, since the layout is a server
+component and the badge is not.
+
+Parsing is in `app/lib/deployment.ts` and is asymmetric: unset and blank are
+off, and once the variable is set only `0`, `false`, `no` and `off` turn it off
+- every other value, a misspelling included, is on.
+
+**Two things here cannot be covered by a test that runs.** The flag must be read
+as a literal `process.env.UNSECURED_DEPLOYMENT`, not a computed key, and
+`force-dynamic` must stay declared; either one, changed, silently turns the
+banner off in every deployment while the suite stays green. Both are guarded by
+source-text assertions in `app/__tests__/layout.test.tsx`. If you change how the
+flag is read, check it against a built server - `npm run build`, then
+`UNSECURED_DEPLOYMENT=true node .next/standalone/server.js` - and not only
+against `npm test`.
+
+Why there is a banner rather than a credential, and what it does not do:
+[the credential is removed and the deployment warns instead](../openwiki/decisions/2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md).
 
 ## API types
 
