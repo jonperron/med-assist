@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/jonperron/med-assist/compare/1.0.0...2.0.0) (2026-09-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **security:** drop the shared credential and warn on open deployments ([#92](https://github.com/jonperron/med-assist/issues/92))
+
+### Features
+
+* **security:** drop the shared credential and warn on open deployments ([#92](https://github.com/jonperron/med-assist/issues/92)) ([3072b5f](https://github.com/jonperron/med-assist/commit/3072b5fbff7ff116dffb02434b891a2f100b2c69))
+
 ## [1.0.0](https://github.com/jonperron/med-assist/compare/0.1.0...1.0.0) (2026-09-05)
 
 
