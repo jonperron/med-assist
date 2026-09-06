@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.0.0](https://github.com/jonperron/med-assist/compare/1.0.0...2.0.0) (2026-09-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **security:** drop the shared credential and warn on open deployments ([#92](https://github.com/jonperron/med-assist/issues/92))
+
+### Features
+
+* **security:** drop the shared credential and warn on open deployments ([#92](https://github.com/jonperron/med-assist/issues/92)) ([3072b5f](https://github.com/jonperron/med-assist/commit/3072b5fbff7ff116dffb02434b891a2f100b2c69))
+
+
+### Bug Fixes
+
+* **ci:** build the release image from a root Dockerfile ([#91](https://github.com/jonperron/med-assist/issues/91)) ([2b2be4d](https://github.com/jonperron/med-assist/commit/2b2be4d7bc0753e966d81e43b8cdbdc4f94ed527))
+
+
+### Documentation
+
+* fold the project READMEs into one human-facing README ([#94](https://github.com/jonperron/med-assist/issues/94)) ([dd57f02](https://github.com/jonperron/med-assist/commit/dd57f02eb0fad1eaf553bfd9f6fb9d1ab9f4f785))
+* tighten the four project READMEs into one human-facing README ([dd57f02](https://github.com/jonperron/med-assist/commit/dd57f02eb0fad1eaf553bfd9f6fb9d1ab9f4f785))
+
 ## [1.0.0](https://github.com/jonperron/med-assist/compare/0.1.0...1.0.0) (2026-09-05)
 
 
