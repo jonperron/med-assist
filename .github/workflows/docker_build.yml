@@ -37,10 +37,17 @@ on:
       - 'backend/pyproject.toml'
       - 'backend/uv.lock'
       - 'backend/Dockerfile'
+      # COPYed by name because pyproject.toml declares it as the project
+      # readme: the dependency install fails without it, and no other CI job
+      # would notice it going away.
+      - 'backend/README.md'
       - 'frontend/package.json'
       - 'frontend/package-lock.json'
       - 'frontend/next.config.ts'
       - 'frontend/Dockerfile'
+      # Not part of the standalone output and placed by hand, so `next build`
+      # succeeds without it and only this build fails.
+      - 'frontend/public/**'
       - '.github/workflows/docker_build.yml'
 
 jobs:
@@ -89,9 +96,52 @@ jobs:
           context: .
           file: Dockerfile
           push: ${{ env.TAG_NAME != '' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          # A pull request has nothing to push to, so the image goes into the
+          # runner's daemon instead and the step below starts it. The two are
+          # mutually exclusive, which is why both are keyed on the same thing.
+          load: ${{ env.TAG_NAME == '' }}
+          tags: ${{ steps.meta.outputs.tags || 'med-assist:pr' }}
           labels: ${{ steps.meta.outputs.labels }}
           # The torch CPU wheels are most of this image and change rarely.
           # Without a cache every pull-request build downloads them again.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # A build that succeeds still ships a container that cannot start: a Node
+      # binary whose base moved out from under it, an entrypoint that exits, a
+      # standalone server that cannot find the static files copied in beside
+      # it. None of that is visible to `docker build`, so the pull request runs
+      # the image rather than only building it - which is the whole point of
+      # building on pull requests at all.
+      #
+      # Without weights, deliberately: they are not in the image and not on the
+      # runner. What this asserts is the shape a container without them must
+      # have - both processes up, readiness honest about the model it has not
+      # got - plus the one thing an operator notices first if it regresses,
+      # that the container stops when it is asked to.
+      - name: Run the image
+        if: env.TAG_NAME == ''
+        run: |
+          set -euo pipefail
+          docker run -d --name smoke -p 8000:8000 -p 3000:3000 med-assist:pr
+          trap 'docker logs smoke || true; docker rm -f smoke >/dev/null || true' EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/healthz >/dev/null; then break; fi
+            sleep 2
+          done
+
+          # The API answers, so uvicorn started under the entrypoint.
+          curl -fsS http://127.0.0.1:8000/healthz
+
+          # The interface answers, so `node` started and the standalone server
+          # resolved the static files placed next to it.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 200
+
+          # Readiness reports the model that is not there rather than the port
+          # that is open.
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/readyz)" = 503
+
+          # 128 + SIGTERM, and well inside the ten seconds before SIGKILL.
+          docker stop --timeout 10 smoke
+          test "$(docker inspect --format '{{.State.ExitCode}}' smoke)" = 143

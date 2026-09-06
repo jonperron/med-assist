@@ -78,9 +78,28 @@ Reproduce both the way Compose does:
 docker run \
   -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
   --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  --cap-drop ALL --security-opt no-new-privileges \
   -v /path/to/weights:/app/models:ro \
   ghcr.io/jonperron/med-assist:<version>
 ```
+
+That is the port exposure, the tmpfs and the weights. It is not the whole of
+what `docker-compose.yml` gives the two services, and the rest does not travel
+with a published tag: the memory and CPU limits, `restart: unless-stopped`, and
+the log rotation that stops uvicorn's per-request access line from filling a
+disk. Add `--memory`, `--cpus`, `--restart unless-stopped` and
+`--log-opt max-size=10m --log-opt max-file=3` if you want them, and pair any
+`--cpus` with `-e NER_INFERENCE_THREADS=<the same number>`: torch otherwise
+reads the host's core count, oversubscribes the quota it was given, and the
+README's own measurements are the difference that makes.
+
+Core dumps are the one item on that list you do not have to reproduce. Compose
+sets `ulimits: core: 0` because a crash in the PDF or DOCX parser - C code, on
+attacker-supplied input - dumps document text and extracted entities, and a
+host whose `core_pattern` pipes to `systemd-coredump` writes that dump to host
+storage, outside the tmpfs and outside anything the container controls. The
+image's entrypoint sets `ulimit -c 0` for both processes itself, so it holds
+however the container is started.
 
 Two ports because the published image is one container running both the API and
 the interface - see
@@ -112,9 +131,28 @@ docker build \
   -t med-assist:1.0.0-example .
 ```
 
-and moves `CORS_ALLOWED_ORIGINS` with it, as
-[the root README](../README.md#serving-it-from-somewhere-other-than-localhost)
-describes. That rebuild is not a cost this image adds: a separately published
+and runs it with the two variables that describe the same deployment - neither
+of which has a home in a single container the way it has a compose service or
+an `.env`, so both are `-e` here:
+
+```bash
+docker run \
+  -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
+  --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  --cap-drop ALL --security-opt no-new-privileges \
+  -v /path/to/weights:/app/models:ro \
+  -e CORS_ALLOWED_ORIGINS=https://med-assist.example.org \
+  -e UNSECURED_DEPLOYMENT=true \
+  med-assist:1.0.0-example
+```
+
+`CORS_ALLOWED_ORIGINS` is read from the environment; a published image has no
+`.env` in `/app` for it to fall back to, so left unset it stays at the
+`http://localhost:3000` default and the origin check refuses every analysis your
+domain sends. `UNSECURED_DEPLOYMENT` is the banner described below, and every
+instruction on this page that says to put it "on the frontend service" or in
+`.env` means this flag for this image. Both are read at start, so neither is a
+rebuild - unlike `NEXT_PUBLIC_API_URL` above, which is. That rebuild is not a cost this image adds: a separately published
 frontend image would be pinned to a build-time address in exactly the same way.
 What is published here is the local case, correct by default, and everything
 else on this page - the banner, the proxy, the origin check - applies to the

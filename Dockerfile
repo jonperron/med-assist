@@ -47,7 +47,12 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # The runtime. Debian and Python, with the Node binary lifted in beside it.
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS runtime
+# Suite-qualified rather than `python:3.12-slim`, which is the same image
+# today and need not stay that way. The Node binary lifted in below is taken
+# from a trixie image and linked against that release's libstdc++ and libc; if
+# this base's default suite advanced on its own, `node` would stop starting and
+# the first run to notice would be the one publishing a release.
+FROM python:3.12-slim-trixie AS runtime
 
 WORKDIR /app
 
@@ -64,7 +69,7 @@ COPY backend/app ./app
 
 # Just the Node binary, not the image around it: `node server.js` is the whole
 # runtime the standalone build needs, and node:24-trixie-slim is the same
-# Debian release as this stage, so the one shared library it links against is
+# Debian release this stage pins, so the libraries it links against are
 # already here. Pulling the full Node image in as a second base would carry npm
 # and a package manager's worth of tooling for a process that never installs
 # anything.

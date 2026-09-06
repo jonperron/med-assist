@@ -93,13 +93,17 @@ builds the two services separately, and that is what a working copy uses.
 docker run \
   -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
   --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  --cap-drop ALL --security-opt no-new-privileges \
   -v "$PWD/backend/models:/app/models:ro" \
   ghcr.io/jonperron/med-assist:<version>
 ```
 
 The weights are not in it, for the same reason they are not in the compose
 build, and the `--tmpfs` is not decoration: without it uploaded documents are
-spooled to the container's writable layer rather than to memory.
+spooled to the container's writable layer rather than to memory. It carries
+none of the compose stack's other per-service bounds either - the memory and
+CPU limits, the restart policy, the log rotation - and `deploy/README.md` says
+which flags put them back.
 
 The interface in it is built to look for the API at `http://localhost:8000`, and
 that address is resolved by the browser rather than by the container — so the

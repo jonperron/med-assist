@@ -40,7 +40,6 @@ npm-debug.log*
 # deployment's own configuration into an image published for everyone.
 # backend/README.md is deliberately not excluded: pyproject.toml declares it as
 # the project readme, so the dependency install fails without it.
-**/.env
-**/.env.*
+**/.env*
 deploy/
 openwiki/

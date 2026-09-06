@@ -10,6 +10,17 @@
 # openwiki/decisions/2026-09-05-the-release-image-is-one-container.md.
 set -uo pipefail
 
+# No core dumps, before either process starts and inherited by both.
+# docker-compose.yml sets `ulimits: core: 0` for the same reason: these
+# processes parse attacker-supplied PDFs and DOCX files in C extensions, and a
+# crash there dumps document text and extracted entities. The dump does not
+# land in the container - a host whose core_pattern pipes to systemd-coredump
+# or apport writes it to host storage, outside the tmpfs and outside anything
+# the image controls. Compose's limit does not travel with this image and the
+# equivalent `docker run --ulimit core=0` is one an operator can forget, so it
+# is set here instead, where it cannot be.
+ulimit -c 0
+
 api_pid=""
 web_pid=""
 

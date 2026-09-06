@@ -40,7 +40,7 @@ the interface leaves a container that is still `Up`, still passing a port
 check, and serving nothing on 3000.
 
 Verified locally against the real weights: the image builds at 1.85 GB, reaches
-`{"status":"ready"}` 20 seconds after start, serves the interface on 3000, and
+`{"status":"ready"}` 13 seconds after start, serves the interface on 3000, and
 answers `POST /api/analyze` with a summary for synthetic text. Killing the
 Next.js process exits the container with 137, and a `docker stop` at any point
 after start exits 143 without waiting for Docker's SIGKILL.
@@ -78,11 +78,23 @@ someone who wants to run a tagged version without a checkout.
 
 **Two processes in one container, which is a thing to be argued with.** They
 share a memory limit, a CPU quota and a log stream, so the interface's Node
-process is charged against whatever the model is holding, and `docker logs`
-interleaves both. The compose stack keeps the per-service limits, the
-`ulimits: core: 0` and the separate healthchecks; none of that travels with
-this image, and reproducing it on a `docker run` is the operator's job.
-`deploy/README.md` now carries the run command that does.
+process is charged against whatever the model is holding, `docker logs`
+interleaves both, and one healthcheck covering both ports replaces two
+independent ones. The compose stack's per-service limits do not travel with the
+image: the memory and CPU ceilings, the restart policy and the log rotation are
+all the operator's to pass to `docker run`, and `deploy/README.md` names the
+flags rather than pretending the run command it gives is equivalent to Compose.
+
+`ulimits: core: 0` is the exception, because it is the one whose absence costs
+patient confidentiality rather than availability. A crash in the PDF or DOCX
+parser dumps document text, and on a host whose `core_pattern` pipes to
+`systemd-coredump` the dump lands in host storage - outside the tmpfs, outside
+the container, and outside every boundary the rest of this image maintains.
+Leaving that to a `--ulimit` flag an operator can forget was the wrong side of
+the trade, so `docker-entrypoint.sh` sets `ulimit -c 0` before it starts either
+process. That is a difference from `backend/Dockerfile`, which relies on
+Compose for it, and it is deliberate: a published artifact is run by people who
+never read `docker-compose.yml`.
 
 **The `tmpfs` is the one that matters.** Multipart parts above 1MB are spooled
 under `TMPDIR` before any route code runs, so an image run without
@@ -94,8 +106,9 @@ for itself.
 what `backend/Dockerfile` and `frontend/Dockerfile` say, and a change to either
 that is not mirrored here produces a release image that differs from what
 compose builds and what CI tested. The pull-request build added to the same
-workflow catches the half of that which breaks the build; it does not catch the
-half that merely drifts.
+workflow now starts the image as well as building it, so a container that
+cannot come up is caught there; what is still not caught is the half that
+merely drifts - a flag that diverges without breaking anything.
 
 **Non-root, and the weights have to allow it.** Both processes run as uid 1001,
 where `backend/Dockerfile` still runs the API as root. A weights directory whose
