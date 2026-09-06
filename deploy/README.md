@@ -68,11 +68,95 @@ one.
 
 **The binding lives in `docker-compose.yml` only.** Run the published image
 directly and it does not apply: `docker run -p 8000:8000` puts the API back on
-every interface. Publish it the same way Compose does:
+every interface, and the port exposure is yours to reproduce. So is the tmpfs,
+and that one is easier to miss: a multipart part above 1MB is spooled to a file
+under `TMPDIR` before any route code runs, so without the mount below clinical
+documents are written to the container's writable layer instead of to memory.
+Reproduce both the way Compose does:
 
 ```bash
-docker run -p 127.0.0.1:8000:8000 <image>
+docker run \
+  -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
+  --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  --cap-drop ALL --security-opt no-new-privileges \
+  -v /path/to/weights:/app/models:ro \
+  ghcr.io/jonperron/med-assist:<version>
 ```
+
+That is the port exposure, the tmpfs and the weights. It is not the whole of
+what `docker-compose.yml` gives the two services, and the rest does not travel
+with a published tag: the memory and CPU limits, `restart: unless-stopped`, and
+the log rotation that stops uvicorn's per-request access line from filling a
+disk. Add `--memory`, `--cpus`, `--restart unless-stopped` and
+`--log-opt max-size=10m --log-opt max-file=3` if you want them, and pair any
+`--cpus` with `-e NER_INFERENCE_THREADS=<the same number>`: torch otherwise
+reads the host's core count, oversubscribes the quota it was given, and the
+README's own measurements are the difference that makes.
+
+Core dumps are the one item on that list you do not have to reproduce. Compose
+sets `ulimits: core: 0` because a crash in the PDF or DOCX parser - C code, on
+attacker-supplied input - dumps document text and extracted entities, and a
+host whose `core_pattern` pipes to `systemd-coredump` writes that dump to host
+storage, outside the tmpfs and outside anything the container controls. The
+image's entrypoint sets `ulimit -c 0` for both processes itself, so it holds
+however the container is started.
+
+Two ports because the published image is one container running both the API and
+the interface - see
+[`openwiki/decisions/2026-09-05-the-release-image-is-one-container.md`](../openwiki/decisions/2026-09-05-the-release-image-is-one-container.md).
+The processes run as uid 1001, so the weights have to be readable by it: a
+directory whose files are `chmod 600` and owned by your account produces a
+container that starts, serves the interface, and answers `503` everywhere with
+nothing in the log to say why. Either make them group- or world-readable, or add
+`--user "$(id -u):$(id -g)"`.
+
+**The published image only serves a browser on the Docker host.** The two
+published ports above are bound to loopback because that is the deployment this
+image is for, and the interface inside it cannot serve any other one as built:
+`NEXT_PUBLIC_API_URL` is inlined into the client bundle when the image is built,
+and the release build has no address to use but `http://localhost:8000`. That
+address is resolved by the *browser*, not by the container, so publishing port
+8000 on a public interface does not make it work from another machine - it
+resolves to the reader's own computer, and every analysis fails as a network
+error while `curl http://<host>:8000/readyz` from that same computer answers
+normally. Co-locating the two processes makes the default correct for a browser
+on the Docker host and for nothing else.
+
+The value is frozen at build time, so the image cannot be reconfigured into a
+remote deployment; that deployment builds its own:
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=https://med-assist.example.org \
+  -t med-assist:1.0.0-example .
+```
+
+and runs it with the two variables that describe the same deployment - neither
+of which has a home in a single container the way it has a compose service or
+an `.env`, so both are `-e` here:
+
+```bash
+docker run \
+  -p 127.0.0.1:8000:8000 -p 127.0.0.1:3000:3000 \
+  --tmpfs /tmp:size=256m,mode=1777,noexec,nosuid,nodev \
+  --cap-drop ALL --security-opt no-new-privileges \
+  -v /path/to/weights:/app/models:ro \
+  -e CORS_ALLOWED_ORIGINS=https://med-assist.example.org \
+  -e UNSECURED_DEPLOYMENT=true \
+  med-assist:1.0.0-example
+```
+
+`CORS_ALLOWED_ORIGINS` is read from the environment; a published image has no
+`.env` in `/app` for it to fall back to, so left unset it stays at the
+`http://localhost:3000` default and the origin check refuses every analysis your
+domain sends. `UNSECURED_DEPLOYMENT` is the banner described below, and every
+instruction on this page that says to put it "on the frontend service" or in
+`.env` means this flag for this image. Both are read at start, so neither is a
+rebuild - unlike `NEXT_PUBLIC_API_URL` above, which is. That rebuild is not a cost this image adds: a separately published
+frontend image would be pinned to a build-time address in exactly the same way.
+What is published here is the local case, correct by default, and everything
+else on this page - the banner, the proxy, the origin check - applies to the
+rebuild rather than to the tag.
 
 **The analysis routes check where the request came from.** A request whose
 `Origin` is not in `CORS_ALLOWED_ORIGINS` is refused with a fixed `403` before
