@@ -58,10 +58,10 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Dependencies first, and from the same three files backend/Dockerfile copies:
-# pyproject.toml names README.md as the project readme, so the install fails
-# without it.
-COPY backend/uv.lock backend/pyproject.toml backend/README.md ./
+# Dependencies first, from the same two files backend/Dockerfile copies.
+# pyproject.toml carries no `readme` field: the project has one README, at
+# the repository root, and it is not part of the package's own metadata.
+COPY backend/uv.lock backend/pyproject.toml ./
 
 RUN uv sync --frozen --no-dev
 

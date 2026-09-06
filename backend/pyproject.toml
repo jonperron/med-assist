@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "The backend for the Med-Assist application."
 authors = [{ name = "Jonathan Perron", email = "jonathan@perron.bzh" }]
 requires-python = ">=3.12, <3.15"
-readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [
     "anyio>=4.14.2,<5",
