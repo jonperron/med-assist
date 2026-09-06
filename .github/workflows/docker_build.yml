@@ -126,9 +126,17 @@ jobs:
           docker run -d --name smoke -p 8000:8000 -p 3000:3000 med-assist:pr
           trap 'docker logs smoke || true; docker rm -f smoke >/dev/null || true' EXIT
 
+          # Both ports, not just the API: the two processes start
+          # independently and nothing orders them, so waiting on one and then
+          # asserting the other is a race that passes on whichever runner
+          # happened to be fast. `|| true` because the wait is not the
+          # assertion - the assertions below are, and they report which half
+          # never came up.
           for _ in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/healthz >/dev/null; then break; fi
-            sleep 2
+            curl -fsS http://127.0.0.1:8000/healthz >/dev/null 2>&1 \
+              && curl -fsS http://127.0.0.1:3000/ >/dev/null 2>&1 \
+              && break
+            sleep 2 || true
           done
 
           # The API answers, so uvicorn started under the entrypoint.
