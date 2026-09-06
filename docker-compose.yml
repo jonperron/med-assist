@@ -1,72 +1,22 @@
-# `deploy.resources.limits` below is applied by Compose V2 and silently ignored
-# by the legacy v1 `docker-compose` binary. Check `docker compose version`
-# before believing in the limits.
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # Bound to loopback, not to every interface. `8000:8000` published an
-    # unauthenticated endpoint that ingests clinical documents on every address
-    # the host answers on, which is fine on a laptop and is a hole on a server:
-    # a platform that attaches a domain to this stack reaches the container over
-    # the Docker network and never needed the host port, while anyone scanning
-    # the host's public address did.
-    #
-    # A browser on the same machine still reaches http://localhost:8000, so a
-    # local `docker compose up` is unchanged. A browser on another machine no
-    # longer reaches it at all - that is the point, and it is what makes a
-    # non-localhost deployment go through a proxy. See deploy/README.md.
-    #
-    # BACKEND_BIND_ADDRESS exists so that undoing this is a deliberate act with
-    # a name rather than an edit to this file. 0.0.0.0 puts an API that answers
-    # anyone, with no credential of any kind, back on the public interface.
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
-    # Multipart parts above 1MB are spooled to a file under TMPDIR before any
-    # route code runs. A RAM-backed /tmp keeps uploaded documents off the
-    # container's writable layer, including on the stateless analysis path.
-    #
-    # The 50MB request ceiling bounds one request; this bounds the sum of those
-    # in flight. 256m covers four concurrent max-size uploads, which is why it
-    # is not simply the ceiling: a fifth would fail on a full filesystem. It is
-    # charged against the memory limit below. `noexec,nosuid,nodev` because
-    # nothing here is ever executed - only written and read back.
     tmpfs:
       - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
-    # The weights live on the host and are mounted in, not copied into the
-    # image. They are ~420MB and gitignored, so baking them in rebuilt a layer
-    # of them on every source edit and made a checkout without them fail the
-    # build rather than start. Mounted, the image is code and the model is data:
-    # swapping in a retrained model is a restart, not a rebuild.
-    #
-    # Read-only because nothing here writes to the weights - transformers is
-    # pointed at a local directory with the Hub disabled, so it only reads. A
-    # missing or empty MODEL_DIR is not fatal: Docker creates the host path,
-    # the load fails, and the container answers 503 on /readyz and on the
-    # analysis routes while the interface says the service is unavailable.
     volumes:
       - ${MODEL_DIR:-./backend/models}:/app/models:ro
-    # Nothing else bounds this container, and it holds the model resident for
-    # the life of the process. Measured: 470 MiB idle, 504 MiB peak across a
-    # batch of five long documents. 2g is roughly four times that - headroom
-    # for a large PDF, whose parser expands the file in memory, rather than a
-    # tight fit. It starts and analyses at 512m with nothing to spare.
     deploy:
       resources:
         limits:
           memory: ${BACKEND_MEMORY_LIMIT:-2g}
           cpus: "${BACKEND_CPU_LIMIT:-2}"
-    # A hard memory limit makes an OOM kill reachable, and without this the
-    # service would stay down until someone ran `docker compose up` by hand.
     restart: unless-stopped
-    # A parser crash would otherwise dump a core containing document text and
-    # extracted entities, onto the host and outside the tmpfs.
     ulimits:
       core: 0
-    # Uvicorn writes an access line per request and the default json-file
-    # driver never rotates, so an untouched deployment grows a log file until
-    # the disk fills. Capped at three 10MB files per service.
     logging:
       driver: json-file
       options:
@@ -76,36 +26,14 @@ services:
       - PYTHONUNBUFFERED=1
       - TMPDIR=/tmp
       - NER_MODEL_NAME=/app/models/
-      # The model is mounted locally. These make that structural: a misconfigured
-      # NER_MODEL_NAME fails instead of quietly reaching out to the Hub.
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
       - HF_HUB_DISABLE_TELEMETRY=1
-      # Inference is CPU-only. These bound what one container spends on it.
-      # The thread count defaults to the CPU limit rather than to torch's own
-      # default of one thread per core: torch reads the host's core count, not
-      # the cgroup quota, so on a 16-core host it would start 16 threads inside
-      # a 2-core quota and pay the difference in contention.
       - NER_INFERENCE_THREADS=${NER_INFERENCE_THREADS:-${BACKEND_CPU_LIMIT:-2}}
       - NER_MAX_CONCURRENT_INFERENCES=${NER_MAX_CONCURRENT_INFERENCES:-1}
-      # Development mode mounts the mock endpoints; production is the default.
       - APP_ENV=${APP_ENV:-production}
-      # The origins the browser may call the API from. The default is the
-      # frontend service's own published port, so it matches
-      # NEXT_PUBLIC_API_URL's default the way the two ends of one connection
-      # have to. A malformed value fails the container at startup rather than
-      # leaving every call to fail in the browser.
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
-      # There is no credential here and the API authenticates nobody. Anyone who
-      # can reach port 8000 can submit documents and spend this host's CPU, and
-      # the loopback binding above is what decides who that is. See
-      # deploy/README.md before attaching a domain to this stack.
-    # Ready means the weights are in memory, not merely that the port is open.
-    # The model loads at startup and takes seconds on a CPU, hence start_period.
     healthcheck:
-      # The probe is caught rather than left to raise: urlopen answers a 503
-      # with an exception, and an uncaught one writes a traceback into the
-      # container log on every check while the service is not ready.
       test:
         - CMD-SHELL
         - python -c "import urllib.request,sys;
@@ -122,16 +50,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Baked into the client bundle at build time, so it must be the URL the
-        # browser uses to reach the backend - not the compose service name.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000" # Exposes Next.js standalone server on host port 3000
     environment:
-      # Puts the "do not submit real documents" banner on every screen. Read at
-      # request time rather than baked into the bundle, so turning it on is this
-      # variable and a restart - no rebuild. Set it on any deployment reachable
-      # by someone other than the person running it; see .env.example.
       - UNSECURED_DEPLOYMENT=${UNSECURED_DEPLOYMENT:-}
     depends_on:
       - backend
