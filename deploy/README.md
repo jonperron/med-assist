@@ -1,70 +1,58 @@
 # Deploying Med-Assist somewhere other than your own machine
 
 `POST /api/analyze` takes clinical documents from whoever asks, and asks the
-caller for nothing. Read that sentence again before you attach a domain to this
-stack.
+caller for nothing. Read that sentence again before you attach a domain to
+this stack.
 
-Med-Assist is a research project. Its product is a French clinical NER model;
-the API and the interface exist to exercise it and to show what it does. It was
-written to run on one machine, for the person running it - and it authenticates
-nobody, because on that machine there was nobody to authenticate.
+Med-Assist is a research project built to run on one machine, for the person
+running it — and it authenticates nobody, because on that machine there was
+nobody to authenticate. Nothing is stored, nothing leaves the host, and the
+model is local, so the risk isn't a database anyone can read. It's narrower
+and still real:
 
-Nothing is stored, nothing leaves the host, and the model is local, so the risk
-in front of you is not a database anyone can read. It is narrower and still
-real:
+- **Anyone who can reach the API can use it.** They get their own summary
+  back and can't read anyone else's — the service keeps nothing. What they
+  *can* do is spend your CPU, for as long as they like, on a service a
+  clinician is waiting for.
+- **You're running an open document intake on the internet.** What arrives
+  is your problem once it arrives.
+- **There's no record of who did any of it.** No caller is identified, so
+  there's no audit trail worth the name.
 
-- **anyone who can reach the API can use it.** They submit their documents and
-  get their own summary back. They cannot read anyone else's, because there is
-  no one else's to read - the service keeps nothing. What they can do is spend
-  your CPU, for as long as they like, on a service a clinician is waiting for.
-- **you are running an open document intake on the internet.** What arrives is
-  your problem once it arrives, whatever you do with it afterwards.
-- **there is no record of who did any of it.** No caller is identified, so there
-  is no audit trail worth the name.
-
-CORS does not help with most of it. It is enforced by browsers; `curl` has never
-read an `Access-Control-Allow-Origin` header in its life. The origin check
-described below is a server-side control that reuses the same list, and it
-constrains browsers only - which is the point, since the attack it closes is one
-that needs a browser.
+CORS doesn't help with most of this — it's enforced by browsers, and `curl`
+has never read an `Access-Control-Allow-Origin` header. The origin check
+below is a server-side control that reuses the same list and constrains
+browsers only, which is the point: the attack it closes needs a browser.
 
 ## The short version
 
-**Run it locally.** That is the deployment this project is built for, and on
-localhost none of the above applies.
-
-**If you publish it, publish it as a demonstration.** Set
-`UNSECURED_DEPLOYMENT=true` so every screen carries a banner telling the person
-using it not to submit real documents, and put an authenticating proxy in front
-if the audience is narrower than everybody. Do not point clinicians at a public
-instance and let them work from it.
-
-**If you need real access control, it is a contribution, not a setting.** There
-is no account system here, no login, no per-user anything. Adding one - sign-up,
-sessions, an identity provider, rate limits per caller - is welcome and is
-tracked as open work rather than shipped and disabled. See
-[Contributing access control](#contributing-access-control).
+- **Run it locally.** That's the deployment this project is built for, and
+  none of the above applies on localhost.
+- **If you publish it, publish it as a demonstration.** Set
+  `UNSECURED_DEPLOYMENT=true` so every screen warns against submitting real
+  documents, and put an authenticating proxy in front if the audience is
+  narrower than everybody. Don't point clinicians at a public instance.
+- **Real access control is a contribution, not a setting.** There's no
+  account system, no login, no per-user anything. Adding one is welcome and
+  tracked as open work — see [Contributing access control](#contributing-access-control).
 
 ## What this repository does about it
 
 Two things, and neither asks the caller who they are.
 
 **The backend's port is published on loopback.** `docker-compose.yml` binds
-`127.0.0.1:8000:8000` rather than `8000:8000`. A browser on the machine running
-the stack still reaches `http://localhost:8000`, and a reverse proxy on the
-Docker network still reaches the container. What is gone is the path from the
-host's public address straight into the API - which matters more than it sounds,
-because Docker's port publishing writes its own firewall rules and `8000:8000`
-was reachable from outside regardless of what `ufw` had been told.
-`BACKEND_BIND_ADDRESS` undoes it, deliberately and by name.
+`127.0.0.1:8000:8000` rather than `8000:8000`. A browser on the host still
+reaches `http://localhost:8000`, and a reverse proxy on the Docker network
+still reaches the container — what's gone is the path from the host's public
+address straight into the API, which matters because Docker's port
+publishing writes its own firewall rules regardless of `ufw`.
+`BACKEND_BIND_ADDRESS` undoes this, deliberately, by name.
 
-Be clear about what this does *not* cover. A platform that attaches a domain
-routes over the Docker network and never used the host port, so **a public
-domain pointed at the backend service bypasses the loopback binding entirely**.
-So does any other container on the same network. Against the scenario that
-prompts most of this page - a domain attached to port 8000 - the binding is
-worth nothing. It closes host-port scanning. That is a real path and a smaller
-one.
+This does **not** cover a platform that attaches a domain: that routes over
+the Docker network and never touches the host port, so a public domain
+pointed at the backend bypasses the loopback binding entirely — so does any
+other container on the same network. Against that scenario the binding is
+worth nothing; it only closes host-port scanning, a real but smaller path.
 
 **The binding lives in `docker-compose.yml` only.** Run the published image
 directly and it does not apply: `docker run -p 8000:8000` puts the API back on
@@ -159,74 +147,67 @@ else on this page - the banner, the proxy, the origin check - applies to the
 rebuild rather than to the tag.
 
 **The analysis routes check where the request came from.** A request whose
-`Origin` is not in `CORS_ALLOWED_ORIGINS` is refused with a fixed `403` before
-its body is read. What this closes is one specific thing: another site driving
-`POST /api/analyze` from a visitor's browser and spending your compute on
-documents of its choosing. CORS alone did not stop that - it withholds the
-answer from the attacking page, but the request was still analysed.
+`Origin` isn't in `CORS_ALLOWED_ORIGINS` is refused with a fixed `403` before
+its body is read. This closes one specific thing: another site driving
+`POST /api/analyze` from a visitor's browser to spend your compute on
+documents of its choosing — CORS alone doesn't stop that, it only withholds
+the answer from the attacking page.
 
-It constrains browsers and nothing else. A scripted caller writes whatever
-`Origin` it likes, and a request carrying neither `Origin` nor `Sec-Fetch-Site`
-is let through, because a proxy in front sends neither and neither does the
-healthcheck. A browser reporting `Sec-Fetch-Site: same-origin` or `none` is let
-through too - before the list is consulted, which is why the one-domain shape
-below works without you listing your own origin; a page cannot set that header.
-The header cuts the other way as well: a request carrying no `Origin` but a
-`Sec-Fetch-Site` naming any other site is refused, `same-site` included.
+It constrains browsers and nothing else: a scripted caller writes whatever
+`Origin` it likes. A request with neither `Origin` nor `Sec-Fetch-Site` is
+let through (a proxy or healthcheck sends neither); a browser reporting
+`Sec-Fetch-Site: same-origin`/`none` is let through too, before the list is
+consulted — which is why the one-domain shape below works without listing
+your own origin. A request with no `Origin` but `Sec-Fetch-Site` naming any
+other site is refused, `same-site` included.
 
-**Your proxy must forward `Origin` and the `Sec-Fetch-*` headers unmodified.**
-The whole check rests on them arriving as the browser wrote them. A `header_up`
-line that strips `Origin`, or a WAF that normalises it away, does not tighten
-this control - it disables it, silently, with nothing in the log or at startup
-to say so.
+**Your proxy must forward `Origin` and `Sec-Fetch-*` unmodified.** A
+`header_up` line that strips `Origin`, or a WAF that normalises it away,
+disables this check silently — nothing logs it.
 
-Treat `CORS_ALLOWED_ORIGINS` as public: the CORS preflight is answered outside
-the gate, so an `OPTIONS` naming an origin already reveals whether that origin
-is allowed.
+Treat `CORS_ALLOWED_ORIGINS` as public: the CORS preflight is answered
+outside the gate, so an `OPTIONS` naming an origin already reveals whether
+it's allowed.
 
-The gate covers the `/api` prefix, so **everything outside it is open**:
-`/healthz`, `/readyz`, `/`, and FastAPI's `/docs`, `/redoc` and `/openapi.json`.
-The health pair is deliberate - the container healthcheck calls readiness from
-inside the container, the interface polls it from a browser, and what they
-disclose is whether a process is up. The schema endpoints are incidental, and
-the Caddy example keeps them off the proxy by routing only `/api`, `/healthz`
-and `/readyz` to this service. A deployment that routes the backend more broadly
-serves its own API schema to anyone.
+The gate covers only the `/api` prefix — **everything else is open**:
+`/healthz`, `/readyz`, `/`, `/docs`, `/redoc`, `/openapi.json`. The health
+pair is deliberate (the container healthcheck and the browser both poll it,
+disclosing only whether a process is up); the schema endpoints are
+incidental, and the Caddy example keeps them off the proxy by routing only
+`/api`, `/healthz` and `/readyz`. Routing the backend more broadly serves its
+API schema to anyone.
 
 ## The warning banner
 
-`UNSECURED_DEPLOYMENT=true` on the frontend service puts a banner on every
-screen: this installation is open, anyone can reach it, documents sent through
-it may be read by a third party, use fictional documents. It is off by default,
-because on the machine it was built for it would be noise.
+`UNSECURED_DEPLOYMENT=true` on the frontend puts a banner on every screen:
+this installation is open, anyone can reach it, documents sent through it may
+be read by a third party, use fictional documents. Off by default — on the
+machine it was built for, it would be noise.
 
-It is read at request time rather than baked into the bundle, so turning it on
-is one variable and a restart - no rebuild, which is what stops it from being
-the step that gets skipped.
+It's read at request time rather than baked into the bundle, so turning it on
+is one variable and a restart, not a rebuild — which is what keeps it from
+being the step that gets skipped.
 
-**It is not a control.** It changes what a clinician does, not what the service
-accepts. Setting it does not make a public deployment safe; it makes a public
-deployment honest.
+**It's not a control.** It changes what a clinician does, not what the
+service accepts. Setting it makes a public deployment honest, not safe.
 
 ## Putting authentication in front
 
-There is none in the application, so it goes in a proxy. The proxy
-authenticates the person; the application behind it still authenticates nobody,
-which means the proxy is the whole control and anything that reaches the
-container around it is inside.
+There's none in the application, so it goes in a proxy. The proxy
+authenticates the person; the application still authenticates nobody, so the
+proxy is the whole control and anything that reaches the container around it
+is inside.
 
     browser --TLS--> proxy --> backend  (loopback / docker network)
                        \-----> frontend
 
-[`caddy/Caddyfile.example`](./caddy/Caddyfile.example) is that, in about thirty
-lines. Copy it, replace the placeholders, and note the one design detail that
-matters: **one domain, not two.** The interface and the API served from the same
-origin means a browser that has authenticated to the domain sends its
-credentials on the interface's own calls. Split them across `app.` and `api.`
-and the browser prompts on the page and then silently fails every fetch, because
-it does not volunteer credentials cross-origin.
-
-With that file in place:
+[`caddy/Caddyfile.example`](./caddy/Caddyfile.example) is that, in about
+thirty lines. Copy it, replace the placeholders, and keep the one design
+detail that matters: **one domain, not two.** Serving the interface and the
+API from the same origin means a browser authenticated to the domain sends
+its credentials on the interface's own calls. Split them across `app.` and
+`api.` and the browser prompts on the page, then silently fails every fetch —
+it won't volunteer credentials cross-origin.
 
 ```bash
 # In .env
@@ -235,113 +216,102 @@ CORS_ALLOWED_ORIGINS=https://med-assist.example.org
 UNSECURED_DEPLOYMENT=true                            # unless the proxy is the whole audience
 ```
 
-The two URLs are not secrets, but they have to move together or the browser
+These two URLs aren't secrets, but they have to move together or the browser
 drops every answer.
 
 ### The cost of basic auth in this shape
 
-Basic auth is ambient: once the browser has cached the credentials for the
-domain, it attaches them to *any* request to it, including one started by
-another site. So a page a clinician visits elsewhere can drive a cross-origin
-`POST /api/analyze` at your deployment, and it will be authenticated - the
-browser supplies the password and Caddy accepts it. The attacker cannot read the
-answer, because CORS blocks that and the origin list is explicit, and nothing is
-stored, so this is compute abuse and documents of their choosing being pushed
-through your deployment - not a confidentiality breach.
+Basic auth is ambient: once the browser has cached credentials for the
+domain, it attaches them to *any* request there, including one started by
+another site. So a page a clinician visits elsewhere can drive a
+cross-origin `POST /api/analyze` at your deployment, authenticated — Caddy
+accepts the browser-supplied password. The attacker can't read the answer
+(CORS blocks that) and nothing is stored, so this is compute abuse and
+unwanted documents being pushed through your deployment, not a
+confidentiality breach.
 
 **The backend's origin check closes it.** The forged request carries the
-attacking page's `Origin`, which is not in `CORS_ALLOWED_ORIGINS`, so the backend
-answers `403` and reads no body - after Caddy has authenticated the visitor, and
-regardless of it. That is the reason the check exists on the server rather than
-being left to the browser's CORS enforcement, which only withholds the answer.
+attacking page's `Origin`, not in `CORS_ALLOWED_ORIGINS`, so the backend
+answers `403` and reads no body — after Caddy has already authenticated the
+visitor, regardless. That's why the check lives on the server rather than
+relying on the browser's CORS enforcement, which only withholds the answer.
 
-It is a backstop, not a licence to skip the rest. It relies on the browser
-setting `Origin` honestly, so it does nothing against a caller that is not a
-browser. Replacing the `basic_auth` block with `forward_auth` to an identity
-provider that issues `SameSite=Lax` session cookies removes the
-ambient-credential problem at its source, and is still the better shape.
+It's a backstop, not a licence to skip the rest — it relies on the browser
+setting `Origin` honestly, so it does nothing against a non-browser caller.
+Replacing `basic_auth` with `forward_auth` to an identity provider issuing
+`SameSite=Lax` session cookies removes the ambient-credential problem at its
+source, and is still the better shape.
 
 ## Coolify, specifically
 
-Coolify will happily attach a public domain to whichever service you point it
-at, and its proxy reaches containers over the Docker network. Four things
-follow:
+Coolify attaches a public domain to whichever service you point it at, over
+the Docker network. Four things follow:
 
-- **Give the domain to the frontend, not to the backend.** A domain on port 8000
-  is the exact hole this page is about. If you route the API at all, route it as
-  a path on the frontend's domain, the way the Caddy example does.
+- **Give the domain to the frontend, not the backend.** A domain on port
+  8000 is the exact hole this page is about; route the API as a path on the
+  frontend's domain, the way the Caddy example does.
 - **Set `UNSECURED_DEPLOYMENT=true`.** A Coolify deployment is by definition
   reachable by someone other than you.
-- **The loopback binding will not save you here.** Coolify's proxy does not use
+- **The loopback binding won't save you here.** Coolify's proxy doesn't use
   the published host port, so the API stays reachable at whatever domain you
-  configured and unreachable at `your-host:8000`. The second half is the win;
-  the first half means the binding does nothing at all about a domain you point
-  at the backend.
-- **Coolify's proxy does not authenticate anyone by default.** Nothing else
-  does either. If the instance should not be open to the whole internet, add
-  basic auth or a `forward_auth` to your identity provider on the domain.
+  configured (though unreachable at `your-host:8000`).
+- **Coolify's proxy authenticates nobody by default**, and neither does
+  anything else. Add basic auth or `forward_auth` to your identity provider
+  on the domain if the instance shouldn't be open to the whole internet.
 
 ## Upgrading from a version that required a credential
 
-Between 2026-08-31 and 2026-09-05 this service could require, and then did
-require, a shared credential in `API_ACCESS_TOKEN`. If you configured one, three
-things are now true and none of them announces itself:
+Between 2026-08-31 and 2026-09-05 this service could require a shared
+credential in `API_ACCESS_TOKEN`. If you configured one:
 
 - **`API_ACCESS_TOKEN` is ignored.** Nothing reads it. The backend logs a
-  warning at startup if it is still set, and that warning is the only signal
-  you get. Remove the variable from every `.env`, secret store and deployment
-  platform - it is a stale secret, and stale secrets outlive the thing they
-  protected.
-- **A proxy rule injecting `Authorization: Bearer` is now decorative.** The
-  header is not read. If that rule was what you thought stood between the
-  internet and your document intake, nothing stands there now. Replace it with
-  `basic_auth` or `forward_auth` on the proxy itself - the Caddy example does
-  this - before treating the deployment as protected.
-- **Compose no longer refuses to start without it.** The `${API_ACCESS_TOKEN:?}`
-  guard is gone, so a stale `.env` starts silently where it used to fail loudly.
+  startup warning if it's still set — that warning is the only signal you
+  get. Remove it from every `.env`, secret store and deployment platform.
+- **A proxy rule injecting `Authorization: Bearer` is now decorative.** If
+  that rule was your access control, nothing stands there now — replace it
+  with `basic_auth` or `forward_auth` on the proxy itself before treating the
+  deployment as protected.
+- **Compose no longer refuses to start without it.** The
+  `${API_ACCESS_TOKEN:?}` guard is gone, so a stale `.env` starts silently.
 
 Set `UNSECURED_DEPLOYMENT=true` at the same time, unless your proxy's own
 authentication is the whole audience.
 
 ## Contributing access control
 
-This is the gap, stated plainly so nobody has to discover it: **Med-Assist has
-no accounts, no login, no sessions, no per-caller rate limiting and no audit
-trail.** A shared bearer credential existed briefly and was removed - it
-identified nobody, could not be revoked for one client, and the browser
-interface could not present it, so every deployment that set it turned its own
-interface off.
+Stated plainly: **Med-Assist has no accounts, no login, no sessions, no
+per-caller rate limiting and no audit trail.** A shared bearer credential
+existed briefly and was removed — it identified nobody, couldn't be revoked
+per client, and the browser interface couldn't present it, so any deployment
+that set it turned its own interface off.
 
-Contributions that would change this, roughly in the order they would help:
+Contributions that would help, roughly in order:
 
 - Sign-up and sign-in, with sessions the interface can actually use.
-- Per-caller rate limiting on the analysis routes. There is none: every bound
-  that exists today is global rather than per caller, so one caller can take
-  all of it. `NER_MAX_CONCURRENT_INFERENCES` holds the number of documents
-  inside the model at once - 1 by default, per backend process, so more workers
-  multiply it - uvicorn's `--limit-concurrency 8` bounds requests in flight,
-  and `MAX_BATCH_FILES`, the 50 MB ceiling and the container's CPU limit bound
-  the rest.
-- An audit trail somebody has scoped. The deliberate absence of one is why
-  there is no record of who submitted what; adding it means deciding what a log
-  of clinical activity may contain and how long it is kept, which is a decision
-  entry before it is code.
+- Per-caller rate limiting on the analysis routes — every existing bound is
+  global, not per caller: `NER_MAX_CONCURRENT_INFERENCES` (documents inside
+  the model at once, per backend process — so more worker processes multiply
+  it), uvicorn's `--limit-concurrency 8`, `MAX_BATCH_FILES`, the 50 MB
+  ceiling, and the container's CPU limit.
+- An audit trail somebody has scoped — deciding what a log of clinical
+  activity may contain and how long it's kept is a decision entry before
+  it's code.
 
-Open an issue before building one of these - the storage boundary in
-[`AGENTS.md`](../AGENTS.md) section 9 says the service persists nothing, and an
-account system is the first thing that would change that.
+Open an issue before building one of these — [`AGENTS.md`](../AGENTS.md)
+section 9 says the service persists nothing, and an account system is the
+first thing that would change that.
 
 ## What is still true afterwards
 
 Even with a proxy, the banner and the loopback binding all in place:
 
-- Anyone who reaches the container on the Docker network reaches the API, with
-  no credential of any kind. A compromised neighbour container on the same host
-  is inside the boundary.
-- Nothing here rate-limits *per caller*. One caller can hold the model busy
-  indefinitely, because every ceiling there is is global: 50 MB per request,
-  `MAX_BATCH_FILES` documents in one, `NER_MAX_CONCURRENT_INFERENCES` inside
-  the model at once per backend process, and the container's CPU limit.
-- Nothing here is an audit trail. An access log records paths and statuses, not
-  who submitted what, and deliberately so - the alternative is a log of clinical
-  activity that nobody scoped, sized or agreed to keep.
+- Anyone who reaches the container on the Docker network reaches the API
+  with no credential of any kind — a compromised neighbour container on the
+  same host is inside the boundary.
+- Nothing rate-limits *per caller* — every ceiling is global (50 MB per
+  request, `MAX_BATCH_FILES` per batch, `NER_MAX_CONCURRENT_INFERENCES` per
+  process, the container's CPU limit), so one caller can hold the model busy
+  indefinitely.
+- Nothing here is an audit trail. An access log records paths and statuses,
+  not who submitted what — deliberately, since the alternative is a log of
+  clinical activity nobody scoped, sized or agreed to keep.

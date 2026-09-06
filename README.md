@@ -2,85 +2,58 @@
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/jonperron/med-assist/backend-ci.yml?branch=main)](https://github.com/jonperron/med-assist/actions)
 
-**Med-Assist** summarises clinical documents for the people who have to read
-them. Point it at one document or at a stack of them for the same patient, and
-it answers a short, readable summary — pathologies, symptoms, examinations,
-treatments, localisations — built from what a medical NER model found in the
-text.
+Med-Assist turns one or several medical documents about the same patient into
+a short clinical summary — pathologies, symptoms, examinations, treatments,
+localisations. No language model is involved: a medical NER model tags spans
+in the text, and fixed rules assemble the summary from those spans, so it
+can't say anything the documents didn't.
 
-No language model is involved and nothing leaves the machine: the summary is
-assembled from the spans the model marked, so it cannot state anything the
-documents did not.
-
----
-
-## ⚠️ Disclaimer
-
-> **Med-Assist is under active development.**
-It is not intended for use in clinical decision-making and should not replace
-professional medical advice or diagnosis.
+> **⚠️ Under active development.** Not for clinical decision-making — it does
+> not replace professional medical judgment.
 
 ---
 
-## 🔐 Privacy & Data Control
+## 🔐 Privacy
 
-- **Local-first.** Runs entirely on your own infrastructure. No external APIs,
-  no cloud dependencies.
-- **Nothing stored.** `POST /api/analyze` and `POST /api/analyze/stream` are the
-  whole API. Each reads a document, extracts its entities and answers in a
-  single request. There is no datastore behind the service, no file id to come
-  back for, and nothing to delete.
-- **No language model, no egress.** Summaries are assembled from NER output by
-  fixed rules, not generated. Document text is never sent anywhere and is not
-  echoed back to the caller.
-- **The browser enforces it too.** The interface serves a
-  Content-Security-Policy whose `connect-src` names only the page itself and the
-  configured API origin, which closes every silent channel out of it.
+- **Local-first, no egress.** Runs on your own infrastructure. No external
+  APIs, no cloud calls, no language model. The interface's
+  Content-Security-Policy backs this at the browser: `connect-src` names only
+  the page itself and the configured API origin, closing every silent
+  channel out of it.
+- **Nothing is stored.** `POST /api/analyze` and `POST /api/analyze/stream`
+  are the whole API — read, extract, answer, forget. No datastore, no file
+  id, nothing to delete. Document text is never echoed back to the caller.
+- **No accounts, no login.** Anyone who can reach the API can use it. This is
+  meant to run on your own machine — see [Configuration](#configuration)
+  before exposing it to anyone else, and don't point clinicians at a public
+  instance with real documents.
 
-This is a local-processing guarantee, not a compliance claim. The extracted
-entities are health data and remain personal data under GDPR, and clinical text
-is adversarial: read a summary before you rely on it.
-[`backend/README.md`](./backend/README.md) states the scope and
-[`frontend/README.md`](./frontend/README.md) the policy;
-[`openwiki/decisions/`](./openwiki/decisions/) holds the known gaps and what
-each boundary does not stop.
-
-**Med-Assist is meant to run on your own machine, and it authenticates nobody.**
-There are no accounts, no login and no credential of any kind: anyone who can
-reach the API can submit documents to it. Published at a public address it is a
-demonstration - set `UNSECURED_DEPLOYMENT=true` so every screen says so, put an
-authenticating proxy in front, and do not point clinicians at it with real
-documents. [`deploy/README.md`](./deploy/README.md) is the page to read first;
-the trade and its cost are in
-[the decision entry](./openwiki/decisions/2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md),
-and access control is [open to contribution](#-contributing) rather than a
-setting you have missed.
+This is a local-processing guarantee, not a compliance claim: extracted
+entities are still health data (personal data under GDPR), and clinical text
+is adversarial input — read a summary before relying on it.
 
 ---
 
-## 🚀 Running Locally
+## 🚀 Running it
 
 ```bash
-cp .env.example .env      # no secrets to fill in; the defaults run as-is
+cp .env.example .env      # no secrets to fill in; defaults run as-is
 docker compose up --build
 ```
 
-The interface is at [localhost:3000](http://localhost:3000) and the API at
-[localhost:8000](http://localhost:8000).
+- Interface: [localhost:3000](http://localhost:3000)
+- API: [localhost:8000](http://localhost:8000)
 
 ### The model
 
-The weights are not in this repository and not in the image. They are mounted
-read-only from `MODEL_DIR`, which defaults to `./backend/models` — put
-`config.json`, `model.safetensors`, `tokenizer.json` and `tokenizer_config.json`
-there, or point `MODEL_DIR` at wherever they already are. Swapping in a
-retrained model is then `docker compose restart backend`, with no rebuild.
+Weights aren't in the repo or the image — mount them read-only from
+`MODEL_DIR` (default `./backend/models`): `config.json`,
+`model.safetensors`, `tokenizer.json`, `tokenizer_config.json`. Swap models
+with `docker compose restart backend`, no rebuild needed.
 
-Start the stack without them and nothing crashes: the backend comes up and
-answers `503` on `GET /readyz` and on both analysis routes, and the interface
-says the service is unavailable rather than blaming the documents. It rechecks
-every few seconds and clears itself. If that warning is on screen, check
-`MODEL_DIR` first, then `docker compose logs backend`.
+Missing weights don't crash the stack: the backend answers `503` on
+`/readyz` and both analysis routes, and the UI shows a service-unavailable
+message. If you see it, check `MODEL_DIR`, then `docker compose logs backend`.
 
 ### The published image
 
@@ -112,50 +85,38 @@ else. Reaching it from another machine is a rebuild with your own
 `NEXT_PUBLIC_API_URL`, not a published port; the next section has both variables
 and [`deploy/README.md`](./deploy/README.md) has the rest.
 
-### Serving it from somewhere other than localhost
+## Configuration
 
-Two variables describe the same connection and have to move together:
+| Variable | What it does |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | Where the browser looks for the API. Baked in at build time — changing it needs a frontend rebuild. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origins (`scheme://host[:port]`, no trailing slash — a trailing slash or an implied port like `:443`/`:80` is normalized rather than refused). Enforced server-side, not just sent to browsers: a `Sec-Fetch-Site` of `same-origin`/`none` is accepted before the list is even consulted; otherwise a request whose `Origin` is outside the list gets a fixed `403` before its body is read, and a request with neither header is let through. Unset or empty keeps the default (`http://localhost:3000`) rather than denying everything. `*` and anything that isn't a valid origin are refused at startup, by position, never quoted. |
+| `UNSECURED_DEPLOYMENT` | Set `true` on any non-local deployment — puts a banner on every screen saying this installation is open, anyone can reach it, and documents sent through it may be read by a third party. Read at request time; just restart. |
+| `NER_MODEL_NAME` | Path to the local model directory. Required. |
+| `APP_ENV` | `production` (default) or `development` — the latter enables mock endpoints, never mounted otherwise. |
+| `MAX_BATCH_FILES` | Max documents per request (default `20`), bounding how many can queue behind a model that admits one document at a time. Each file is separately capped at 10 MB — a ceiling that bounds bytes, not inference time, so twenty small text files are the expensive case and a small deployment should lower this. |
+| `NER_INFERENCE_THREADS`, `NER_MAX_CONCURRENT_INFERENCES` | Threads per inference (default `0`, one per host core) and documents inside the model at once (default `1`). See Footprint below for why the first one matters. |
 
-- `NEXT_PUBLIC_API_URL` — where the browser looks for the API. It is baked into
-  the frontend bundle at build time, so changing it means rebuilding that image.
-- `CORS_ALLOWED_ORIGINS` — which pages the API will answer. Comma-separated,
-  each entry `scheme://host[:port]` with no trailing slash.
+Update `NEXT_PUBLIC_API_URL` and `CORS_ALLOWED_ORIGINS` together — mismatched,
+the API works but the browser silently drops every response.
 
-Change one without the other and the API is reachable but every answer is
-dropped by the browser, which looks like a network error rather than a refusal.
-A value that is not an origin stops the backend at startup instead of failing
-silently in the browser later. The exact validation rules are in
-[`openwiki/decisions/`](./openwiki/decisions/).
+**CORS is not authentication, and neither is the banner.** Nothing in the app
+authenticates callers, and non-browser clients ignore CORS entirely. Put an
+authenticating reverse proxy in front before exposing this to anyone but
+yourself — see [`deploy/README.md`](./deploy/README.md).
 
-A third variable applies to any deployment other than your own machine:
+### Upgrading a shared-credential deployment (2026-08-31 to 2026-09-05)
 
-- `UNSECURED_DEPLOYMENT` — set it to `true` and every screen carries a banner
-  saying this installation is open, anyone can reach it, and documents sent
-  through it may be read by a third party. It is read at request time, so
-  turning it on is a restart rather than a rebuild.
+`API_ACCESS_TOKEN` is no longer read. Remove it from every `.env` and secret
+store. If a proxy rule injected `Authorization: Bearer` for it, that rule now
+enforces nothing — replace it with real authentication on the proxy.
+Details: [`deploy/README.md`](./deploy/README.md).
 
-**CORS is not authentication, and neither is the banner.** Any client that is
-not a browser ignores CORS entirely, and nothing in the application guards the
-API. A deployment reachable by anyone other than the person running it needs a
-reverse proxy that authenticates - see [`deploy/README.md`](./deploy/README.md)
-for the shape that works and for what it still does not cover.
+### Upgrading a document-storing deployment (pre-2026-08-28)
 
-### Upgrading from a version that required a credential
-
-Between 2026-08-31 and 2026-09-05 the API could require, and then did require, a
-shared credential in `API_ACCESS_TOKEN`. It is now ignored: nothing reads it, and
-a proxy rule that injects `Authorization: Bearer` enforces nothing. Remove the
-variable from every `.env` and secret store, and if that rule was your access
-control, replace it with authentication on the proxy itself before treating the
-deployment as protected. The backend logs a warning at startup while the
-variable is still set. [`deploy/README.md`](./deploy/README.md) has the detail.
-
-### Upgrading from a version that stored documents
-
-Before 2026-08-28 the stack ran a Redis service and kept extracted entities.
-Removing that service from `docker-compose.yml` orphans the running container
-rather than deleting it, so the data outlives the upgrade. Destroy it
-explicitly:
+That version ran Redis and kept extracted entities. Removing the service from
+`docker-compose.yml` orphans the container instead of deleting it, so old
+data survives the upgrade unless you remove it explicitly:
 
 ```bash
 docker compose down --remove-orphans -v   # from the old checkout
@@ -167,59 +128,35 @@ difference between discarded data and readable data.
 
 ---
 
-## 🌱 Green Impact
+## 🌱 Footprint
 
-Med-Assist is built to run on minimal hardware. Inference is CPU-only and the
-image carries nothing else: `torch` is pinned to the CPU wheel index, which
-takes the installed backend environment from 4.6 GB to 1.2 GB of what would
-never have been executed. Both services carry memory and CPU limits, container
-logs rotate, request bodies above 50 MB are refused, and nothing is persisted
-between requests — so there is no datastore to size, back up or grow.
+CPU-only inference, CPU-only `torch` wheel (1.2 GB vs. 4.6 GB), memory/CPU
+limits on both containers, rotated logs, 50 MB request cap, nothing
+persisted. One thing to get right yourself: **set `NER_INFERENCE_THREADS` to
+match `BACKEND_CPU_LIMIT`** — torch defaults to one thread per host core
+regardless of your cgroup quota, and the mismatch is expensive (11s vs. 215s
+for the same batch, measured on a 14-core host under a 2-core limit).
 
-One lever matters more than the rest: **keep `NER_INFERENCE_THREADS` in step
-with `BACKEND_CPU_LIMIT`.** torch reads the host's core count rather than the
-cgroup quota, so left to itself it starts a thread per host core inside a much
-smaller allowance and pays the difference in contention. Measured on a 14-core
-host under a 2-core quota, the same five-document batch took **11 seconds** with
-the two matched and **215 seconds** without.
+`deploy.resources.limits` requires Compose V2 — the legacy v1
+`docker-compose` binary silently ignores it.
 
-Note that `deploy.resources.limits` is applied by Compose V2 and silently
-ignored by the legacy v1 `docker-compose` binary.
-
-The measurements behind each bound, and why each one is set where it is, are in
-[`openwiki/decisions/`](./openwiki/decisions/).
-
----
-
-## 🧩 Project Structure
-
-- [`backend/`](./backend/README.md) — FastAPI backend: extraction, NER and
-  summarisation.
-- [`frontend/`](./frontend/README.md) — the web interface.
-- [`openwiki/decisions/`](./openwiki/decisions/) — why things are the way they
-  are, one page per decision.
+Rationale and measurements: [`openwiki/decisions/`](./openwiki/decisions/).
 
 ---
 
 ## 🤝 Contributing
 
-We welcome community contributions!
-
-**Access control is the open gap, and it is a good place to start.** Med-Assist
-has no accounts, no login, no sessions, no per-caller rate limiting and no audit
-trail, because it was written to run on one machine for the person running it.
-Anything that changes that is welcome: sign-up and sign-in with sessions the
-interface can use, rate limiting on the analysis routes, or an audit trail
-somebody has scoped. Open an issue first - the service persists nothing today,
-and an account system is the first thing that would change that, so it needs a
-decision entry before it needs code.
-[`deploy/README.md`](./deploy/README.md) has the detail.
+Access control is the open gap and a good place to start: no accounts, no
+sessions, no rate limiting, no audit trail. If you want to add any of these,
+open an issue first — it's a decision that needs a page in
+[`openwiki/decisions/`](./openwiki/decisions/) before it needs code. See
+[`deploy/README.md`](./deploy/README.md) for the current shape.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the **Apache 2.0 License**.
+Apache 2.0.
 
 ---
 
