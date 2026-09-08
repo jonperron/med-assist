@@ -256,16 +256,18 @@ the Docker network. Five things follow:
 - **The loopback binding won't save you here.** Coolify's proxy doesn't use
   the published host port, so the API stays reachable at whatever domain you
   configured (though unreachable at `your-host:8050`).
-- **The backend's host port is 8050, not 8000, so it doesn't collide with
-  itself on redeploy.** Coolify creates a redeploy's replacement container
-  before it removes the old one, so a fixed host port that the previous
-  deployment already holds fails with "port is already allocated" until
-  that old container is gone. `docker-compose.yml` moved the backend's
-  published port off the common `8000` for exactly this reason. It's still
-  a fixed number, though - if `8050` is ever also taken on your host, the
-  fix is to edit `docker-compose.yml` and pick a different one; it has no
-  effect on the domain Coolify routes either way, since that goes over the
-  internal Docker network regardless of the published port.
+- **The backend's host port moved off the common default of 8000, to
+  8050.** That avoids colliding with some *other* service on the host that
+  happens to want 8000, which is what actually happened here - it does not
+  stop the backend from colliding with itself. Coolify creates a redeploy's
+  replacement container before it removes the old one, so any fixed host
+  port a deployment publishes collides with its own previous container
+  until that container is gone, whatever number it is - `docker compose`
+  then refuses to start with "port is already allocated". If a redeploy
+  fails this way on 8050 too, the fix is to edit `docker-compose.yml` and
+  pick a different number, which has no effect on the domain Coolify routes
+  either way, since that goes over the internal Docker network regardless
+  of the published port.
 - **Coolify's proxy authenticates nobody by default**, and neither does
   anything else. Add basic auth or `forward_auth` to your identity provider
   on the domain if the instance shouldn't be open to the whole internet.

@@ -24,23 +24,25 @@ fixed host port collides with that previous container until it is torn
 down - and `8000` is a common default other services on the same host are
 also likely to already hold.
 
-Separately, this deployment's `BACKEND_BIND_ADDRESS` was set to `0.0.0.0`
-rather than the documented default of `127.0.0.1` - not intentional. This
-was a real exposure, not a harmless setting: `POST /api/analyze` takes
-clinical documents from whoever asks and authenticates nobody, and
-`0.0.0.0` published it on every address the host answers on, reachable by
-anyone who could reach the host on that port at all - the exact scenario
-[2026-08-31 - The API can require a credential, and its port is
+Separately, a Coolify deployment of this project was found with
+`BACKEND_BIND_ADDRESS` set to `0.0.0.0` rather than the documented default
+of `127.0.0.1`. Not intentional, and worth stating precisely rather than
+generically: `0.0.0.0` publishes the port on every address the host
+answers on, and `POST /api/analyze` authenticates nobody, so that setting
+is a real exposure of an unauthenticated, document-ingesting API to
+whoever can reach the host - the exact scenario [2026-08-31 - The API can
+require a credential, and its port is
 loopback](./2026-08-31-the-api-can-require-a-credential-and-its-port-is-loopback.md)
 introduced the loopback default to close. That the platform's own proxy
 routes over the Docker network and ignores the published port explains why
 `0.0.0.0` was unnecessary for Coolify to work - it does not make publishing
-the API on every interface harmless. Reverting to `127.0.0.1` is an
-operator-side environment change on the Coolify deployment itself, not
-something this repository's default can force from here: the default was
-already `127.0.0.1` before and after this change (`docker-compose.yml`
-line 7), and the live deployment's own environment variable is what needs
-correcting, on that platform.
+the API on every interface harmless. This is an environment variable on
+the deployment platform, not something this repository's default can force
+or verify from here: `docker-compose.yml` line 7 defaults to `127.0.0.1`
+before and after this change, unmoved by anything in it. Whoever operates
+an affected deployment needs to remove or correct that override on the
+platform itself and confirm the port no longer answers from outside the
+host - this repository change is not that fix.
 
 ## What was decided
 
@@ -60,15 +62,28 @@ bind-address knob (`BACKEND_BIND_ADDRESS`) is untouched too - only the
 port number moved.
 
 Because this is the port a browser resolves `NEXT_PUBLIC_API_URL` against
-for a local `docker compose up`, every place that assumed `8000` as the
-backend's host-published port moved with it: `.env.example`'s
+for a local `docker compose up`, every place that assumed `8000` as *this
+stack's* host-published port moved with it: `.env.example`'s
 `NEXT_PUBLIC_API_URL` default, `docker-compose.yml`'s own default for the
 same build arg, the root `README.md`'s quick-start pointer, and
 `deploy/README.md`'s description of the loopback binding and its Coolify
-section. The single-container release image
-(`ghcr.io/jonperron/med-assist`, built from the root `Dockerfile`) is a
-separate artifact with its own port choice left to whoever runs it and is
-unaffected.
+section.
+
+Two more places name `8000` as a `NEXT_PUBLIC_API_URL` fallback and
+deliberately did not move: `frontend/Dockerfile`'s own build-arg default,
+and the root `Dockerfile`'s. Both back the single-container release image
+(`ghcr.io/jonperron/med-assist`) or a standalone `docker build
+./frontend`, neither of which `docker-compose.yml` builds - the compose
+frontend service always passes `NEXT_PUBLIC_API_URL` explicitly
+(`docker-compose.yml`'s build args), so these defaults are never read by
+that path. The release image's own published port stays pinned at `8000`
+by the address inlined into its bundle at build time (`deploy/README.md`'s
+"The published image only serves a browser on the Docker host" section
+explains why that address cannot be reconfigured after the fact), so it
+was left alone rather than moved to match a stack it isn't part of.
+`frontend/app/lib/contentSecurityPolicy.ts`'s `DEFAULT_API_URL` constant
+mirrors those two Dockerfiles for the same reason and its docstring now
+says so instead of pointing at `.env.example`.
 
 ## The alternative that was rejected
 
@@ -102,7 +117,11 @@ foreclose direct `host:port` access for anyone relying on it.
 - **Every place that named `8000` as the backend's host port had to be
   found and moved together**, rather than changing in one place. A future
   change to this number carries the same cost; nothing enforces the set of
-  files that need to agree.
+  files that need to agree. It also means two ports now coexist by design
+  - `8050` for the compose stack, `8000` still correct for the release
+  image and a standalone frontend build - which is one more thing to get
+  right when reading any of these files in isolation than when it was one
+  number everywhere.
 - **A local `docker compose up` following an older README, bookmark, or
   browser autofill for `localhost:8000` now gets nothing there.** The
   interface still starts and works at the documented `localhost:8050`; this

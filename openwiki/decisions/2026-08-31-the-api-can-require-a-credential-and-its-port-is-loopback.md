@@ -12,6 +12,11 @@ tags: [backend, deployment, security, authentication, coolify]
 > [2026-09-05 - The credential is removed and the deployment warns instead](./2026-09-05-the-credential-is-removed-and-the-deployment-warns-instead.md).
 > The loopback binding and the origin check survive; everything below about
 > `API_ACCESS_TOKEN` is history.
+>
+> **The published port moved on 2026-09-08.** `8000:8000` below is now
+> `8050:8000` - see
+> [2026-09-08 - The backend's published port moved to 8050](./2026-09-08-the-backends-published-port-moved-to-8050.md).
+> The loopback binding this entry describes is otherwise unchanged.
 
 
 ## The problem this is answering

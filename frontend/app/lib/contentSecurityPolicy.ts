@@ -19,8 +19,14 @@
  */
 
 /**
- * Matches the repository-root `.env.example` and the fallback `app/page.tsx`
- * uses for the fetch itself.
+ * The fallback when `NEXT_PUBLIC_API_URL` isn't set at build time - which is
+ * the case for the single-container release image and for a standalone
+ * `docker build ./frontend`, both of which default their own build arg to
+ * this same address (`Dockerfile`, `frontend/Dockerfile`). It does not match
+ * the repository-root `.env.example` or `docker-compose.yml`'s two-service
+ * stack, which publish the backend on a different host port and always pass
+ * `NEXT_PUBLIC_API_URL` explicitly rather than relying on this fallback.
+ * `app/page.tsx` uses the same fallback for the fetch itself.
  */
 export const DEFAULT_API_URL = 'http://localhost:8000'
 
