@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.0](https://github.com/jonperron/med-assist/compare/2.0.0...2.1.0) (2026-09-06)
+
+
+### Features
+
+* move from trixie to alpine ([#96](https://github.com/jonperron/med-assist/issues/96)) ([58d030f](https://github.com/jonperron/med-assist/commit/58d030fcde2f712a502468fd345554d8a84850b7))
+
+
+### Bug Fixes
+
+* remove claude gibberish from readme ([#95](https://github.com/jonperron/med-assist/issues/95)) ([ba9e024](https://github.com/jonperron/med-assist/commit/ba9e024a11dedd6ea143762d38e8e442722b3e0a))
+* remove claude's numerous comments in dockerfile ([58d030f](https://github.com/jonperron/med-assist/commit/58d030fcde2f712a502468fd345554d8a84850b7))
+
 ## [2.0.0](https://github.com/jonperron/med-assist/compare/1.0.0...2.0.0) (2026-09-06)
 
 
