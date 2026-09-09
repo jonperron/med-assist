@@ -42,7 +42,7 @@ docker compose up --build
 ```
 
 - Interface: [localhost:3000](http://localhost:3000)
-- API: [localhost:8000](http://localhost:8000)
+- API: [localhost:8050](http://localhost:8050)
 
 ### The model
 

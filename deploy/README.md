@@ -41,9 +41,10 @@ browsers only, which is the point: the attack it closes needs a browser.
 Two things, and neither asks the caller who they are.
 
 **The backend's port is published on loopback.** `docker-compose.yml` binds
-`127.0.0.1:8000:8000` rather than `8000:8000`. A browser on the host still
-reaches `http://localhost:8000`, and a reverse proxy on the Docker network
-still reaches the container — what's gone is the path from the host's public
+`${BACKEND_BIND_ADDRESS:-127.0.0.1}:8050:8000` rather than `8050:8000` on
+every interface. A browser on the host still reaches
+`http://localhost:8050`, and a reverse proxy on the Docker network still
+reaches the container — what's gone is the path from the host's public
 address straight into the API, which matters because Docker's port
 publishing writes its own firewall rules regardless of `ufw`.
 `BACKEND_BIND_ADDRESS` undoes this, deliberately, by name.
@@ -245,16 +246,28 @@ source, and is still the better shape.
 ## Coolify, specifically
 
 Coolify attaches a public domain to whichever service you point it at, over
-the Docker network. Four things follow:
+the Docker network. Five things follow:
 
 - **Give the domain to the frontend, not the backend.** A domain on port
-  8000 is the exact hole this page is about; route the API as a path on the
+  8050 is the exact hole this page is about; route the API as a path on the
   frontend's domain, the way the Caddy example does.
 - **Set `UNSECURED_DEPLOYMENT=true`.** A Coolify deployment is by definition
   reachable by someone other than you.
 - **The loopback binding won't save you here.** Coolify's proxy doesn't use
   the published host port, so the API stays reachable at whatever domain you
-  configured (though unreachable at `your-host:8000`).
+  configured (though unreachable at `your-host:8050`).
+- **The backend's host port moved off the common default of 8000, to
+  8050.** That avoids colliding with some *other* service on the host that
+  happens to want 8000, which is what actually happened here - it does not
+  stop the backend from colliding with itself. Coolify creates a redeploy's
+  replacement container before it removes the old one, so any fixed host
+  port a deployment publishes collides with its own previous container
+  until that container is gone, whatever number it is - `docker compose`
+  then refuses to start with "port is already allocated". If a redeploy
+  fails this way on 8050 too, the fix is to edit `docker-compose.yml` and
+  pick a different number, which has no effect on the domain Coolify routes
+  either way, since that goes over the internal Docker network regardless
+  of the published port.
 - **Coolify's proxy authenticates nobody by default**, and neither does
   anything else. Add basic auth or `forward_auth` to your identity provider
   on the domain if the instance shouldn't be open to the whole internet.

@@ -4,7 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8050:8000"
     tmpfs:
       - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
     volumes:
@@ -50,7 +50,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8050}
     ports:
       - "3000:3000" # Exposes Next.js standalone server on host port 3000
     environment:

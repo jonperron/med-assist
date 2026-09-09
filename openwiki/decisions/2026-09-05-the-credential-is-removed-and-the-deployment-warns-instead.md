@@ -7,6 +7,11 @@ tags: [backend, frontend, deployment, security, authentication]
 
 # 2026-09-05 - The credential is removed and the deployment warns instead
 
+> **The published port moved on 2026-09-08.** `127.0.0.1:8000:8000` below
+> is now `127.0.0.1:8050:8000` - see
+> [2026-09-08 - The backend's published port moved to 8050](./2026-09-08-the-backends-published-port-moved-to-8050.md).
+> The loopback binding itself is otherwise unchanged.
+
 ## The problem this is answering
 
 The 2026-09-03 entry made `API_ACCESS_TOKEN` required. It also wrote down, as a
