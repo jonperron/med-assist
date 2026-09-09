@@ -132,12 +132,16 @@ too.** `docker compose restart backend` used to restart only the API;
 connection to the interface as a side effect of picking up new weights or the
 banner setting.
 
-**Scaling the model's concurrency now duplicates an idle interface per
-replica.** The former advice to run more backend processes for
-`NER_MAX_CONCURRENT_INFERENCES` scaled a process that did nothing else; running
-more replicas of `app` now also starts a Next.js server nobody needs per
-replica. Wasted work, not an unsafe one, and there is no load balancer here to
-make replicas meaningful yet regardless.
+**Scaling the model's concurrency by running more containers no longer works
+without further changes.** The former advice to run more backend processes for
+`NER_MAX_CONCURRENT_INFERENCES` scaled a process with no published port of its
+own. `app` publishes two fixed host ports (`8050`, `3000`), so
+`docker compose up --scale app=2` fails outright - the second replica cannot
+bind either one, `container_name` or not. Making replicas work at all needs
+those ports moved onto a proxy or load balancer in front, which is out of
+scope for this change; until then, `NER_INFERENCE_THREADS`/
+`NER_MAX_CONCURRENT_INFERENCES` are the only knobs `.env.example` can honestly
+point at.
 
 **A platform that attaches a domain to a whole service, not a port within
 one, cannot point at the interface alone anymore.** Coolify's own domain

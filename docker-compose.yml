@@ -75,7 +75,9 @@ services:
     # honours an image's own HEALTHCHECK when a service does not override it.
     #
     # No container_name, unlike the two services this replaced: a fixed name
-    # collides with itself under `docker compose up --scale app=<n>`, which is
-    # the scaling path NER_MAX_CONCURRENT_INFERENCES's own comment in
-    # .env.example points to. `docker compose ps`/`logs app` address it by
-    # service name regardless.
+    # is one more thing that would collide under multiple instances, and
+    # `docker compose ps`/`logs app` address it by service name regardless.
+    # This alone does not make `--scale app=<n>` usable, though: both ports
+    # above are fixed host-port publishes, so a second replica still fails to
+    # bind them. Scaling this service needs those ports moved onto a proxy or
+    # load balancer in front - out of scope here.
