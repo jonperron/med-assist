@@ -1,10 +1,34 @@
 services:
-  backend:
+  # One service, not two: the root Dockerfile builds the interface and the API
+  # into a single image and starts both under docker-entrypoint.sh, so this is
+  # what a working copy runs and what a tagged release ships as the same
+  # image. See
+  # openwiki/decisions/2026-09-08-compose-builds-the-unified-image.md.
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
+      args:
+        # 8050, not the Dockerfile's own 8000 default: this build arg is
+        # resolved by the *browser*, which reaches the API at the host port
+        # this file publishes it on below, not at the container-internal
+        # port. See
+        # openwiki/decisions/2026-09-08-the-backends-published-port-moved-to-8050.md
+        # for why that host port is 8050, and why the root Dockerfile's own
+        # ARG default is deliberately left at 8000 for the standalone
+        # release-image case, which publishes 8000 directly.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8050}
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8050:8000"
+      # Deliberately not loopback-gated the way 8050 is above: the interface
+      # authenticates nobody either way, and the analysis it drives already
+      # goes through the API's own CORS/origin check - see deploy/README.md.
+      - "3050:3000" # Exposes Next.js standalone server on host port 3050
+    # 256m, paired with MAX_BATCH_FILES's 50MB-per-file ceiling and uvicorn's
+    # --limit-concurrency 8 in docker-entrypoint.sh: at most 8 uploaded parts
+    # can be spooling here at once, and this has to hold all of them. Raise
+    # concurrency or the per-file ceiling without raising this and clinical
+    # documents start spilling onto the container's writable layer instead.
     tmpfs:
       - /tmp:size=256m,mode=1777,noexec,nosuid,nodev
     volumes:
@@ -12,9 +36,21 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${BACKEND_MEMORY_LIMIT:-2g}
-          cpus: "${BACKEND_CPU_LIMIT:-2}"
+          memory: ${APP_MEMORY_LIMIT:-2.5g}
+          cpus: "${APP_CPU_LIMIT:-3}"
     restart: unless-stopped
+    # A parser crash on attacker-supplied input is the threat these two guard
+    # against beyond what the image's own non-root user already does: no
+    # capability this process doesn't need, and no route to regain one via a
+    # setuid binary in the base image.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Belt and suspenders with docker-entrypoint.sh's own `ulimit -c 0`: that
+    # one is what protects a container started outside Compose (`docker run`,
+    # a platform that ignores this file), this one needs no image cooperation
+    # at all. Either alone is enough; both cost nothing to keep.
     ulimits:
       core: 0
     logging:
@@ -29,43 +65,17 @@ services:
       - HF_HUB_OFFLINE=1
       - TRANSFORMERS_OFFLINE=1
       - HF_HUB_DISABLE_TELEMETRY=1
-      - NER_INFERENCE_THREADS=${NER_INFERENCE_THREADS:-${BACKEND_CPU_LIMIT:-2}}
+      - NER_INFERENCE_THREADS=${NER_INFERENCE_THREADS:-${APP_CPU_LIMIT:-3}}
       - NER_MAX_CONCURRENT_INFERENCES=${NER_MAX_CONCURRENT_INFERENCES:-1}
       - APP_ENV=${APP_ENV:-production}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3050}
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - python -c "import urllib.request,sys;
-          sys.exit(0 if urllib.request.urlopen('http://localhost:8000/readyz').status == 200 else 1)"
-          2>/dev/null || exit 1
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
-    container_name: med_assist_backend
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8050}
-    ports:
-      - "3050:3000" # Exposes Next.js standalone server on host port 3050
-    environment:
       - UNSECURED_DEPLOYMENT=${UNSECURED_DEPLOYMENT:-}
-    depends_on:
-      - backend
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: ${FRONTEND_MEMORY_LIMIT:-512m}
-          cpus: "${FRONTEND_CPU_LIMIT:-1}"
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    container_name: med_assist_frontend
+    # No explicit healthcheck: block. The image already declares one covering
+    # both ports (readyz on 8000, the interface's root on 3000) and Compose
+    # honours an image's own HEALTHCHECK when a service does not override it.
+    #
+    # No container_name, unlike the two services this replaced: a fixed name
+    # collides with itself under `docker compose up --scale app=<n>`, which is
+    # the scaling path NER_MAX_CONCURRENT_INFERENCES's own comment in
+    # .env.example points to. `docker compose ps`/`logs app` address it by
+    # service name regardless.

@@ -40,7 +40,8 @@ The system must prioritize:
 - Backend: Python 3.12+, FastAPI `0.135.1`, Transformers `4.x`, PyTorch `2.x`.
 - Frontend: Next.js `16.x`, React `19.x`, TypeScript `5.x`, ESLint `9.x`, Node.js `24.x`.
 - Storage: none. The API keeps nothing after a request; there is no datastore.
-- Infra: Docker Compose with `backend` and `frontend` services.
+- Infra: Docker Compose with a single `app` service, building the root
+  `Dockerfile` - the same image a release publishes.
 
 ## 4) Project Structure
 

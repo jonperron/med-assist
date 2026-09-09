@@ -49,7 +49,7 @@ docker compose up --build
 Weights aren't in the repo or the image — mount them read-only from
 `MODEL_DIR` (default `./backend/models`): `config.json`,
 `model.safetensors`, `tokenizer.json`, `tokenizer_config.json`. Swap models
-with `docker compose restart backend`, no rebuild needed.
+with `docker compose restart app`, no rebuild needed.
 
 ## Configuration
 

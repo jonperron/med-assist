@@ -1,11 +1,12 @@
 # The build context is the repository root, and everything in it is sent to the
-# Docker daemon and cached there - whether or not a COPY ever mentions it. The
-# per-service contexts have their own files; this one is the union of both plus
-# everything that only exists at the root.
+# Docker daemon and cached there - whether or not a COPY ever mentions it. This
+# is the only .dockerignore in the repository: the root Dockerfile is the only
+# build description now, and backend/.dockerignore and frontend/.dockerignore
+# were deleted alongside the per-service Dockerfiles they scoped.
 
-# The clinical corpus and a multi-gigabyte CUDA environment. First for the same
-# reason it is first in backend/.dockerignore: .gitignore does not apply here,
-# and neither belongs anywhere near an image build.
+# The clinical corpus and a multi-gigabyte CUDA environment. First because
+# .gitignore does not apply here, and neither belongs anywhere near an image
+# build.
 backend/training/
 
 # The weights, ~420MB, mounted read-only at runtime rather than copied in. See

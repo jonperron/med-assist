@@ -7,6 +7,12 @@ tags: [backend, deployment, footprint, security]
 
 # 2026-08-28 - The request ceiling and the container are both bounded
 
+> **Note added 2026-09-08.** `BACKEND_CPU_LIMIT`, named below as the latency
+> dial, was renamed to `APP_CPU_LIMIT` when `docker-compose.yml` collapsed to
+> one service - see
+> [2026-09-08 - docker compose builds the unified image, not two Dockerfiles](./2026-09-08-compose-builds-the-unified-image.md).
+> Same role, same measurement; different variable name.
+
 ## What was decided
 
 Three limits that were assumed to exist are now enforced.

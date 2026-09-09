@@ -6,8 +6,10 @@
 # a container that is still "up", still passing a port check, and answering
 # nothing on half its surface.
 #
-# Compose runs the two as separate services and needs none of this. See
-# openwiki/decisions/2026-09-05-the-release-image-is-one-container.md.
+# Compose builds and runs this same image now too, so this script is what
+# takes a working copy down as well as a release. See
+# openwiki/decisions/2026-09-05-the-release-image-is-one-container.md and
+# openwiki/decisions/2026-09-08-compose-builds-the-unified-image.md.
 set -uo pipefail
 
 # No core dumps, before either process starts and inherited by both.
@@ -49,9 +51,9 @@ trap stop TERM INT
 readonly TERMINATED=143
 
 # The venv's own uvicorn rather than `uv run`: the process is unprivileged and
-# has no home directory, and uv wants a cache directory it cannot write. The
-# command line is otherwise the one in backend/Dockerfile - --limit-concurrency
-# bounds requests in flight, which the 50MB per-request ceiling does not.
+# has no home directory, and uv wants a cache directory it cannot write.
+# --limit-concurrency bounds requests in flight, which the 50MB per-request
+# ceiling does not.
 /app/.venv/bin/uvicorn app.main:app \
     --host 0.0.0.0 --port 8000 --limit-concurrency 8 &
 api_pid=$!

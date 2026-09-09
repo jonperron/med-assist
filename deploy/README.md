@@ -73,7 +73,7 @@ docker run \
 ```
 
 That is the port exposure, the tmpfs and the weights. It is not the whole of
-what `docker-compose.yml` gives the two services, and the rest does not travel
+what `docker-compose.yml` gives its `app` service, and the rest does not travel
 with a published tag: the memory and CPU limits, `restart: unless-stopped`, and
 the log rotation that stops uvicorn's per-request access line from filling a
 disk. Add `--memory`, `--cpus`, `--restart unless-stopped` and
@@ -139,7 +139,7 @@ docker run \
 `.env` in `/app` for it to fall back to, so left unset it stays at the
 `http://localhost:3000` default and the origin check refuses every analysis your
 domain sends. `UNSECURED_DEPLOYMENT` is the banner described below, and every
-instruction on this page that says to put it "on the frontend service" or in
+instruction on this page that says to put it "on the `app` service" or in
 `.env` means this flag for this image. Both are read at start, so neither is a
 rebuild - unlike `NEXT_PUBLIC_API_URL` above, which is. That rebuild is not a cost this image adds: a separately published
 frontend image would be pinned to a build-time address in exactly the same way.
@@ -212,7 +212,7 @@ it won't volunteer credentials cross-origin.
 
 ```bash
 # In .env
-NEXT_PUBLIC_API_URL=https://med-assist.example.org   # rebuild the frontend after
+NEXT_PUBLIC_API_URL=https://med-assist.example.org   # rebuild the image after
 CORS_ALLOWED_ORIGINS=https://med-assist.example.org
 UNSECURED_DEPLOYMENT=true                            # unless the proxy is the whole audience
 ```
@@ -245,12 +245,17 @@ source, and is still the better shape.
 
 ## Coolify, specifically
 
-Coolify attaches a public domain to whichever service you point it at, over
-the Docker network. Six things follow:
+Coolify attaches a public domain to whichever service and port you point it
+at, over the Docker network. There is one `app` service now, publishing both
+8050 and 3050, so this is a port choice within it rather than a choice of
+service. Six things follow:
 
-- **Give the domain to the frontend, not the backend.** A domain on port
-  8050 is the exact hole this page is about; route the API as a path on the
-  frontend's domain, the way the Caddy example does.
+- **Give the domain to port 3050, not 8050.** A domain on 8050 is the exact
+  hole this page is about; route the API as a path on the interface's domain,
+  the way the Caddy example does. That means Coolify's own domain/port picker
+  has to support routing one domain at a specific port of a single service -
+  if yours only attaches a domain to a whole service, put a proxy like the
+  Caddy example in front instead and give Coolify's domain to that.
 - **Set `UNSECURED_DEPLOYMENT=true`.** A Coolify deployment is by definition
   reachable by someone other than you.
 - **The loopback binding won't save you here.** Coolify's proxy doesn't use
