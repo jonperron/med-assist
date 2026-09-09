@@ -246,7 +246,7 @@ source, and is still the better shape.
 ## Coolify, specifically
 
 Coolify attaches a public domain to whichever service you point it at, over
-the Docker network. Five things follow:
+the Docker network. Six things follow:
 
 - **Give the domain to the frontend, not the backend.** A domain on port
   8050 is the exact hole this page is about; route the API as a path on the
@@ -268,6 +268,27 @@ the Docker network. Five things follow:
   pick a different number, which has no effect on the domain Coolify routes
   either way, since that goes over the internal Docker network regardless
   of the published port.
+- **The frontend's host port moved the same way, off 3000 to 3050.** As with
+  the backend, this does not stop the frontend from colliding with itself on
+  redeploy - the create-before-remove sequence above applies to any fixed
+  port, whatever the number. What it does avoid is `3000` specifically: a
+  default at least as commonly claimed by some *other* service on a host as
+  `8000` was for the backend, since it's the default for `next dev` and for
+  a great many other Node-based tools besides this project's own. If a
+  redeploy fails this way on `3050` too - to itself, or to another service -
+  the fix is the same edit to `docker-compose.yml`, picking a different
+  number. `CORS_ALLOWED_ORIGINS`'s default moved with it (to
+  `http://localhost:3050`) so a local `docker compose up` still matches the
+  origin the browser sends without extra configuration; a Coolify domain
+  routes over the Docker network regardless, so this only affects reaching
+  the stack at `your-host:3050` directly. That default is a `docker-compose.yml`
+  passthrough, not an unconditional one: an `.env` copied from an earlier
+  `.env.example` already has `CORS_ALLOWED_ORIGINS=http://localhost:3000`
+  written into it as a real assignment, and Compose's `${VAR:-default}`
+  syntax never substitutes over a variable that is actually set. Carrying
+  that file forward through this change serves the interface from `3050`
+  while the backend keeps refusing it on `3000` - edit the value in your
+  `.env` to `http://localhost:3050` along with the upgrade.
 - **Coolify's proxy authenticates nobody by default**, and neither does
   anything else. Add basic auth or `forward_auth` to your identity provider
   on the domain if the instance shouldn't be open to the whole internet.
