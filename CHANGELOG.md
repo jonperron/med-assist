@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.0](https://github.com/jonperron/med-assist/compare/2.1.0...3.0.0) (2026-09-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* docker-compose.yml no longer defines `backend` and `frontend` services - only `app`. BACKEND_MEMORY_LIMIT, BACKEND_CPU_LIMIT, FRONTEND_MEMORY_LIMIT and FRONTEND_CPU_LIMIT in an existing .env are silently ignored rather than refused; set APP_MEMORY_LIMIT/APP_CPU_LIMIT instead. A local weights directory that relied on the API previously running as root inside the compose stack (backend/Dockerfile had no USER) may need its permissions widened, the same requirement the published release image already had.
+
+### Bug Fixes
+
+* build compose and releases from one Dockerfile ([#100](https://github.com/jonperron/med-assist/issues/100)) ([2d1af6b](https://github.com/jonperron/med-assist/commit/2d1af6ba2bd77031b08957a3bf5aa3a2e3e154a5))
+* hardcode the backend's published port to 8050 ([#98](https://github.com/jonperron/med-assist/issues/98)) ([416c41c](https://github.com/jonperron/med-assist/commit/416c41c8f059ef8abde3b621f1bbb0f55a109c16))
+
 ## [2.1.0](https://github.com/jonperron/med-assist/compare/2.0.0...2.1.0) (2026-09-06)
 
 
