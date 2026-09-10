@@ -6,8 +6,16 @@ from urllib.parse import urlsplit
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-# Where the frontend is served from in a local `docker compose up`. It is the
-# fallback rather than a wildcard on purpose: see `normalise_origin`.
+# Where the frontend is served from when this variable is unset entirely -
+# a bare `uv run` next to `next dev`'s own default port, and the
+# single-container release image, whose root Dockerfile sets no
+# CORS_ALLOWED_ORIGINS and serves the interface on this same port (see
+# deploy/README.md's release-image section). `docker-compose.yml` no longer
+# matches this: its frontend service publishes on host port 3050, and it
+# always passes CORS_ALLOWED_ORIGINS explicitly, so that stack never reads
+# this fallback - moving it to 3050 to follow Compose would instead break
+# the release image's out-of-the-box local run. It is the fallback rather
+# than a wildcard on purpose: see `normalise_origin`.
 DEFAULT_ALLOWED_ORIGINS = ("http://localhost:3000",)
 
 # The port a browser leaves out of the `Origin` header, per scheme. Configured

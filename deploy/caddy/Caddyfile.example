@@ -11,10 +11,12 @@
 # would prompt on the page and then fail every fetch, because a browser does
 # not volunteer credentials on a cross-origin request.
 #
-# One thing this file cannot do for you: `backend:8000` and `frontend:3000` are
-# Docker service names. They resolve only if Caddy runs on the same Compose
-# network - as a service in docker-compose.yml, or an external container
-# attached to that network. Otherwise every request fails DNS resolution.
+# One thing this file cannot do for you: `app:8000` and `app:3000` name the
+# `app` Docker Compose service - the API and the interface run in the same
+# container now, on their own ports. That name resolves only if Caddy runs on
+# the same Compose network - as a service in docker-compose.yml, or an
+# external container attached to that network. Otherwise every request fails
+# DNS resolution.
 #
 # The other thing to be clear about is what is behind this proxy. The
 # application authenticates nobody: the `basic_auth` block below is the only
@@ -48,7 +50,7 @@ med-assist.example.org {
 	@backend path /api/* /healthz /readyz
 
 	handle @backend {
-		reverse_proxy backend:8000 {
+		reverse_proxy app:8000 {
 			# No request header is rewritten here, and that is deliberate.
 			# The backend refuses a request whose `Origin` is not one it
 			# serves, which is what stops another site driving an upload
@@ -81,7 +83,7 @@ med-assist.example.org {
 	}
 
 	handle {
-		reverse_proxy frontend:3000
+		reverse_proxy app:3000
 	}
 
 	# Uploaded documents are patient data in flight. Caddy obtains and renews

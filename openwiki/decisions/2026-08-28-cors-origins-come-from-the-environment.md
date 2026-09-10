@@ -7,6 +7,17 @@ tags: [backend, deployment, cors, security]
 
 # 2026-08-28 - The allowed CORS origins come from the environment
 
+> **The frontend's published port moved on 2026-09-09.** The
+> `docker-compose.yml` passthrough quoted below -
+> `CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}` - is
+> now `http://localhost:3050`, to match. See [2026-09-09 - The frontend's
+> published port moved to
+> 3050](./2026-09-09-the-frontends-published-port-moved-to-3050.md). The
+> `allow_origins=["http://localhost:3000"]` literal a few paragraphs down is
+> the code this entry replaced, quoted for history, and was never touched by
+> either change - it, and the code-level fallback that replaced it
+> (`app.core.config.DEFAULT_ALLOWED_ORIGINS`), stayed at `3000`.
+
 ## What was decided
 
 `create_app` pinned CORS to a literal:

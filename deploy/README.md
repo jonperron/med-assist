@@ -73,7 +73,7 @@ docker run \
 ```
 
 That is the port exposure, the tmpfs and the weights. It is not the whole of
-what `docker-compose.yml` gives the two services, and the rest does not travel
+what `docker-compose.yml` gives its `app` service, and the rest does not travel
 with a published tag: the memory and CPU limits, `restart: unless-stopped`, and
 the log rotation that stops uvicorn's per-request access line from filling a
 disk. Add `--memory`, `--cpus`, `--restart unless-stopped` and
@@ -139,7 +139,7 @@ docker run \
 `.env` in `/app` for it to fall back to, so left unset it stays at the
 `http://localhost:3000` default and the origin check refuses every analysis your
 domain sends. `UNSECURED_DEPLOYMENT` is the banner described below, and every
-instruction on this page that says to put it "on the frontend service" or in
+instruction on this page that says to put it "on the `app` service" or in
 `.env` means this flag for this image. Both are read at start, so neither is a
 rebuild - unlike `NEXT_PUBLIC_API_URL` above, which is. That rebuild is not a cost this image adds: a separately published
 frontend image would be pinned to a build-time address in exactly the same way.
@@ -212,7 +212,7 @@ it won't volunteer credentials cross-origin.
 
 ```bash
 # In .env
-NEXT_PUBLIC_API_URL=https://med-assist.example.org   # rebuild the frontend after
+NEXT_PUBLIC_API_URL=https://med-assist.example.org   # rebuild the image after
 CORS_ALLOWED_ORIGINS=https://med-assist.example.org
 UNSECURED_DEPLOYMENT=true                            # unless the proxy is the whole audience
 ```
@@ -245,12 +245,17 @@ source, and is still the better shape.
 
 ## Coolify, specifically
 
-Coolify attaches a public domain to whichever service you point it at, over
-the Docker network. Five things follow:
+Coolify attaches a public domain to whichever service and port you point it
+at, over the Docker network. There is one `app` service now, publishing both
+8050 and 3050, so this is a port choice within it rather than a choice of
+service. Six things follow:
 
-- **Give the domain to the frontend, not the backend.** A domain on port
-  8050 is the exact hole this page is about; route the API as a path on the
-  frontend's domain, the way the Caddy example does.
+- **Give the domain to port 3050, not 8050.** A domain on 8050 is the exact
+  hole this page is about; route the API as a path on the interface's domain,
+  the way the Caddy example does. That means Coolify's own domain/port picker
+  has to support routing one domain at a specific port of a single service -
+  if yours only attaches a domain to a whole service, put a proxy like the
+  Caddy example in front instead and give Coolify's domain to that.
 - **Set `UNSECURED_DEPLOYMENT=true`.** A Coolify deployment is by definition
   reachable by someone other than you.
 - **The loopback binding won't save you here.** Coolify's proxy doesn't use
@@ -268,6 +273,27 @@ the Docker network. Five things follow:
   pick a different number, which has no effect on the domain Coolify routes
   either way, since that goes over the internal Docker network regardless
   of the published port.
+- **The frontend's host port moved the same way, off 3000 to 3050.** As with
+  the backend, this does not stop the frontend from colliding with itself on
+  redeploy - the create-before-remove sequence above applies to any fixed
+  port, whatever the number. What it does avoid is `3000` specifically: a
+  default at least as commonly claimed by some *other* service on a host as
+  `8000` was for the backend, since it's the default for `next dev` and for
+  a great many other Node-based tools besides this project's own. If a
+  redeploy fails this way on `3050` too - to itself, or to another service -
+  the fix is the same edit to `docker-compose.yml`, picking a different
+  number. `CORS_ALLOWED_ORIGINS`'s default moved with it (to
+  `http://localhost:3050`) so a local `docker compose up` still matches the
+  origin the browser sends without extra configuration; a Coolify domain
+  routes over the Docker network regardless, so this only affects reaching
+  the stack at `your-host:3050` directly. That default is a `docker-compose.yml`
+  passthrough, not an unconditional one: an `.env` copied from an earlier
+  `.env.example` already has `CORS_ALLOWED_ORIGINS=http://localhost:3000`
+  written into it as a real assignment, and Compose's `${VAR:-default}`
+  syntax never substitutes over a variable that is actually set. Carrying
+  that file forward through this change serves the interface from `3050`
+  while the backend keeps refusing it on `3000` - edit the value in your
+  `.env` to `http://localhost:3050` along with the upgrade.
 - **Coolify's proxy authenticates nobody by default**, and neither does
   anything else. Add basic auth or `forward_auth` to your identity provider
   on the domain if the instance shouldn't be open to the whole internet.

@@ -30,17 +30,15 @@ on:
       - 'Dockerfile'
       - 'docker-entrypoint.sh'
       - '.dockerignore'
-      # The dependency sets and the two per-service Dockerfiles this one
-      # mirrors. Application code is not listed: backend-ci and frontend-ci
-      # already run the test suite and `next build` on every change to it,
-      # and this build takes minutes.
+      - 'docker-compose.yml'
+      # The dependency sets this Dockerfile installs from. Application code is
+      # not listed: backend-ci and frontend-ci already run the test suite and
+      # `next build` on every change to it, and this build takes minutes.
       - 'backend/pyproject.toml'
       - 'backend/uv.lock'
-      - 'backend/Dockerfile'
       - 'frontend/package.json'
       - 'frontend/package-lock.json'
       - 'frontend/next.config.ts'
-      - 'frontend/Dockerfile'
       # Not part of the standalone output and placed by hand, so `next build`
       # succeeds without it and only this build fails.
       - 'frontend/public/**'
@@ -61,6 +59,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG_NAME }}
+
+      # docker-compose.yml builds this same Dockerfile now, and nothing else
+      # in this workflow exercises the compose file itself - the steps below
+      # build and run the Dockerfile directly. `config -q` costs seconds and
+      # catches a bad key, a typo'd interpolation, or a reference to a file
+      # this workflow's own path filter didn't know to re-check, before
+      # anyone runs `docker compose up` by hand.
+      - name: Validate docker-compose.yml
+        run: docker compose config -q
 
       # The docker-container driver, which the layer cache below needs: the
       # default driver cannot export one.
@@ -84,9 +91,10 @@ jobs:
 
       # The context is the repository root because the image is built from both
       # halves of it: the Dockerfile there builds the interface and the API into
-      # one container. backend/Dockerfile and frontend/Dockerfile are what
-      # `docker compose up` builds, and are not what a release publishes. See
-      # openwiki/decisions/2026-09-05-the-release-image-is-one-container.md.
+      # one container. `docker compose up` builds this same Dockerfile now too -
+      # a release and a working copy run the same image. See
+      # openwiki/decisions/2026-09-05-the-release-image-is-one-container.md and
+      # openwiki/decisions/2026-09-08-compose-builds-the-unified-image.md.
       - uses: docker/build-push-action@v6
         with:
           context: .

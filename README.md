@@ -41,7 +41,7 @@ cp .env.example .env      # no secrets to fill in; defaults run as-is
 docker compose up --build
 ```
 
-- Interface: [localhost:3000](http://localhost:3000)
+- Interface: [localhost:3050](http://localhost:3050)
 - API: [localhost:8050](http://localhost:8050)
 
 ### The model
@@ -49,14 +49,14 @@ docker compose up --build
 Weights aren't in the repo or the image — mount them read-only from
 `MODEL_DIR` (default `./backend/models`): `config.json`,
 `model.safetensors`, `tokenizer.json`, `tokenizer_config.json`. Swap models
-with `docker compose restart backend`, no rebuild needed.
+with `docker compose restart app`, no rebuild needed.
 
 ## Configuration
 
 | Variable | What it does |
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Where the browser looks for the API. Baked in at build time — changing it needs a frontend rebuild. |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated origins (`scheme://host[:port]`, no trailing slash — a trailing slash or an implied port like `:443`/`:80` is normalized rather than refused). Enforced server-side, not just sent to browsers: a `Sec-Fetch-Site` of `same-origin`/`none` is accepted before the list is even consulted; otherwise a request whose `Origin` is outside the list gets a fixed `403` before its body is read, and a request with neither header is let through. Unset or empty keeps the default (`http://localhost:3000`) rather than denying everything. `*` and anything that isn't a valid origin are refused at startup, by position, never quoted. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated origins (`scheme://host[:port]`, no trailing slash — a trailing slash or an implied port like `:443`/`:80` is normalized rather than refused). Enforced server-side, not just sent to browsers: a `Sec-Fetch-Site` of `same-origin`/`none` is accepted before the list is even consulted; otherwise a request whose `Origin` is outside the list gets a fixed `403` before its body is read, and a request with neither header is let through. `docker-compose.yml` passes it explicitly, defaulting to `http://localhost:3050` to match the interface's compose-published port above; run the backend without Compose and leave it unset or empty and it falls back in code to `http://localhost:3000` rather than denying everything. `*` and anything that isn't a valid origin are refused at startup, by position, never quoted. |
 | `UNSECURED_DEPLOYMENT` | Set `true` on any non-local deployment — puts a banner on every screen saying this installation is open, anyone can reach it, and documents sent through it may be read by a third party. Read at request time; just restart. |
 | `NER_MODEL_NAME` | Path to the local model directory. Required. |
 | `APP_ENV` | `production` (default) or `development` — the latter enables mock endpoints, never mounted otherwise. |
