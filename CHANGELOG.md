@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.0.1](https://github.com/jonperron/med-assist/compare/3.0.0...3.0.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* add traefik router options to allow calls on readyz from the fro… ([#103](https://github.com/jonperron/med-assist/issues/103)) ([aa33a7a](https://github.com/jonperron/med-assist/commit/aa33a7ae7b1d40ff89b9523c19816669fef2c5bd))
+* add traefik router options to allow calls on readyz from the frontend ([aa33a7a](https://github.com/jonperron/med-assist/commit/aa33a7ae7b1d40ff89b9523c19816669fef2c5bd))
+* update host tag to match traefik values ([#105](https://github.com/jonperron/med-assist/issues/105)) ([7c470df](https://github.com/jonperron/med-assist/commit/7c470df4ff9162b9671d9b01e4e4200faa01db82))
+* update host tag to match traefik values ([#106](https://github.com/jonperron/med-assist/issues/106)) ([f049e65](https://github.com/jonperron/med-assist/commit/f049e656e226a06881ba47085c42816f538aede7))
+
 ## [3.0.0](https://github.com/jonperron/med-assist/compare/2.1.0...3.0.0) (2026-09-10)
 
 
