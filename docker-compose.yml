@@ -71,12 +71,12 @@ services:
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3050}
       - UNSECURED_DEPLOYMENT=${UNSECURED_DEPLOYMENT:-}
     labels:
-      - traefik.http.routers.med-assist-api-http.rule=Host(`med-assist.blackcatzlab.tech`,`www.med-assist.blackcatzlab.tech`) && PathPrefix(`/api`,`/healthz`,`/readyz`)
+      - traefik.http.routers.med-assist-api-http.rule=(Host(`med-assist.blackcatzlab.tech`) || Host(`www.med-assist.blackcatzlab.tech`)) && PathPrefix(`/api`,`/healthz`,`/readyz`)
       - traefik.http.routers.med-assist-api-http.entrypoints=http
       - traefik.http.routers.med-assist-api-http.middlewares=redirect-to-https
       - traefik.http.routers.med-assist-api-http.service=med-assist-api-svc
       - traefik.http.routers.med-assist-api-http.priority=1000
-      - traefik.http.routers.med-assist-api-https.rule=Host(`med-assist.blackcatzlab.tech`,`www.med-assist.blackcatzlab.tech`) && PathPrefix(`/api`,`/healthz`,`/readyz`)
+      - traefik.http.routers.med-assist-api-https.rule=(Host(`med-assist.blackcatzlab.tech`) || Host(`www.med-assist.blackcatzlab.tech`)) && PathPrefix(`/api`,`/healthz`,`/readyz`)
       - traefik.http.routers.med-assist-api-https.entrypoints=https
       - traefik.http.routers.med-assist-api-https.tls=true
       - traefik.http.routers.med-assist-api-https.tls.certresolver=letsencrypt
