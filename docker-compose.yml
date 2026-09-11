@@ -70,14 +70,16 @@ services:
       - APP_ENV=${APP_ENV:-production}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3050}
       - UNSECURED_DEPLOYMENT=${UNSECURED_DEPLOYMENT:-}
-    # No explicit healthcheck: block. The image already declares one covering
-    # both ports (readyz on 8000, the interface's root on 3000) and Compose
-    # honours an image's own HEALTHCHECK when a service does not override it.
-    #
-    # No container_name, unlike the two services this replaced: a fixed name
-    # is one more thing that would collide under multiple instances, and
-    # `docker compose ps`/`logs app` address it by service name regardless.
-    # This alone does not make `--scale app=<n>` usable, though: both ports
-    # above are fixed host-port publishes, so a second replica still fails to
-    # bind them. Scaling this service needs those ports moved onto a proxy or
-    # load balancer in front - out of scope here.
+    labels:
+      - traefik.http.routers.med-assist-api-http.rule=Host(`med-assist.blackcatzlab.tech`,`www.med-assist.blackcatzlab.tech`) && PathPrefix(`/api`,`/healthz`,`/readyz`)
+      - traefik.http.routers.med-assist-api-http.entrypoints=http
+      - traefik.http.routers.med-assist-api-http.middlewares=redirect-to-https
+      - traefik.http.routers.med-assist-api-http.service=med-assist-api-svc
+      - traefik.http.routers.med-assist-api-http.priority=1000
+      - traefik.http.routers.med-assist-api-https.rule=Host(`med-assist.blackcatzlab.tech`,`www.med-assist.blackcatzlab.tech`) && PathPrefix(`/api`,`/healthz`,`/readyz`)
+      - traefik.http.routers.med-assist-api-https.entrypoints=https
+      - traefik.http.routers.med-assist-api-https.tls=true
+      - traefik.http.routers.med-assist-api-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.med-assist-api-https.service=med-assist-api-svc
+      - traefik.http.routers.med-assist-api-https.priority=1000
+      - traefik.http.services.med-assist-api-svc.loadbalancer.server.port=8000
