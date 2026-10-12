@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.2](https://github.com/jonperron/med-assist/compare/3.0.1...3.0.2) (2026-10-12)
+
+
+### Bug Fixes
+
+* **frontend:** resolve npm audit advisories ([#109](https://github.com/jonperron/med-assist/issues/109)) ([271cd7e](https://github.com/jonperron/med-assist/commit/271cd7e55eed8c5d0972871b2ab7d50c7e3875b7))
+
 ## [3.0.1](https://github.com/jonperron/med-assist/compare/3.0.0...3.0.1) (2026-09-11)
 
 
