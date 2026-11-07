@@ -444,3 +444,20 @@ def test_a_repeated_entity_keeps_its_highest_score(
     found = extractor.run_inference(text)["symptoms"]
 
     assert [(e.text, e.score) for e in found] == [("fièvre", 0.9), ("toux", 0.7)]
+
+
+def test_dedup_ignores_case_keeps_ties_first_and_separates_labels(
+    mock_ner_pipeline, mock_label_mapping
+):
+    text = "Fièvre fièvre fièvre"
+    mock_ner_pipeline.return_value.return_value = [
+        {"entity_group": "sosy", "score": 0.8, "start": 0, "end": 6},
+        {"entity_group": "sosy", "score": 0.8, "start": 7, "end": 13},
+        {"entity_group": "pathologie", "score": 0.5, "start": 14, "end": 20},
+    ]
+    extractor = build_extractor(mock_label_mapping)
+
+    found = extractor.run_inference(text)
+
+    assert [(e.text, e.start) for e in found["symptoms"]] == [("Fièvre", 0)]
+    assert [e.text for e in found["diseases"]] == ["fièvre"]
