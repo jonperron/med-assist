@@ -373,16 +373,15 @@ class EntityExtractor(EntityExtractionServiceInterface):
             # decides what it emits, so the bucket is created on demand.
             entities.setdefault(category, []).append(entity_detail)
 
-        # Remove duplicates while preserving order
+        # Remove duplicates, keeping the highest-scoring occurrence at the
+        # position where the entity first appeared.
         for category in entities:
-            seen = set()
-            unique_entities = []
+            best: Dict[tuple[str, str], EntityDetail] = {}
             for entity in entities[category]:
                 entity_key = (entity.text.lower(), entity.label)
-                if entity_key not in seen:
-                    seen.add(entity_key)
-                    unique_entities.append(entity)
-            entities[category] = unique_entities
+                if entity_key not in best or entity.score > best[entity_key].score:
+                    best[entity_key] = entity
+            entities[category] = list(best.values())
 
         return entities
 

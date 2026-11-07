@@ -428,3 +428,19 @@ def test_a_sliding_window_is_not_announced(
         build_extractor(mock_label_mapping)
 
     assert "truncated" not in caplog.text
+
+
+def test_a_repeated_entity_keeps_its_highest_score(
+    mock_ner_pipeline, mock_label_mapping
+):
+    text = "fièvre puis toux puis fièvre"
+    mock_ner_pipeline.return_value.return_value = [
+        {"entity_group": "sosy", "score": 0.6, "start": 0, "end": 6},
+        {"entity_group": "sosy", "score": 0.7, "start": 12, "end": 16},
+        {"entity_group": "sosy", "score": 0.9, "start": 22, "end": 28},
+    ]
+    extractor = build_extractor(mock_label_mapping)
+
+    found = extractor.run_inference(text)["symptoms"]
+
+    assert [(e.text, e.score) for e in found] == [("fièvre", 0.9), ("toux", 0.7)]
