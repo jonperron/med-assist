@@ -443,7 +443,11 @@ def test_a_repeated_entity_keeps_its_highest_score(
 
     found = extractor.run_inference(text)["symptoms"]
 
-    assert [(e.text, e.score) for e in found] == [("fièvre", 0.9), ("toux", 0.7)]
+    # The first mention keeps its offsets; only the score is raised.
+    assert [(e.text, e.score, e.start, e.end) for e in found] == [
+        ("fièvre", 0.9, 0, 6),
+        ("toux", 0.7, 12, 16),
+    ]
 
 
 def test_dedup_ignores_case_keeps_ties_first_and_separates_labels(
