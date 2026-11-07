@@ -52,6 +52,44 @@ async def test_extract_text_from_docx(text_extractor):
 
 
 @pytest.mark.asyncio
+async def test_pdf_pages_are_separated_and_page_numbers_dropped(text_extractor):
+    mock_file = AsyncMock(spec=UploadFile)
+    mock_file.content_type = "application/pdf"
+    mock_file.read.return_value = b"pdf content"
+
+    with patch("app.services.text_extractor.fitz.open") as mock_fitz_open:
+        first, second = MagicMock(), MagicMock()
+        first.get_text.return_value = "Culture negative\nPage : 1 / 2\n"
+        second.get_text.return_value = "Kyste branchial\nPage 2 sur 2"
+        mock_doc = MagicMock()
+        mock_doc.__enter__.return_value = [first, second]
+        mock_fitz_open.return_value = mock_doc
+
+        text = await text_extractor.extract_text(mock_file)
+
+    assert text == "Culture negative\n\nKyste branchial\n"
+
+
+@pytest.mark.asyncio
+async def test_docx_table_rows_are_kept_one_per_line(text_extractor):
+    mock_file = AsyncMock(spec=UploadFile)
+    mock_file.content_type = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    document = DocxDocument()
+    table = document.add_table(rows=1, cols=2)
+    table.rows[0].cells[0].text = "Polynucleaires"
+    table.rows[0].cells[1].text = "Tres nombreux"
+    file_stream = BytesIO()
+    document.save(file_stream)
+    mock_file.read.return_value = file_stream.getvalue()
+
+    text = await text_extractor.extract_text(mock_file)
+
+    assert "Polynucleaires : Tres nombreux" in text
+
+
+@pytest.mark.asyncio
 async def test_extract_text_from_plaintext(text_extractor):
     mock_file = AsyncMock(spec=UploadFile)
     mock_file.content_type = "text/plain"

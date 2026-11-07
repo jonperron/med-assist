@@ -1,4 +1,5 @@
 import logging
+import re
 from io import BytesIO
 from typing import Optional
 import fitz
@@ -16,6 +17,12 @@ DOCX_CONTENT_TYPE = (
 PLAINTEXT_CONTENT_TYPE = "text/plain"
 SUPPORTED_CONTENT_TYPES = frozenset(
     {PDF_CONTENT_TYPE, DOCX_CONTENT_TYPE, PLAINTEXT_CONTENT_TYPE}
+)
+
+# "Page : 1 / 1", "Page 1 sur 3": pure layout, never clinical content.
+PAGE_NUMBER_LINE = re.compile(
+    r"^[ \t]*Page[ \t]*:?[ \t]*\d+[ \t]*(?:/|sur)[ \t]*\d+[ \t]*$\n?",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -48,15 +55,27 @@ class TextExtractor(TextExtractionServiceInterface):
             raise ValueError("Unable to extract text from the document") from e
 
     def extract_text_from_pdf(self, file_bytes: BytesIO) -> str:
-        text = ""
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-            for page in doc:
-                text += page.get_text()
-        return text
+            pages = [PAGE_NUMBER_LINE.sub("", page.get_text()) for page in doc]
+        # A newline between pages keeps the last line of one page from fusing
+        # with the first line of the next into a single entity.
+        return "\n".join(pages)
 
     def extract_text_from_docx(self, file_bytes: BytesIO) -> str:
         doc = Document(file_bytes)
-        return "\n".join(paragraph.text for paragraph in doc.paragraphs)
+        lines = [paragraph.text for paragraph in doc.paragraphs]
+        # shortcut: tables follow the paragraphs instead of sitting in body
+        # order; upgrade if reading order starts to matter for a layout.
+        for table in doc.tables:
+            for row in table.rows:
+                cells: list[str] = []
+                for cell in row.cells:
+                    # python-docx repeats a merged cell once per column it spans.
+                    if cell.text and (not cells or cells[-1] != cell.text):
+                        cells.append(cell.text)
+                if cells:
+                    lines.append(" : ".join(cells))
+        return "\n".join(lines)
 
     def extract_text_from_plaintext(self, file_bytes: BytesIO) -> str:
         return file_bytes.getvalue().decode("utf-8")
