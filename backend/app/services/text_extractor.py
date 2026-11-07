@@ -21,7 +21,8 @@ SUPPORTED_CONTENT_TYPES = frozenset(
 
 # "Page : 1 / 1", "Page 1 sur 3": pure layout, never clinical content.
 PAGE_NUMBER_LINE = re.compile(
-    r"^[ \t]*Page[ \t]*:?[ \t]*\d+[ \t]*(?:/|sur)[ \t]*\d+[ \t]*$\n?",
+    # One whitespace run per gap: two adjacent [^\S\n]* backtrack quadratically.
+    r"^[^\S\n]*Page[^\S\n]*(?::[^\S\n]*)?\d+[^\S\n]*(?:/|sur)[^\S\n]*\d+[^\S\n]*$\n?",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -59,7 +60,10 @@ class TextExtractor(TextExtractionServiceInterface):
             pages = [PAGE_NUMBER_LINE.sub("", page.get_text()) for page in doc]
         # A newline between pages keeps the last line of one page from fusing
         # with the first line of the next into a single entity.
-        return "\n".join(pages)
+        text = "\n".join(pages)
+        # A scan, or a page holding only stripped footers, must stay unreadable:
+        # the use case treats an empty string, and only that, as no text.
+        return text if text.strip() else ""
 
     def extract_text_from_docx(self, file_bytes: BytesIO) -> str:
         doc = Document(file_bytes)
@@ -67,12 +71,26 @@ class TextExtractor(TextExtractionServiceInterface):
         # shortcut: tables follow the paragraphs instead of sitting in body
         # order; upgrade if reading order starts to matter for a layout.
         for table in doc.tables:
+            # python-docx returns a merged cell once per column and per row it
+            # spans, and a crafted file can span thousands of rows. Emit each
+            # underlying cell once, never by comparing text, so a value that
+            # legitimately repeats down a column is kept.
+            # shortcut: tables nested inside a cell are not read; recurse into
+            # cell.tables if a lab template turns out to use them.
+            seen_cells: set[object] = set()
             for row in table.rows:
                 cells: list[str] = []
                 for cell in row.cells:
-                    # python-docx repeats a merged cell once per column it spans.
-                    if cell.text and (not cells or cells[-1] != cell.text):
-                        cells.append(cell.text)
+                    # Holding the element, not id(), keeps it alive so its
+                    # identity cannot be reused by another element.
+                    # pylint: disable-next=protected-access
+                    cell_element = cell._tc
+                    # One line per row: a cell with several paragraphs would
+                    # otherwise spread over several lines.
+                    cell_text = " ".join(cell.text.split())
+                    if cell_text and cell_element not in seen_cells:
+                        seen_cells.add(cell_element)
+                        cells.append(cell_text)
                 if cells:
                     lines.append(" : ".join(cells))
         return "\n".join(lines)
