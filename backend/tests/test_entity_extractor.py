@@ -465,3 +465,40 @@ def test_dedup_ignores_case_keeps_ties_first_and_separates_labels(
 
     assert [(e.text, e.start) for e in found["symptoms"]] == [("Fièvre", 0)]
     assert [e.text for e in found["diseases"]] == ["fièvre"]
+
+
+def test_a_span_first_seen_below_the_floor_reaches_the_summary_at_its_first_offsets(
+    mock_ner_pipeline, mock_label_mapping
+):
+    # Extractor to summary: the later confident mention lifts the span over the
+    # confidence floor, but the offsets stay the first mention's, so the value
+    # beside the second mention is not paired with it.
+    from app.services.summarizer import MIN_CONFIDENCE, summarize
+
+    mock_label_mapping["categories"]["examinations"] = {
+        "description": "Examinations",
+        "labels": ["examen"],
+    }
+    mock_label_mapping["categories"]["measurements"] = {
+        "description": "Measurements",
+        "labels": ["valeur"],
+    }
+    text = "Troponine I demandée." + " " * 40 + "Troponine I : 1,10 ng/mL"
+    second = text.index("Troponine I :")
+    value = text.index("1,10")
+    mock_ner_pipeline.return_value.return_value = [
+        {
+            "entity_group": "examen",
+            "score": MIN_CONFIDENCE - 0.1,
+            "start": 0,
+            "end": 11,
+        },
+        {"entity_group": "examen", "score": 0.9, "start": second, "end": second + 11},
+        {"entity_group": "valeur", "score": 0.9, "start": value, "end": value + 10},
+    ]
+    extractor = build_extractor(mock_label_mapping)
+
+    summary = summarize([extractor.run_inference(text)])
+
+    findings = next(s for s in summary.sections if s.key == "examinations").findings
+    assert [f.text for f in findings] == ["Troponine I"]
