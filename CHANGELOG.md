@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.3](https://github.com/jonperron/med-assist/compare/3.0.2...3.0.3) (2026-11-07)
+
+
+### Bug Fixes
+
+* **backend:** keep page and table boundaries when extracting text ([#117](https://github.com/jonperron/med-assist/issues/117)) ([78efb8c](https://github.com/jonperron/med-assist/commit/78efb8cb9d396b8f80d0c9283f141ae38bf30ebb))
+
 ## [3.0.2](https://github.com/jonperron/med-assist/compare/3.0.1...3.0.2) (2026-10-12)
 
 
